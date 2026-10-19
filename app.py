@@ -13518,6 +13518,60 @@ def _validar_per_adiantamento(dados):
     return None
 
 
+# Arredondamento do líquido (Folha e Férias): valor do degrau em CENTAVOS —
+# 1000 sobe o líquido até o próximo múltiplo de R$ 10,00. Zero = não arredonda.
+# Mesmos campos do Desktop (valor_arredondar_fol / _fer). A diferença entra na
+# verba 501 e volta como desconto na 509 da folha normal do mês seguinte.
+_ARRED_COLS = (("valor_arredondar_fol", "Folha"), ("valor_arredondar_fer", "Férias"))
+_ARRED_MAX  = 100000   # R$ 1.000,00
+
+
+def _validar_arredondamento(dados):
+    """Normaliza os dois valores de arredondamento para inteiro em centavos.
+    A tela já manda em centavos; em branco vira 0. Retorna msg de erro ou None."""
+    for col, rot in _ARRED_COLS:
+        if col not in dados:
+            continue
+        v = dados.get(col)
+        if v is None or str(v).strip() == "":
+            dados[col] = 0
+            continue
+        try:
+            c = int(v)
+        except (TypeError, ValueError):
+            return f"O valor de arredondamento da {rot} é inválido."
+        if c < 0 or c > _ARRED_MAX:
+            return (f"O valor de arredondamento da {rot} deve ficar entre "
+                    f"R$ 0,00 e {_fmt_brl(_ARRED_MAX)}.")
+        dados[col] = c
+    return None
+
+
+def _arred_da_empresa(id_empresa):
+    """(degrau_folha, degrau_ferias) em centavos; (0, 0) se não arredonda.
+
+    Lê com select('*') de propósito: até o SQL das colunas novas rodar, elas
+    não existem, e o cálculo tem de continuar como estava — sem arredondar."""
+    try:
+        r = (supabase.table("tab_empresa").select("*")
+             .eq("id_empresa", id_empresa).limit(1).execute())
+        e = r.data[0] if r.data else {}
+    except Exception:
+        e = {}
+    return (int(e.get("valor_arredondar_fol") or 0),
+            int(e.get("valor_arredondar_fer") or 0))
+
+
+def _arredondar_para_cima(liquido, degrau):
+    """Quanto falta para o líquido chegar ao próximo múltiplo do degrau (verba
+    501). Zero se já é múltiplo, se o degrau é zero ou se o líquido não é
+    positivo. Mesma conta do Calculo_Arredondamento do Desktop."""
+    if degrau <= 0 or liquido <= 0:
+        return 0
+    resto = liquido % degrau
+    return degrau - resto if resto else 0
+
+
 @app.route("/alterar_empresa")
 def alterar_empresa():
     if not session.get("logado"):
@@ -13637,6 +13691,9 @@ def api_alterar_empresa():
         _erro_pq = _validar_per_adiantamento(dados)
         if _erro_pq:
             return jsonify({"ok": False, "msg": _erro_pq})
+        _erro_ar = _validar_arredondamento(dados)
+        if _erro_ar:
+            return jsonify({"ok": False, "msg": _erro_ar})
         dados.pop("cnpj",       None)
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
@@ -13749,6 +13806,9 @@ def api_gravar_empresa():
         _erro_pq = _validar_per_adiantamento(dados)
         if _erro_pq:
             return jsonify({"ok": False, "msg": _erro_pq})
+        _erro_ar = _validar_arredondamento(dados)
+        if _erro_ar:
+            return jsonify({"ok": False, "msg": _erro_ar})
 
         id_cliente_sess = session.get("id_cliente", 1)
         dados["id_cliente"] = id_cliente_sess
@@ -52979,9 +53039,16 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     rubricas_info.setdefault(101, {"tp": "2", "dsc": "INSS", "unid": "V", "inc_cp": "", "inc_irrf": ""})
     rubricas_info.setdefault(120, {"tp": "2", "dsc": "IRRF", "unid": "V", "inc_cp": "", "inc_irrf": ""})
 
-    # ── Pré-carga arredondamento mês anterior (somente id_empresa=4) ──────────
+    # ── Pré-carga arredondamento mês anterior (cadastro da empresa) ───────────
+    # O degrau vem do cadastro (valor_arredondar_fol, ver _arred_da_empresa).
+    # Só a folha NORMAL arredonda e desconta, como no Desktop — 13º e
+    # adiantamento ficam de fora. A 509 devolve a 501 do mês anterior da folha
+    # E das férias (folha_tipo F): o recibo de férias também arredonda, e a
+    # diferença é descontada aqui, na folha do mês seguinte.
+    _arred_degrau_fol, _ = _arred_da_empresa(id_empresa)
+    _arred_ativo   = _arred_degrau_fol > 0 and anomes_tipo == "N"
     _arred_prev501 = {}
-    if int(id_empresa) == 4:
+    if _arred_ativo:
         try:
             _ar_y, _ar_m = int(anomes) // 100, int(anomes) % 100
             _prev_anomes  = (_ar_y - 1) * 100 + 12 if _ar_m == 1 else _ar_y * 100 + (_ar_m - 1)
@@ -52989,12 +53056,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                      .select("matricula, valor")
                      .eq("id_empresa", id_empresa)
                      .eq("folha",      _prev_anomes)
+                     .in_("folha_tipo", ["N", "F"])
                      .eq("cod_verba",  501)
                      .eq("situacao",   "A"))
             if id_cliente:
                 _q_ar = _q_ar.eq("id_cliente", id_cliente)
             for _r in (_q_ar.execute().data or []):
-                _arred_prev501[int(_r["matricula"])] = int(_r["valor"] or 0)
+                _m = int(_r["matricula"])
+                _arred_prev501[_m] = _arred_prev501.get(_m, 0) + int(_r["valor"] or 0)
         except Exception:
             pass
         rubricas_info.setdefault(501, {"tp":"1","dsc":"Arredondamento","unid":"V","inc_cp":"","inc_irrf":"","inc_fgts":""})
@@ -54960,7 +55029,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 elems.append(_ad_tbl)
 
             # Remove 501/509 do mmVmm antes dos totais (re-runs não contaminam a base)
-            if int(id_empresa) == 4:
+            if _arred_ativo:
                 mmVmm.pop(501, None)
                 mmVmm.pop(509, None)
 
@@ -55129,14 +55198,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
                 elems.append(_enc0_tbl)
 
-            # ── ETAPA 1160 — Arredondamento (somente id_empresa=4) ───────────
+            # ── ETAPA 1160 — Arredondamento (degrau do cadastro da empresa) ──
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr
-            if int(id_empresa) == 4:
+            if _arred_ativo:
                 _v509_val  = _arred_prev501.get(matr, 0)
                 _liq_base  = total_prov - total_desc
                 _liq_ajust = _liq_base - _v509_val
-                _resto_ar  = _liq_ajust % 1000 if _liq_ajust > 0 else 0
-                _v501_val  = (1000 - _resto_ar) if _resto_ar != 0 else 0
+                _v501_val  = _arredondar_para_cima(_liq_ajust, _arred_degrau_fol)
                 total_prov += _v501_val
                 total_desc += _v509_val
                 if _v509_val > 0:
@@ -55150,9 +55218,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 if _v501_val > 0:
                     _ar_linhas.append(f"V501 Arredondamento: +{_fmt_brl(_v501_val)}   »   Líq. final: {_fmt_brl(_liq_final_ar)}")
                 elif _liq_ajust > 0:
-                    _ar_linhas.append(f"Líq. já múltiplo de R$10,00 — V501 não lançada")
+                    _ar_linhas.append(f"Líq. já múltiplo de {_fmt_brl(_arred_degrau_fol)} — V501 não lançada")
                 _arred_tbl = Table([
-                    [Paragraph("ETAPA 1160 - ARREDONDAMENTO (empresa 4)", st_etapa)],
+                    [Paragraph(f"ETAPA 1160 - ARREDONDAMENTO (múltiplo de {_fmt_brl(_arred_degrau_fol)})", st_etapa)],
                     *[[Paragraph(ln, st_detalhe)] for ln in _ar_linhas],
                 ], colWidths=[17*cm])
                 _arred_tbl.setStyle(TableStyle([
@@ -62564,6 +62632,31 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
                 elems.append(_enc0_tbl)
 
+            # ── Arredondamento do líquido (cadastro da empresa) ─────────
+            _ar_val = int(r.get("arred_val") or 0)
+            if r.get("arred_degrau"):
+                _ar_deg = int(r["arred_degrau"])
+                _ar_linhas = [f"Líq. antes do arred.: {_fmt_brl(liquido - _ar_val)}"]
+                if _ar_val:
+                    _ar_linhas.append(f"V501 Arredondamento: +{_fmt_brl(_ar_val)}   »   "
+                                      f"Líq. final: {_fmt_brl(liquido)}")
+                    _ar_linhas.append("A 501 volta como desconto (V509) na folha normal do mês seguinte.")
+                else:
+                    _ar_linhas.append(f"Líq. já múltiplo de {_fmt_brl(_ar_deg)} — V501 não lançada")
+                _ar_tbl = Table([
+                    [Paragraph(f"ETAPA 2080 - ARREDONDAMENTO (múltiplo de {_fmt_brl(_ar_deg)})", st_etapa)],
+                    *[[Paragraph(ln, st_detalhe)] for ln in _ar_linhas],
+                ], colWidths=[17*cm])
+                _ar_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0),   10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0),   2),
+                    ("TOPPADDING",    (0, 1), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, -1),(0, -1),  4),
+                ]))
+                elems.append(_ar_tbl)
+
             # ── totais ─────────────────────────────────────────────────
             st_tot_lbl  = ParagraphStyle("mf_tl",  fontName="Helvetica-Bold", fontSize=9,
                                          alignment=2, textColor=colors.HexColor("#111827"))
@@ -62725,6 +62818,9 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
 
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
+    # Arredondamento do líquido das férias (cadastro da empresa): a diferença
+    # vai na 501 do recibo e volta na 509 da folha normal do mês seguinte.
+    _, _arred_degrau_fer = _arred_da_empresa(id_empresa)
     resultados = []
     for ev in eventos:
         mat = ev["matricula"]
@@ -62955,6 +63051,16 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
         total_desc = g_inss_val + g_irrf_val + man_desc_tot
         liquido    = total_prov - total_desc
 
+        # Arredondamento: depois de INSS/IRRF, sem mexer em base nenhuma — a
+        # 501 não incide em nada. Se alguém digitou a 501 nestas férias, vale
+        # a digitada (como no Desktop, "arredondamento digitado: não calcular").
+        arred_val = 0
+        if _arred_degrau_fer and not any(int(_mm.get("cod_verba") or 0) == 501
+                                         for _mm in man_movs):
+            arred_val   = _arredondar_para_cima(liquido, _arred_degrau_fer)
+            total_prov += arred_val
+            liquido    += arred_val
+
         # ── Apaga apenas registros calculados (origem='C'); preserva manuais (origem='M') ──
         # Simulação não limpa nada: ela não vai gravar no lugar.
         if gravar:
@@ -63023,8 +63129,11 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
         if cod_irrf_fc and g_irrf_val:
             recs_mov.append({**base_mov, "cod_verba": cod_irrf_fc,
                              "qtd": 0, "valor": g_irrf_val})
+        if arred_val:
+            recs_mov.append({**base_mov, "cod_verba": 501,
+                             "qtd": 0, "valor": arred_val})
 
-        _verbas_auto_fc = {41, 42, 45, 46}
+        _verbas_auto_fc = {41, 42, 45, 46, 501}
         _verbas_auto_fc.update(medias_variaveis.keys())
         _verbas_auto_fc.update(adics_fer.keys())
         if g_inss_val:
@@ -63119,6 +63228,8 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
             "total_prov":     total_prov,
             "total_desc":     total_desc,
             "liquido":        liquido,
+            "arred_val":      arred_val,
+            "arred_degrau":   _arred_degrau_fer,
             "sal_mes_fmt":    _fmt_brl(sal_mes),
             "sal_ferias_fmt": _fmt_brl(sal_ferias),
             "terco_fmt":      _fmt_brl(terco_const),
@@ -64049,13 +64160,16 @@ def api_recibo_ferias_pdf():
             _tp = str(_r.get("tp_rubr") or "")
             if _tp not in ("1", "2"):
                 continue          # verba sem cadastro não vira linha inventada
+            # A 501 (arredondamento) não é base de nada: está cadastrada com
+            # incidência '00', que o _inc_de leria como "incide".
+            _sem_base = _cod == 501
             extras_por_mat.setdefault(int(_m["matricula"]), []).append({
                 "cod":   _cod,
                 "dsc":   (_r.get("dsc_rubr") or "").strip() or "Verba",
                 "tp":    _tp,
                 "valor": int(_m.get("valor") or 0),
-                "inc_cp":   _r.get("_inc_cp"),
-                "inc_irrf": _r.get("_inc_irrf"),
+                "inc_cp":   False if _sem_base else _r.get("_inc_cp"),
+                "inc_irrf": False if _sem_base else _r.get("_inc_irrf"),
             })
     except Exception as _e_ex:
         print(f"[recibo_ferias] aviso ao ler lançamentos extras: {_e_ex}")

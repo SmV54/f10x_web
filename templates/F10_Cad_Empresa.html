@@ -852,6 +852,8 @@ body {
                 <div class="campo" id="campoPercSimples" style="display:none;"><label>% Simples</label>             <input type="text" id="perc_simples" placeholder="—" onfocus="showHint(this,'% Simples — Alíquota efetiva do Simples Nacional.\nCalculada conforme o anexo e faixa de receita bruta acumulada dos últimos 12 meses.\nPreencher apenas para empresas optantes pelo Simples Nacional.')" onblur="clearHint()"></div>
                 <div class="campo campo-pct"><label>% Adiantamento 13º Salário</label>       <input type="text" id="perAdianta13" value="50" placeholder="50" maxlength="2" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onfocus="showHint(this,'% Adiantamento do 13º — Percentual pago como 1ª parcela (adiantamento) do 13º salário, aplicado sobre o salário e as médias das verbas variáveis.\nInforme um número inteiro entre 10 e 90. Padrão legal: 50%.')" onblur="clearHint()"></div>
                 <div class="campo campo-pct"><label>% Adiantamento Quinzenal</label>         <input type="text" id="per_adiantamento" value="50" placeholder="50" maxlength="2" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onfocus="showHint(this,'% Adiantamento Quinzenal — Percentual do salário pago como adiantamento no meio do mês, usado pelo cálculo quando o funcionário não tem percentual ou valor próprio.\nInforme um número inteiro entre 10 e 60. Padrão: 50%.\nDeixe EM BRANCO se a empresa não paga adiantamento quinzenal — sem ele, só recebem os funcionários com percentual ou valor informado individualmente.')" onblur="clearHint()"></div>
+                <div class="campo campo-pct"><label>Arredondar Líquido da Folha (R$)</label>  <input type="text" id="valor_arredondar_fol" placeholder="0,00" maxlength="8" inputmode="decimal" oninput="this.value=this.value.replace(/[^\d,]/g,'')" onfocus="showHint(this,'Arredondamento do líquido da Folha — o líquido de cada funcionário sobe até o próximo múltiplo deste valor.\nEx.: 10,00 → líquido de R$ 1.234,56 vira R$ 1.240,00 (verba 0501 de R$ 5,44).\nNa folha normal do mês seguinte, a diferença é descontada na verba 0509.\nEm branco ou 0,00: não arredonda.')" onblur="clearHint()"></div>
+                <div class="campo campo-pct"><label>Arredondar Líquido das Férias (R$)</label> <input type="text" id="valor_arredondar_fer" placeholder="0,00" maxlength="8" inputmode="decimal" oninput="this.value=this.value.replace(/[^\d,]/g,'')" onfocus="showHint(this,'Arredondamento do líquido das Férias — o líquido do recibo de férias sobe até o próximo múltiplo deste valor (verba 0501 no recibo).\nNa folha normal do mês seguinte, a diferença é descontada na verba 0509.\nEm branco ou 0,00: não arredonda.')" onblur="clearHint()"></div>
             </div>
         </div>
     </div>
@@ -1547,6 +1549,21 @@ async function gravarEmpresa(painel) {
         }
     }
 
+    // Arredondamento do líquido (Folha e Férias): R$ na tela, centavos no banco.
+    // Em branco = 0 (não arredonda).
+    const _arred = {};
+    for (const [id, rot] of [['valor_arredondar_fol', 'Folha'], ['valor_arredondar_fer', 'Férias']]) {
+        const raw = v(id);
+        const c = raw === '' ? 0 : Math.round(parseFloat(raw.replace(/\./g, '').replace(',', '.')) * 100);
+        if (isNaN(c) || c < 0 || c > 100000) {
+            const el = document.getElementById(id);
+            if (el) { el.focus(); _marcarErro(el); }
+            alert('O valor de arredondamento da ' + rot + ' deve ficar entre 0,00 e 1.000,00 (ex.: 10,00). Deixe em branco para não arredondar.');
+            return;
+        }
+        _arred[id] = c;
+    }
+
     // Procuração exige procurador selecionado
     if (v('cert_modo') === 'procuracao' && !v('id_procurador')) {
         const el = document.getElementById('id_procurador');
@@ -1558,7 +1575,9 @@ async function gravarEmpresa(painel) {
     const dados = {
         perAdianta13:           _perAd13,
         per_adiantamento:       _perAdQz,
-        cnpj:                   v('cnpj').replace(/\D/g,''),
+        valor_arredondar_fol:   _arred.valor_arredondar_fol,
+        valor_arredondar_fer:   _arred.valor_arredondar_fer,
+        cnpj:                  v('cnpj').replace(/\D/g,''),
         razaosocial:            document.getElementById('razaosocial')?.value.trim() || null,
         nome_fantasia:          v('nome_fantasia') || null,
         mes_dissidio:           parseInt(v('mes_dissidio')) || null,
@@ -1914,6 +1933,10 @@ function preencherFormulario(d) {
     // empresa não paga adiantamento quinzenal, e é o estado de hoje. O 50
     // pré-fixado vale só para empresa nova (valor do HTML).
     set('per_adiantamento', d.per_adiantamento != null ? d.per_adiantamento : '');
+    // Arredondamento: centavos no banco; zero (não arredonda) abre em branco.
+    const _arredR = (c) => c ? (Number(c) / 100).toFixed(2).replace('.', ',') : '';
+    set('valor_arredondar_fol', _arredR(d.valor_arredondar_fol));
+    set('valor_arredondar_fer', _arredR(d.valor_arredondar_fer));
     atualizarSimplesUI();
     // eSocial
     set('ind_coop',      d.es_ind_coop      || '');
