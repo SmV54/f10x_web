@@ -195,6 +195,9 @@ const moeda = v => (v === null || v === undefined)
   ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 let ESTADO = null;
+// Entrou na tela com venda pendente: lança sozinho, uma vez. So' acrescenta —
+// "Refazer do zero" apaga o que foi digitado a mao e continua pedindo o clique.
+let AUTO_FEITO = false;
 
 function carregar() {
   fetch('/api/admin_vendas/listar').then(r => r.json()).then(d => {
@@ -203,6 +206,10 @@ function carregar() {
     pintarNums(d);
     pintarTabela(d.vendas || []);
     el('btnGravar').disabled = !d.pasta_ok || !(d.faltando || el('refazer').checked);
+    if (!AUTO_FEITO && d.pasta_ok && d.faltando && !el('refazer').checked) {
+      AUTO_FEITO = true;
+      gravar();
+    }
   }).catch(e => erro(String(e)));
 }
 
