@@ -12519,8 +12519,10 @@ SUPORTE_TELAS = {
     "/relatorios_config?rel=sal_aumento": "Como alterar salários",
     # ── 32 guias de 13/10/2026 ──
     # card 1 — Cadastros
-    "/f10_cad_empresa":            "Cadastro da Empresa",
-    "/alterar_empresa":            "Cadastro da Empresa",
+    "/f10_cad_empresa":            ["Cadastro da Empresa",
+                                    "Como Arredondar o Liquido da Folha e-ou Ferias"],
+    "/alterar_empresa":            ["Cadastro da Empresa",
+                                    "Como Arredondar o Liquido da Folha e-ou Ferias"],
     "/select_funcionario?contexto=dep": "Dependentes",
     "/cad_dep":                    "Dependentes",
     "/select_funcionario?contexto=plano_dep": "Plano de Saude do Dependente",
@@ -53045,10 +53047,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     # adiantamento ficam de fora. A 509 devolve a 501 do mês anterior da folha
     # E das férias (folha_tipo F): o recibo de férias também arredonda, e a
     # diferença é descontada aqui, na folha do mês seguinte.
-    _arred_degrau_fol, _ = _arred_da_empresa(id_empresa)
-    _arred_ativo   = _arred_degrau_fol > 0 and anomes_tipo == "N"
+    # Dois interruptores: a folha arredonda só com o degrau da Folha, mas
+    # desconta a 509 se QUALQUER um estiver ligado — empresa que arredonda só
+    # as férias também precisa ter a 501 do recibo devolvida aqui.
+    _arred_degrau_fol, _arred_degrau_fer = _arred_da_empresa(id_empresa)
+    _arred_ativo      = _arred_degrau_fol > 0 and anomes_tipo == "N"
+    _arred_desc_ativo = (_arred_degrau_fol > 0 or _arred_degrau_fer > 0) and anomes_tipo == "N"
     _arred_prev501 = {}
-    if _arred_ativo:
+    if _arred_desc_ativo:
         try:
             _ar_y, _ar_m = int(anomes) // 100, int(anomes) % 100
             _prev_anomes  = (_ar_y - 1) * 100 + 12 if _ar_m == 1 else _ar_y * 100 + (_ar_m - 1)
@@ -55031,6 +55037,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             # Remove 501/509 do mmVmm antes dos totais (re-runs não contaminam a base)
             if _arred_ativo:
                 mmVmm.pop(501, None)
+            if _arred_desc_ativo:
                 mmVmm.pop(509, None)
 
             # ── totais (base limpa) ────────────────────────────────────────
@@ -55200,11 +55207,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # ── ETAPA 1160 — Arredondamento (degrau do cadastro da empresa) ──
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr
-            if _arred_ativo:
+            if _arred_desc_ativo:
                 _v509_val  = _arred_prev501.get(matr, 0)
                 _liq_base  = total_prov - total_desc
                 _liq_ajust = _liq_base - _v509_val
-                _v501_val  = _arredondar_para_cima(_liq_ajust, _arred_degrau_fol)
+                _v501_val  = (_arredondar_para_cima(_liq_ajust, _arred_degrau_fol)
+                              if _arred_ativo else 0)
                 total_prov += _v501_val
                 total_desc += _v509_val
                 if _v509_val > 0:
@@ -55217,10 +55225,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _ar_linhas.append(f"V509 Desc.Arred.Ant.: -{_fmt_brl(_v509_val)}   »   Líq. ajustado: {_fmt_brl(_liq_ajust)}")
                 if _v501_val > 0:
                     _ar_linhas.append(f"V501 Arredondamento: +{_fmt_brl(_v501_val)}   »   Líq. final: {_fmt_brl(_liq_final_ar)}")
+                elif not _arred_ativo:
+                    _ar_linhas.append("Arredondamento da Folha desligado no cadastro — só o desconto da 509")
                 elif _liq_ajust > 0:
                     _ar_linhas.append(f"Líq. já múltiplo de {_fmt_brl(_arred_degrau_fol)} — V501 não lançada")
+                _ar_tit = (f"ETAPA 1160 - ARREDONDAMENTO (múltiplo de {_fmt_brl(_arred_degrau_fol)})"
+                           if _arred_ativo else "ETAPA 1160 - DESCONTO DO ARREDONDAMENTO ANTERIOR")
                 _arred_tbl = Table([
-                    [Paragraph(f"ETAPA 1160 - ARREDONDAMENTO (múltiplo de {_fmt_brl(_arred_degrau_fol)})", st_etapa)],
+                    [Paragraph(_ar_tit, st_etapa)],
                     *[[Paragraph(ln, st_detalhe)] for ln in _ar_linhas],
                 ], colWidths=[17*cm])
                 _arred_tbl.setStyle(TableStyle([
