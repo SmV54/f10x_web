@@ -689,7 +689,7 @@ const modulos = {
                 { icone: '🗂️', nome: 'Informar Férias Antigas', href: '/select_funcionario?contexto=ferias_antigas', ok: true, classe: 'nav-fix', bloqueioFolha: true },
                 { icone: '📝',  nome: 'Lançar Movimento Férias', href: '/cad_mov_ferias',    ok: true, classe: 'nav-fix', bloqueioFolha: true },
                 { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',         ok: true, classe: 'nav-fix' },
-                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias',       ok: true, classe: 'nav-fix' },
+                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias',       ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 // Emissão, não lançamento: só imprime o que já foi calculado, então
                 // vale com a folha Aberta, Calculada ou Fechada.
                 { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',        ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
@@ -703,15 +703,16 @@ const modulos = {
             { nome: 'Salários', itens: [
                 { icone: '💹', nome: 'Alteração de Salário',   href: '/select_funcionario?contexto=aumento',          ok: true },
                 { icone: '↩️', nome: 'Cancelar Alteração',     href: '/cad_cancelar_aumento',                         ok: true },
-                { icone: '📊', nome: 'Relatório de Salários',  href: '/relatorios_config?rel=sal_aumento',            ok: true },
+                { icone: '📊', nome: 'Relatório de Salários',  href: '/relatorios_config?rel=sal_aumento',            ok: true, permiteFolhaBloqueada: true },
                 // Simular e reimprimir valem com a folha Calculada/Fechada; gravar
                 // e excluir a tela/servidor só deixam com a folha Aberta.
                 { icone: '🧮', nome: 'Diferença de Dissídio',  href: '/dissidio',                                     ok: true, permiteFolhaBloqueada: true },
             ]},
             // semAtalho: com a folha Calculada/Fechada o menu reduz a seção aos
-            // itens permiteFolhaBloqueada, e aqui sobra só o "Emitir Aviso Prévio".
-            // Sem isto, clicar em Rescisão pularia os cards e cairia direto na
-            // emissão do aviso, escondendo o resto do assunto.
+            // itens permiteFolhaBloqueada (emissões e listagens). Sem isto, se
+            // sobrasse um card só, clicar em Rescisão cairia direto nele.
+            // Relatórios e consultas de Eventuais valem com a folha em qualquer
+            // situação: só leem o que já foi lançado (SMV 22/10/2026).
             { nome: 'Rescisão', semAtalho: true, itens: [
                 // ── Linha 1: ASSUNTO Aviso Prévio (sem o Cancelar) ──
                 // Cada card diz o que faz: 'Registrar' grava o aviso na folha e
@@ -721,7 +722,7 @@ const modulos = {
                 // Só emite o que já está registrado nesta folha — não mexe em
                 // nada, por isso vale também com a folha Calculada/Fechada.
                 { icone: '🖶', nome: 'Emitir Aviso Prévio',     href: '/select_funcionario?contexto=aviso_previo_pdf',      ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
-                { icone: '📄', nome: 'Listagem de Aviso Prévio', href: '/lista_aviso_previo',                              ok: true, classe: 'nav-fix' },
+                { icone: '📄', nome: 'Listagem de Aviso Prévio', href: '/lista_aviso_previo',                              ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 // ── Linha 2: ASSUNTO Rescisão (sem o Cancelar) ──
                 { icone: '✍️', nome: 'Registrar Rescisão',     href: '/select_funcionario?contexto=rescisao',              ok: true, classe: 'nav-fix', quebraLinha: true },
                 // Planilha do empréstimo consignado DA RESCISÃO (a que traz o
@@ -734,9 +735,9 @@ const modulos = {
                 // aviso...) e sobrevive ao recálculo. Grava e já recalcula.
                 { icone: '✏️', nome: 'Ajustar Verba Calculada', href: '/ajuste_rescisao', ok: true, classe: 'nav-fix2l' },
                 { icone: '🖩', nome: 'Calcular Rescisão',      href: '/calc_rescisao', ok: true, classe: 'nav-fix' },
-                { icone: '📋', nome: 'TRCT - Emissão Rescisão', href: '/calc_rescisao?modo=trct', ok: true, classe: 'nav-fix' },
-                { icone: '🧮', nome: 'Memória Cálculo Rescisão', href: '/calc_rescisao?modo=memoria', ok: true, classe: 'nav-fix' },
-                { icone: '📄', nome: 'Listagem dos Demitidos', href: '/lista_demitidos',                                   ok: true, classe: 'nav-fix' },
+                { icone: '📋', nome: 'TRCT - Emissão Rescisão', href: '/calc_rescisao?modo=trct', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
+                { icone: '🧮', nome: 'Memória Cálculo Rescisão', href: '/calc_rescisao?modo=memoria', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
+                { icone: '📄', nome: 'Listagem dos Demitidos', href: '/lista_demitidos',                                   ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 // Arquivo .SD do Empregador Web (o mesmo do Desktop). Só lê o
                 // cadastro e a folha: vale com a folha Calculada/Fechada.
                 { icone: '🛟', nome: 'Seguro-Desemprego (arquivo)', href: '/seguro_desemprego', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
@@ -773,7 +774,7 @@ const modulos = {
                 { icone: '🗑️', nome: 'Excluir Afastamento',          href: '/cad_excluir_afastamento',                   ok: true, classe: 'nav-fix2l', bloqueioFolha: true },
                 { icone: '🚨', nome: 'Acidente — Informar CAT',      href: '/select_funcionario?contexto=acidente',        ok: true, classe: 'nav-fix2l' },
                 { icone: '✏️', nome: 'Acidente — Alterar/Excluir',   href: '/select_funcionario?contexto=alt_acidente',    ok: true, classe: 'nav-fix2l' },
-                { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true, classe: 'nav-fix2l' },
+                { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true },
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
                 { icone: '📋', nome: 'Funcionários Afastados',        href: '/lista_afastados',     ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true },
                 { icone: '🤱', nome: 'Lic. Maternidade/Paternidade', href: '#', classe: 'nav-fix2l' },
@@ -781,12 +782,12 @@ const modulos = {
             { nome: 'Faltas', itens: [
                 { icone: '📉', nome: 'Incluir Faltas',    href: '/select_funcionario?contexto=falta',        ok: true, bloqueioFolha: true },
                 { icone: '🗑️', nome: 'Excluir Faltas',   href: '/select_funcionario?contexto=excluir_falta', ok: true },
-                { icone: '📋', nome: 'Listagem de Faltas', href: '/rel_config_faltas',                       ok: true },
+                { icone: '📋', nome: 'Listagem de Faltas', href: '/rel_config_faltas',                       ok: true, permiteFolhaBloqueada: true },
             ]},
             { nome: 'Exame Médico', itens: [
                 { icone: '🩺', nome: 'Registrar Exame Médico',       href: '/select_funcionario?contexto=exame_med',     ok: true },
                 { icone: '✏️', nome: 'Alterar / Excluir Exame Médico', href: '/select_funcionario?contexto=alt_exame_med', ok: true },
-                { icone: '📋', nome: 'Listagem de Exames Médicos',    href: '/rel_config_exame_med',                     ok: true },
+                { icone: '📋', nome: 'Listagem de Exames Médicos',    href: '/rel_config_exame_med',                     ok: true, permiteFolhaBloqueada: true },
             ]},
             { nome: 'Insalubridade/Periculosidade', itens: [
                 { icone: '⚗️', nome: 'Incluir / Consultar',  href: '/select_funcionario?contexto=insalub_pericu',     ok: true },
