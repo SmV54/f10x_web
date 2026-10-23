@@ -10604,6 +10604,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         rec_tot = {
             "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
             "folha": folha_int, "folha_tipo": "R",
+            "filial": _filial_do_func(id_empresa, mat),
             "valor_base_inss_semlimite": 0 if is_estag else base_inss_saldo,
             "valor_base_inss_comlimite": 0 if is_estag else base_inss_saldo,
             "valor_inss_retido": g_inss_saldo + g_inss_13,
@@ -55495,6 +55496,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     "matricula":                 matr,
                     "folha":                     int(anomes),
                     "folha_tipo":                anomes_tipo,
+                    "filial":                    _filial_do_func(id_empresa, matr),
                     "valor_base_inss_semlimite": int(base_inss),
                     "valor_base_inss_comlimite": base_inss_com,
                     "valor_inss_retido":         inss_val,
@@ -61286,8 +61288,58 @@ def calcular_folha_etapa1_pdf():
 # =========================================================
 # INSS — PARTE PATRONAL (percentuais do cadastro da empresa)
 # =========================================================
-def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal"):
+def _fil6(v):
+    """Código do estabelecimento: os 6 últimos dígitos do CNPJ (ordem + DV),
+    como gravado em tab_cad.filial ('000848'). Aceita o CNPJ inteiro."""
+    d = re.sub(r"\D", "", str(v or ""))
+    if len(d) >= 14:
+        d = d[8:14]
+    return d.zfill(6) if d.strip("0") else ""
+
+
+_FILIAL_CAD_CACHE = {}   # {id_empresa: (lido_em, {matricula: '000848'})}
+
+
+def _filial_do_func(id_empresa, matricula):
+    """Estabelecimento do funcionário (tab_cad.filial) para gravar no tab_total.
+
+    O tab_total guarda onde o funcionário estava NAQUELA folha — o Resumo da
+    Folha usa isso para aplicar o FPAS e o FAP da filial. Lê a empresa toda de
+    uma vez e guarda 30 s, para o cálculo não fazer uma consulta por pessoa.
+    Qualquer falha devolve None: a filial nunca pode travar o cálculo.
+    """
+    try:
+        agora = datetime.now()
+        ent = _FILIAL_CAD_CACHE.get(id_empresa)
+        if not ent or (agora - ent[0]).total_seconds() > 30:
+            mapa, off = {}, 0
+            while True:
+                rows = (supabase.table("tab_cad").select("matricula,filial")
+                        .eq("id_empresa", id_empresa)
+                        .range(off, off + 999).execute().data or [])
+                for r in rows:
+                    try:
+                        mapa[int(r.get("matricula"))] = _fil6(r.get("filial"))
+                    except (TypeError, ValueError):
+                        pass
+                if len(rows) < 1000:
+                    break
+                off += 1000
+            ent = (agora, mapa)
+            _FILIAL_CAD_CACHE[id_empresa] = ent
+        return ent[1].get(int(matricula)) or None
+    except Exception as e:
+        print(f"[filial_do_func] emp={id_empresa} mat={matricula}: {e}")
+        return None
+
+
+def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal", fpas=None, fap=None):
     """Percentuais da parte patronal do INSS desta empresa nesta competência.
+
+    fpas / fap: os do estabelecimento (filial), quando ele tem os seus. FPAS
+    igual ao da empresa usa os terceiros gravados na empresa (que o usuário
+    pode ter ajustado à mão); FPAS diferente usa a tabela tab_aux_fpas. FAP
+    da filial substitui o da empresa no ano. Sem eles, vale a empresa.
 
     Devolve PERCENTUAIS, não valores: quem chama aplica sobre a base que lhe
     interessa — a base da folha inteira (Resumo da Folha) ou a base de um
@@ -61341,6 +61393,30 @@ def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal"):
                 fap_fator = round(float(r_fap.data[0].get("campotxt2") or 1.0), 4)
         except Exception:
             fap_fator = 1.0
+    if fap:
+        fap_fator = round(float(fap), 4)
+
+    # FPAS do estabelecimento diferente do da empresa: terceiros da tabela.
+    fpas_emp = str(emp.get("gps_fpas") or "").strip()
+    fpas = str(fpas or "").strip()
+    if fpas and fpas != fpas_emp:
+        try:
+            r_aux = (supabase.table("tab_aux_fpas").select("*")
+                     .eq("cod_fpas", int(fpas)).limit(1).execute())
+            aux = r_aux.data[0] if r_aux.data else None
+        except Exception as e:
+            print(f"[{origem}] falha ao ler tab_aux_fpas {fpas}: {e}")
+            aux = None
+        if aux:
+            emp = dict(emp, gps_fpas=fpas, gps_fpas_perc=aux.get("aliq_total"),
+                       gps_saleduc=aux.get("sal_educ"), gps_incra=aux.get("incra"),
+                       gps_senai=aux.get("senai"), gps_sesi=aux.get("sesi"),
+                       gps_senac=aux.get("senac"), gps_sesc=aux.get("sesc"),
+                       gps_sebrae=aux.get("sebrae"), gps_dpc=aux.get("dpc"),
+                       gps_senar=aux.get("senar"), gps_sest=aux.get("sest"),
+                       gps_senat=aux.get("senat"), gps_sesco=aux.get("sescoop"))
+        else:
+            print(f"[{origem}] FPAS {fpas} fora da tab_aux_fpas: ficam os terceiros da empresa")
 
     # RAT ajustado = Grau de Risco × FAP
     rat_ajustado = round(rat_pct * fap_fator, 4)
@@ -61454,6 +61530,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     emp_base_cp   = {}   # {matricula: base INSS (inc_cp=11) em centavos}
     emp_inss      = {}   # {matricula: INSS retido (rubrica 101) em centavos}
     emp_inss102   = {}   # {matricula: INSS pró-labore (rubrica 102) em centavos}
+    # Mesma regra do base_inss abaixo (só proventos com inc_cp 11, fora as
+    # informativas), por pessoa — para repartir a base por estabelecimento.
+    emp_base_cp_prov = {}
     for rec in mov_rows:
         cod = int(rec.get("cod_verba") or 0)
         val = int(rec.get("valor")     or 0)
@@ -61473,6 +61552,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
             emp_base_cp[mat] = (emp_base_cp.get(mat, 0)
                                 + (val if rb_cod.get("tp") == "1" else -val))
+            if rb_cod.get("tp") == "1" and cod <= 9900:
+                emp_base_cp_prov[mat] = emp_base_cp_prov.get(mat, 0) + val
         # 101 = INSS do empregado; 102 = INSS do contribuinte individual
         # (pró-labore). Cada um alimenta o seu quadro.
         if cod == 101:
@@ -61576,6 +61657,60 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # Os percentuais (CP, RAT × FAP e cada terceiro) saem de
     # _inss_patronal_perc — o mesmo que a Análise de Custo usa, para os dois
     # relatórios nunca divergirem na regra.
+    #
+    # Por ESTABELECIMENTO: cada filial com FPAS/FAP próprios tem os seus
+    # terceiros e o seu RAT × FAP. Onde o funcionário estava na folha vem do
+    # tab_total.filial; folha calculada antes de o cálculo gravar esse campo
+    # (até 10/2026) cai no cadastro atual (tab_cad.filial). Estabelecimento
+    # fora da tela Filiais — inclusive a matriz não cadastrada lá — usa a
+    # empresa.
+    fil_da_mat = {}
+    if todas_mats:
+        try:
+            r_tf = (supabase.table("tab_total").select("matricula,filial")
+                    .eq("id_empresa", id_empresa).eq("folha", int(anomes))
+                    .eq("folha_tipo", anomes_tipo)
+                    .in_("matricula", list(todas_mats)).execute())
+            for row in (r_tf.data or []):
+                if _fil6(row.get("filial")):
+                    fil_da_mat[row.get("matricula")] = _fil6(row.get("filial"))
+        except Exception as e:
+            print(f"[resumo_folha] falha ao ler a filial no tab_total: {e}")
+        for _m in todas_mats:
+            if _m not in fil_da_mat:
+                fil_da_mat[_m] = _filial_do_func(id_empresa, _m) or ""
+
+    estabs = {}   # {'000848': {"nome", "fpas", "fap"}} — só os da tela Filiais
+    try:
+        r_fil = (supabase.table("tab_filial")
+                 .select("id,cnpj,filial_nome,gps_fpas,situacao")
+                 .eq("id_empresa", id_empresa).execute())
+        _fils = sorted(r_fil.data or [], key=lambda f: f.get("situacao") == "A")
+        _faps = {}
+        if _fils:
+            try:
+                r_ff = (supabase.table("tab_filial_fap").select("id_filial,fator")
+                        .in_("id_filial", [f["id"] for f in _fils])
+                        .eq("ano", str(anomes)[:4]).execute())
+                _faps = {x["id_filial"]: x["fator"] for x in (r_ff.data or [])}
+            except Exception as e:
+                print(f"[resumo_folha] falha ao ler tab_filial_fap: {e}")
+        for f in _fils:   # ativa por último: vence a desativada com o mesmo CNPJ
+            cod = _fil6(f.get("cnpj"))
+            if cod:
+                estabs[cod] = {"nome": str(f.get("filial_nome") or "Filial").strip(),
+                               "fpas": str(f.get("gps_fpas") or "").strip() or None,
+                               "fap":  _faps.get(f["id"])}
+    except Exception as e:
+        print(f"[resumo_folha] falha ao ler tab_filial: {e}")
+
+    grupos = {}   # {codigo do estabelecimento ('' = empresa): set(matriculas)}
+    for _m in todas_mats:
+        _c = fil_da_mat.get(_m, "")
+        grupos.setdefault(_c if _c in estabs else "", set()).add(_m)
+    if not grupos:
+        grupos[""] = set()
+
     pat = _inss_patronal_perc(id_empresa, anomes, origem="resumo_folha")
     ind_simples       = pat["ind_simples"]
     class_trib        = pat["class_trib"]
@@ -61597,20 +61732,51 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             "val_c": val_c,
         }
 
+    # Simples/MEI recolhe pela DAS: nada a repartir por estabelecimento.
+    if is_simples_ou_mei:
+        grupos = {"": set(todas_mats)}
+
     inss_emp_linhas = []
     inss_emp_total  = 0
+    varios_estabs   = len(grupos) > 1
 
-    # Contribuição Patronal, RAT e terceiros — no Simples Nacional e no MEI os
-    # percentuais voltam zerados de _inss_patronal_perc (recolhimento pela
-    # DAS), e _linha_emp descarta a linha.
-    for _lbl, _perc, _dec, _base in (
-            [("Contribuição Patronal", pat["cp_pct"],  2, base_cp_patronal),
-             (pat["rat_label"],        pat["rat_pct"], 4, None)]
-            + [(lbl, p, 2, None) for lbl, p in pat["terceiros"]]):
-        l = _linha_emp(_lbl, _perc, dec=_dec, base=_base)
-        if l:
-            inss_emp_linhas.append(l)
-            inss_emp_total += l["val_c"]
+    # Empresa primeiro, depois as filiais pelo código do CNPJ.
+    for _cod in sorted(grupos, key=lambda c: (c != "", c)):
+        _mats = grupos[_cod]
+        _est  = estabs.get(_cod)
+        # Mesma conta do base_inss / base_inss_ci, só com as pessoas do grupo:
+        # somando os grupos dá exatamente a base da folha.
+        _b_ci  = sum(v for m, v in emp_base_cp.items() if m in mats_ci and m in _mats)
+        _b_emp = sum(v for m, v in emp_base_cp_prov.items() if m in _mats) - _b_ci
+        if not varios_estabs:
+            _b_emp, _b_ci = base_inss, base_inss_ci
+        _pat = (_inss_patronal_perc(id_empresa, anomes, origem="resumo_folha",
+                                    fpas=_est["fpas"], fap=_est["fap"])
+                if _est else pat)
+        if varios_estabs:
+            _nome = (f"{_est['nome']} — {_cod[:4]}-{_cod[4:]}" if _est
+                     else "Empresa (cadastro da empresa)")
+            _fap_txt = (f" · FAP {_pat['fap_fator']:.4f}".replace(".", ",")
+                        if _pat["risco_grau"] else "")
+            inss_emp_linhas.append({
+                "titulo": _nome,
+                "sub": (f"FPAS {_pat['gps_fpas']}{_fap_txt} · {len(_mats)} pessoa(s)"
+                        f" · Base {_fmt_brl(_b_emp + _b_ci)}"),
+            })
+        else:
+            pat = _pat   # um só estabelecimento: o cabeçalho mostra o FPAS dele
+
+        # Contribuição Patronal, RAT e terceiros — no Simples Nacional e no MEI
+        # os percentuais voltam zerados de _inss_patronal_perc (recolhimento
+        # pela DAS), e _linha_emp descarta a linha.
+        for _lbl, _perc, _dec, _base in (
+                [("Contribuição Patronal", _pat["cp_pct"],  2, _b_emp + _b_ci),
+                 (_pat["rat_label"],       _pat["rat_pct"], 4, _b_emp)]
+                + [(lbl, p, 2, _b_emp) for lbl, p in _pat["terceiros"]]):
+            l = _linha_emp(_lbl, _perc, dec=_dec, base=_base)
+            if l:
+                inss_emp_linhas.append(l)
+                inss_emp_total += l["val_c"]
 
     # Simples Nacional / MEI: CP, RAT e terceiros sao substituidos pelo DAS,
     # entao a parte patronal em GPS e zero. Mostramos uma linha explicita em
@@ -61672,7 +61838,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "regime_label": ("MEI" if class_trib == "04"
                          else ("Simples Nacional" if is_simples_ou_mei
                                else "Geral")),
-        "gps_fpas":         pat["gps_fpas"],
+        "gps_fpas":         ("por estabelecimento" if varios_estabs else pat["gps_fpas"]),
     }
 
 
@@ -61965,10 +62131,22 @@ def resumo_folha_pdf():
                        textColor=cinza, spaceAfter=4)))
     if d["inss_emp_linhas"]:
         dados_emp = [["Componente", "Alíquota", "Valor"]]
+        from xml.sax.saxutils import escape as _esc
+        st_estab = ParagraphStyle("estab", fontName="Helvetica", fontSize=8, leading=10)
+        estilo_estab = []   # cabeçalho de cada estabelecimento (várias filiais)
         for l in d["inss_emp_linhas"]:
+            if l.get("titulo"):
+                i = len(dados_emp)
+                dados_emp.append([Paragraph(
+                    f"<b>{_esc(l['titulo'])}</b><br/>"
+                    f"<font size=7 color='#64748b'>{_esc(l['sub'])}</font>",
+                    st_estab), "", ""])
+                estilo_estab += [("SPAN", (0, i), (-1, i)),
+                                 ("BACKGROUND", (0, i), (-1, i), fundo)]
+                continue
             dados_emp.append([l["label"], l["pct"], _v(l["val"])])
         t_emp = Table(dados_emp, colWidths=[larg-5.5*cm, 1.7*cm, 3.8*cm])
-        t_emp.setStyle(TableStyle([
+        t_emp.setStyle(TableStyle(estilo_estab + [
             ("BACKGROUND",   (0,0), (-1,0), fundo),
             ("TEXTCOLOR",    (0,0), (-1,0), cinza),
             ("FONTNAME",     (0,0), (-1,0), "Helvetica-Bold"),
@@ -63282,6 +63460,7 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
                 "matricula":                 mat,
                 "folha":                     folha_int,
                 "folha_tipo":                "F",
+                "filial":                    _filial_do_func(id_empresa, mat),
                 "valor_base_inss_semlimite": base_calc,
                 "valor_base_inss_comlimite": base_calc,
                 "valor_inss_retido":         g_inss_val,
@@ -76596,6 +76775,7 @@ def api_calcular_adiantamento_13():
                 "matricula":                 int(mat),
                 "folha":                     folha_int,
                 "folha_tipo":                "A",
+                "filial":                    _filial_do_func(id_empresa, mat),
                 "valor_base_inss_semlimite": 0,
                 "valor_base_inss_comlimite": 0,
                 "valor_inss_retido":         0,
@@ -76826,6 +77006,7 @@ def calcular_adiantamento_13_stream():
                 rec_total = {
                     "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                     "matricula": int(mat), "folha": folha_int, "folha_tipo": "A",
+                    "filial": _filial_do_func(id_empresa, mat),
                     "valor_base_inss_semlimite": 0, "valor_base_inss_comlimite": 0,
                     "valor_inss_retido": 0,
                     "valor_base_fgts": int(base_fgts), "valor_fgts": int(fgts_val),
@@ -78318,6 +78499,7 @@ def calcular_13_final_stream():
                 rec_total = {
                     "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                     "matricula": mat, "folha": folha_int, "folha_tipo": "1",
+                    "filial": _filial_do_func(id_empresa, mat),
                     # O 13o tem base de INSS PROPRIA: vai nas duas colunas porque
                     # nao ha, aqui, parcela acima do teto separada da de baixo.
                     "valor_base_inss_semlimite": int(d["bruto_13"]),

@@ -361,11 +361,20 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
       </thead>
       <tbody>
         {% for l in inss_emp_linhas %}
+        {% if l.titulo %}
+        <tr>
+          <td colspan="3" style="background:#f1f5f9;padding:8px 12px 6px">
+            <div style="font-size:12px;font-weight:700;color:#0f172a">{{ l.titulo }}</div>
+            <div style="font-size:11px;color:#64748b;font-family:'IBM Plex Mono',monospace">{{ l.sub }}</div>
+          </td>
+        </tr>
+        {% else %}
         <tr>
           <td class="dsc">{{ l.label }}</td>
           <td class="n" style="font-family:'IBM Plex Mono',monospace">{{ l.pct }}</td>
           <td class="val prov">{{ l.val }}</td>
         </tr>
+        {% endif %}
         {% else %}
         <tr><td colspan="3" style="padding:16px;text-align:center;color:#94a3b8;font-size:12px">Sem dados de encargos cadastrados na empresa</td></tr>
         {% endfor %}
