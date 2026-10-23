@@ -75,6 +75,7 @@
     .form-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
     .form-secao  { display: flex; flex-direction: column; gap: 4px; }
     .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .fap-add     { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center; }
 
     /* MODO */
     .form-modo        { font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 8px; text-align: center; }
@@ -227,6 +228,22 @@
             </select>
           </div>
 
+          <div class="form-secao">
+            <label class="form-label">FAP por ano
+              <span style="font-weight:400;color:#94a3b8;">— de 0,5000 a 2,0000; ano sem FAP aqui usa o da empresa</span></label>
+            <div class="fap-add">
+              <input class="form-input" type="text" id="inpFapAno" maxlength="4" placeholder="Ano" inputmode="numeric">
+              <input class="form-input" type="text" id="inpFapFator" maxlength="6" placeholder="Fator (ex.: 0,8547)" inputmode="decimal">
+              <button type="button" class="btn-acao btn-edit" style="height:36px;padding:0 12px;" onclick="incluirFap()">➕ Incluir</button>
+            </div>
+            <div class="lista" style="min-height:0;flex:none;">
+              <table>
+                <thead><tr><th>Ano</th><th>Fator</th><th style="width:40px;"></th></tr></thead>
+                <tbody id="tbodyFaps"></tbody>
+              </table>
+            </div>
+          </div>
+
           {% include '_bloco_endereco.html' %}
 
           <div class="rodape-acoes">
@@ -281,6 +298,53 @@
   }
   carregarListaFPAS();
 
+  // ── FAP por ano ────────────────────────────────────────────
+  // Filial nova começa com os anos da empresa; o usuário altera à vontade.
+  const EMPRESA_FAPS = {{ (empresa_faps or []) | tojson }};
+  let FAPS = [];
+
+  function fmtFator(v) { return Number(v).toFixed(4).replace('.', ','); }
+
+  function setFaps(lista) {
+    FAPS = (lista || []).map(x => ({ ano: String(x.ano), fator: Number(x.fator) }));
+    desenharFaps();
+  }
+
+  function desenharFaps() {
+    FAPS.sort((a, b) => b.ano.localeCompare(a.ano));
+    const tb = document.getElementById('tbodyFaps');
+    tb.innerHTML = FAPS.length ? '' :
+      '<tr><td colspan="3" style="color:#94a3b8;">Nenhum ano — vale o FAP da empresa</td></tr>';
+    FAPS.forEach((x, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${x.ano}</td><td>${fmtFator(x.fator)}</td>
+        <td><button type="button" class="btn-acao btn-desativ" title="Excluir" onclick="excluirFap(${i})">🗑</button></td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  // Ano que já está na lista: o fator novo substitui o antigo.
+  function incluirFap() {
+    const elAno = document.getElementById('inpFapAno');
+    const elFat = document.getElementById('inpFapFator');
+    const ano = elAno.value.trim();
+    const fator = parseFloat(elFat.value.trim().replace(',', '.'));
+    if (!/^\d{4}$/.test(ano)) { mostrarErro('FAP: informe o ano com 4 dígitos.'); elAno.focus(); return; }
+    if (isNaN(fator) || fator < 0.5 || fator > 2) {
+      mostrarErro('FAP: o fator deve estar entre 0,5000 e 2,0000.'); elFat.focus(); return;
+    }
+    FAPS = FAPS.filter(x => x.ano !== ano);
+    FAPS.push({ ano, fator: Math.round(fator * 10000) / 10000 });
+    desenharFaps();
+    elAno.value = ''; elFat.value = '';
+    document.getElementById('msgErro').style.display = 'none';
+    elAno.focus();
+  }
+
+  function excluirFap(i) { FAPS.splice(i, 1); desenharFaps(); }
+
+  setFaps(EMPRESA_FAPS);
+
   // ── Máscara / validação CNPJ ───────────────────────────────
   function mascaraCnpj(el) {
     let v = el.value.replace(/\D/g, '').substring(0, 14);
@@ -331,6 +395,7 @@
     document.getElementById('inpNome').value  = '';
     document.getElementById('inpCnpj').style.borderColor = '';
     marcarFpas(EMPRESA_FPAS);
+    setFaps(EMPRESA_FAPS);
     Endereco.clear();
     document.getElementById('formTitulo').textContent    = '➕ Nova Filial';
     document.getElementById('formSubtitulo').textContent = 'Preencha os dados da filial';
@@ -356,6 +421,7 @@
 
     // Filial gravada antes do campo FPAS existir: mostra o da empresa.
     marcarFpas(f.gps_fpas || EMPRESA_FPAS);
+    setFaps(f.faps);
 
     Endereco.setData({
       cep:         f.ender_cep        || '',
@@ -437,6 +503,7 @@
           cnpj:                cnpj.replace(/\D/g, ''),
           filial_nome:         nome,
           gps_fpas:            fpas,
+          faps:                FAPS,
           ender_cep:           end.cep        || null,
           ender_dsclograd:     end.logradouro  || null,
           ender_nrlograd:      end.numero      || null,

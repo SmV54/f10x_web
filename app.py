@@ -14905,7 +14905,23 @@ def cad_filial():
     )
 
     import json
-    filiais_json = json.dumps(r.data or [])
+    filiais = r.data or []
+
+    # FAP de cada filial, um por ano (tab_filial_fap).
+    faps_por_filial = {}
+    ids = [f["id"] for f in filiais]
+    if ids:
+        try:
+            rf = (supabase.table("tab_filial_fap").select("id_filial, ano, fator")
+                  .in_("id_filial", ids).order("ano", desc=True).execute())
+            for x in (rf.data or []):
+                faps_por_filial.setdefault(x["id_filial"], []).append(
+                    {"ano": str(x["ano"]), "fator": f"{float(x['fator']):.4f}"})
+        except Exception as e:
+            print(f"[cad_filial] FAP das filiais: {e}")
+    for f in filiais:
+        f["faps"] = faps_por_filial.get(f["id"], [])
+    filiais_json = json.dumps(filiais)
 
     # FPAS da empresa: vem marcado na filial nova (o usuário pode trocar).
     try:
@@ -14915,14 +14931,32 @@ def cad_filial():
     except Exception:
         empresa_fpas = ""
 
+    # FAP da empresa (Eventuais -> FAP, tab_eventos op1=34): a filial nova
+    # já vem com esses anos; ano sem FAP na filial = vale o da empresa.
+    empresa_faps = []
+    try:
+        rev = (supabase.table("tab_eventos").select("campotxt1, campotxt2")
+               .eq("id_empresa", id_empresa).eq("op1", 34)
+               .order("campotxt1", desc=True).execute())
+        for ev in (rev.data or []):
+            try:
+                empresa_faps.append({
+                    "ano": str(ev.get("campotxt1") or "").strip(),
+                    "fator": f"{float(str(ev.get('campotxt2')).replace(',', '.')):.4f}"})
+            except (TypeError, ValueError):
+                pass
+    except Exception as e:
+        print(f"[cad_filial] FAP da empresa: {e}")
+
     return render_template(
         "F10_Cad_Filial.html",
         versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
-        filiais=r.data or [],
+        filiais=filiais,
         filiais_json=filiais_json,
         empresa_fpas=empresa_fpas,
+        empresa_faps=empresa_faps,
     )
 
 
@@ -14934,6 +14968,39 @@ def _fpas_filial(data):
     if not re.fullmatch(r"\d{3}", fpas):
         return None, f'FPAS "{fpas}" inválido'
     return fpas, None
+
+
+def _faps_filial(data):
+    """Lê e valida a lista de FAP da filial ([{ano, fator}]).
+    Devolve (lista, msg_erro); lista vazia é válida (vale o da empresa)."""
+    faps, anos = [], set()
+    for item in (data.get("faps") or []):
+        ano = str(item.get("ano") or "").strip()
+        if not re.fullmatch(r"\d{4}", ano):
+            return None, f'FAP: ano "{ano}" inválido'
+        if ano in anos:
+            return None, f"FAP: o ano {ano} aparece duas vezes"
+        try:
+            fator = round(float(str(item.get("fator")).replace(",", ".")), 4)
+        except (TypeError, ValueError):
+            return None, f"FAP {ano}: fator inválido"
+        if fator < 0.5 or fator > 2.0:
+            return None, f"FAP {ano}: o fator deve estar entre 0,5000 e 2,0000"
+        anos.add(ano)
+        faps.append({"ano": ano, "fator": fator})
+    return faps, None
+
+
+def _gravar_faps_filial(id_filial, faps):
+    """Troca os FAP da filial pela lista recebida."""
+    supabase.table("tab_filial_fap").delete().eq("id_filial", id_filial).execute()
+    if faps:
+        supabase.table("tab_filial_fap").insert([
+            {"id_cliente": session.get("id_cliente"),
+             "id_empresa": session.get("id_empresa"),
+             "id_filial":  id_filial,
+             "ano":        x["ano"],
+             "fator":      x["fator"]} for x in faps]).execute()
 
 
 # =========================================================
@@ -14957,6 +15024,9 @@ def api_filial_incluir():
     if len(nome) > 40:
         return jsonify({"ok": False, "msg": "Nome muito longo (máx. 40 caracteres)"})
     fpas, erro = _fpas_filial(data)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    faps, erro = _faps_filial(data)
     if erro:
         return jsonify({"ok": False, "msg": erro})
 
@@ -14985,10 +15055,14 @@ def api_filial_incluir():
             campos[f] = v
 
     try:
-        supabase.table("tab_filial").insert(campos).execute()
-        return jsonify({"ok": True})
+        ins = supabase.table("tab_filial").insert(campos).execute()
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
+    try:
+        _gravar_faps_filial(ins.data[0]["id"], faps)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Filial incluída, mas o FAP não foi gravado: {e}"})
+    return jsonify({"ok": True})
 
 
 # =========================================================
@@ -15015,6 +15089,9 @@ def api_filial_editar():
     fpas, erro = _fpas_filial(data)
     if erro:
         return jsonify({"ok": False, "msg": erro})
+    faps, erro = _faps_filial(data)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
 
     dup = (
         supabase.table("tab_filial")
@@ -15033,11 +15110,18 @@ def api_filial_editar():
         campos[f] = data.get(f)  # None limpa o campo
 
     try:
-        supabase.table("tab_filial").update(campos) \
+        up = supabase.table("tab_filial").update(campos) \
             .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
-        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
+    # Só mexe no FAP se a filial é deste cliente (o update achou a linha).
+    if not up.data:
+        return jsonify({"ok": False, "msg": "Filial não encontrada"})
+    try:
+        _gravar_faps_filial(up.data[0]["id"], faps)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Filial gravada, mas o FAP não foi gravado: {e}"})
+    return jsonify({"ok": True})
 
 
 # =========================================================
