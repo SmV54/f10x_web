@@ -58368,6 +58368,21 @@ def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ord
     pat = _inss_patronal_perc(id_empresa, anomes, origem="rel_custo")
 
     todos = [f for cc in dados.get("cc_list", []) for f in cc.get("funcs", [])]
+
+    # FPAS/FAP do estabelecimento de cada funcionário — a MESMA regra do
+    # Resumo da Folha (_estabs_da_folha). Simples/MEI não reparte nada.
+    estab_da_mat, estabs = ({}, {}) if pat["is_simples_ou_mei"] else \
+        _estabs_da_folha(id_empresa, anomes, anomes_tipo, {int(f["mat"]) for f in todos})
+    pats = {"": pat}
+
+    def _pat_de(mat):
+        cod = estab_da_mat.get(int(mat), "")
+        if cod not in pats:
+            pats[cod] = _inss_patronal_perc(id_empresa, anomes, origem="rel_custo",
+                                            fpas=estabs[cod]["fpas"],
+                                            fap=estabs[cod]["fap"])
+        return pats[cod]
+
     funcs_sel = sorted([{"mat": f["mat"], "nome": f["nome"]} for f in todos],
                        key=lambda x: ((x["nome"] or "").upper() if ordem == "alfa"
                                       else x["mat"]))
@@ -58397,7 +58412,7 @@ def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ord
         # Resumo da Folha, para quem está com codcateg em branco.
         is_ci    = (700 <= cat <= 799) or inss102 > 0
 
-        det         = _custo_linhas_patronal(pat, int(f.get("b_inss_c") or 0), is_ci)
+        det         = _custo_linhas_patronal(_pat_de(f["mat"]), int(f.get("b_inss_c") or 0), is_ci)
         patronal_c  = sum(l["val_c"] for l in det)
         terceiros_c = sum(l["val_c"] for l in det if l["is_terceiro"])
         # O custo sai dos PROVENTOS, não da soma das colunas: é a mesma conta,
@@ -58442,11 +58457,12 @@ def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ord
 
     # Composição consolidada do INSS Empresa (CP, RAT e cada terceiro). O dict
     # guarda a ordem de aparição: CP, RAT e depois os terceiros na ordem do
-    # cadastro.
+    # cadastro. A chave leva a alíquota: filiais com FAP ou FPAS diferentes
+    # têm o mesmo componente com outro percentual, e cada um fica numa linha.
     comp = {}
     for l in linhas:
         for d in l["det"]:
-            c = comp.setdefault(d["label"], {"label": d["label"], "pct": d["pct"],
+            c = comp.setdefault((d["label"], d["pct"]), {"label": d["label"], "pct": d["pct"],
                                              "is_terceiro": d["is_terceiro"],
                                              "val_c": 0})
             c["val_c"] += d["val_c"]
@@ -58455,6 +58471,7 @@ def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ord
     tot_custo = _soma("custo_c")
     tot_prov  = _soma("prov_c")
     tot_enc   = _soma("encargos_c")
+    _fpas_usados = {_pat_de(l["mat"])["gps_fpas"] for l in linhas}
     resumo = {
         "anomes_fmt":      dados.get("anomes_fmt", ""),
         "tipo_lbl":        dados.get("tipo_lbl",   ""),
@@ -58478,7 +58495,8 @@ def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ord
         "comp":              comp_list,
         "regime_label":      pat["regime_label"],
         "is_simples_ou_mei": pat["is_simples_ou_mei"],
-        "gps_fpas":          pat["gps_fpas"],
+        "gps_fpas":          (next(iter(_fpas_usados)) if len(_fpas_usados) == 1
+                              else ("por estabelecimento" if _fpas_usados else pat["gps_fpas"])),
     }
     return linhas, resumo, funcs_sel
 
@@ -61459,6 +61477,63 @@ def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal", fpas=None, f
     }
 
 
+def _estabs_da_folha(id_empresa, anomes, anomes_tipo, mats):
+    """Estabelecimento de cada funcionário na folha, para o INSS patronal.
+
+    Devolve (estab_da_mat, estabs):
+      estab_da_mat = {matricula: '000848'} — '' = usa a EMPRESA;
+      estabs       = {'000848': {"nome", "fpas", "fap"}} — só os da tela Filiais.
+
+    Onde o funcionário estava vem do tab_total.filial; folha calculada antes de
+    o cálculo gravar esse campo (até 10/2026) cai no cadastro atual
+    (tab_cad.filial). Estabelecimento fora da tela Filiais — inclusive a matriz
+    não cadastrada lá — usa a empresa. Usado pelo Resumo da Folha e pela
+    Análise de Custo, para os dois nunca divergirem.
+    """
+    fil_da_mat = {}
+    if mats:
+        try:
+            r_tf = (supabase.table("tab_total").select("matricula,filial")
+                    .eq("id_empresa", id_empresa).eq("folha", int(anomes))
+                    .eq("folha_tipo", anomes_tipo)
+                    .in_("matricula", list(mats)).execute())
+            for row in (r_tf.data or []):
+                if _fil6(row.get("filial")):
+                    fil_da_mat[row.get("matricula")] = _fil6(row.get("filial"))
+        except Exception as e:
+            print(f"[estabs_da_folha] falha ao ler a filial no tab_total: {e}")
+        for _m in mats:
+            if _m not in fil_da_mat:
+                fil_da_mat[_m] = _filial_do_func(id_empresa, _m) or ""
+
+    estabs = {}
+    try:
+        r_fil = (supabase.table("tab_filial")
+                 .select("id,cnpj,filial_nome,gps_fpas,situacao")
+                 .eq("id_empresa", id_empresa).execute())
+        _fils = sorted(r_fil.data or [], key=lambda f: f.get("situacao") == "A")
+        _faps = {}
+        if _fils:
+            try:
+                r_ff = (supabase.table("tab_filial_fap").select("id_filial,fator")
+                        .in_("id_filial", [f["id"] for f in _fils])
+                        .eq("ano", str(anomes)[:4]).execute())
+                _faps = {x["id_filial"]: x["fator"] for x in (r_ff.data or [])}
+            except Exception as e:
+                print(f"[estabs_da_folha] falha ao ler tab_filial_fap: {e}")
+        for f in _fils:   # ativa por último: vence a desativada com o mesmo CNPJ
+            cod = _fil6(f.get("cnpj"))
+            if cod:
+                estabs[cod] = {"nome": str(f.get("filial_nome") or "Filial").strip(),
+                               "fpas": str(f.get("gps_fpas") or "").strip() or None,
+                               "fap":  _faps.get(f["id"])}
+    except Exception as e:
+        print(f"[estabs_da_folha] falha ao ler tab_filial: {e}")
+
+    estab_da_mat = {m: (c if c in estabs else "") for m, c in fil_da_mat.items()}
+    return estab_da_mat, estabs
+
+
 # =========================================================
 # RESUMO DA FOLHA
 # =========================================================
@@ -61659,55 +61734,11 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # relatórios nunca divergirem na regra.
     #
     # Por ESTABELECIMENTO: cada filial com FPAS/FAP próprios tem os seus
-    # terceiros e o seu RAT × FAP. Onde o funcionário estava na folha vem do
-    # tab_total.filial; folha calculada antes de o cálculo gravar esse campo
-    # (até 10/2026) cai no cadastro atual (tab_cad.filial). Estabelecimento
-    # fora da tela Filiais — inclusive a matriz não cadastrada lá — usa a
-    # empresa.
-    fil_da_mat = {}
-    if todas_mats:
-        try:
-            r_tf = (supabase.table("tab_total").select("matricula,filial")
-                    .eq("id_empresa", id_empresa).eq("folha", int(anomes))
-                    .eq("folha_tipo", anomes_tipo)
-                    .in_("matricula", list(todas_mats)).execute())
-            for row in (r_tf.data or []):
-                if _fil6(row.get("filial")):
-                    fil_da_mat[row.get("matricula")] = _fil6(row.get("filial"))
-        except Exception as e:
-            print(f"[resumo_folha] falha ao ler a filial no tab_total: {e}")
-        for _m in todas_mats:
-            if _m not in fil_da_mat:
-                fil_da_mat[_m] = _filial_do_func(id_empresa, _m) or ""
-
-    estabs = {}   # {'000848': {"nome", "fpas", "fap"}} — só os da tela Filiais
-    try:
-        r_fil = (supabase.table("tab_filial")
-                 .select("id,cnpj,filial_nome,gps_fpas,situacao")
-                 .eq("id_empresa", id_empresa).execute())
-        _fils = sorted(r_fil.data or [], key=lambda f: f.get("situacao") == "A")
-        _faps = {}
-        if _fils:
-            try:
-                r_ff = (supabase.table("tab_filial_fap").select("id_filial,fator")
-                        .in_("id_filial", [f["id"] for f in _fils])
-                        .eq("ano", str(anomes)[:4]).execute())
-                _faps = {x["id_filial"]: x["fator"] for x in (r_ff.data or [])}
-            except Exception as e:
-                print(f"[resumo_folha] falha ao ler tab_filial_fap: {e}")
-        for f in _fils:   # ativa por último: vence a desativada com o mesmo CNPJ
-            cod = _fil6(f.get("cnpj"))
-            if cod:
-                estabs[cod] = {"nome": str(f.get("filial_nome") or "Filial").strip(),
-                               "fpas": str(f.get("gps_fpas") or "").strip() or None,
-                               "fap":  _faps.get(f["id"])}
-    except Exception as e:
-        print(f"[resumo_folha] falha ao ler tab_filial: {e}")
-
+    # terceiros e o seu RAT × FAP — ver _estabs_da_folha.
+    estab_da_mat, estabs = _estabs_da_folha(id_empresa, anomes, anomes_tipo, todas_mats)
     grupos = {}   # {codigo do estabelecimento ('' = empresa): set(matriculas)}
     for _m in todas_mats:
-        _c = fil_da_mat.get(_m, "")
-        grupos.setdefault(_c if _c in estabs else "", set()).add(_m)
+        grupos.setdefault(estab_da_mat.get(_m, ""), set()).add(_m)
     if not grupos:
         grupos[""] = set()
 
