@@ -14925,13 +14925,14 @@ def cad_filial():
         f["faps"] = faps_por_filial.get(f["id"], [])
     filiais_json = json.dumps(filiais)
 
-    # FPAS da empresa: vem marcado na filial nova (o usuário pode trocar).
+    # FPAS e risco da empresa: vêm marcados na filial nova (o usuário pode trocar).
     try:
-        re_ = (supabase.table("tab_empresa").select("gps_fpas")
+        re_ = (supabase.table("tab_empresa").select("gps_fpas,risco")
                .eq("id_empresa", id_empresa).limit(1).execute())
-        empresa_fpas = str((re_.data or [{}])[0].get("gps_fpas") or "").strip()
+        empresa_fpas  = str((re_.data or [{}])[0].get("gps_fpas") or "").strip()
+        empresa_risco = str((re_.data or [{}])[0].get("risco") or "").strip()
     except Exception:
-        empresa_fpas = ""
+        empresa_fpas = empresa_risco = ""
 
     # FAP da empresa (Eventuais -> FAP, tab_eventos op1=34): a filial nova
     # já vem com esses anos; ano sem FAP na filial = vale o da empresa.
@@ -14958,6 +14959,7 @@ def cad_filial():
         filiais=filiais,
         filiais_json=filiais_json,
         empresa_fpas=empresa_fpas,
+        empresa_risco=empresa_risco,
         empresa_faps=empresa_faps,
     )
 
@@ -14970,6 +14972,16 @@ def _fpas_filial(data):
     if not re.fullmatch(r"\d{3}", fpas):
         return None, f'FPAS "{fpas}" inválido'
     return fpas, None
+
+
+def _risco_filial(data):
+    """Lê e valida o grau de risco (RAT) da filial. Devolve (risco, msg_erro)."""
+    risco = str(data.get("risco") if data.get("risco") is not None else "").strip()
+    if not risco:
+        return None, "Risco obrigatório"
+    if risco not in ("0", "1", "2", "3"):
+        return None, f'Risco "{risco}" inválido'
+    return int(risco), None
 
 
 def _faps_filial(data):
@@ -15028,6 +15040,9 @@ def api_filial_incluir():
     fpas, erro = _fpas_filial(data)
     if erro:
         return jsonify({"ok": False, "msg": erro})
+    risco, erro = _risco_filial(data)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
     faps, erro = _faps_filial(data)
     if erro:
         return jsonify({"ok": False, "msg": erro})
@@ -15052,6 +15067,7 @@ def api_filial_incluir():
         "cnpj":        cnpj,
         "filial_nome": nome,
         "gps_fpas":    fpas,
+        "risco":       risco,
     }
     for f in ["ender_cep", "ender_dsclograd", "ender_nrlograd", "ender_complemento",
               "ender_bairro", "ender_cidade_nome", "ender_codmunic", "ender_uf"]:
@@ -15094,6 +15110,9 @@ def api_filial_editar():
     fpas, erro = _fpas_filial(data)
     if erro:
         return jsonify({"ok": False, "msg": erro})
+    risco, erro = _risco_filial(data)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
     faps, erro = _faps_filial(data)
     if erro:
         return jsonify({"ok": False, "msg": erro})
@@ -15109,7 +15128,7 @@ def api_filial_editar():
     if dup.data:
         return jsonify({"ok": False, "msg": f'CNPJ "{cnpj}" já está em uso por outra filial'})
 
-    campos = {"cnpj": cnpj, "filial_nome": nome, "gps_fpas": fpas}
+    campos = {"cnpj": cnpj, "filial_nome": nome, "gps_fpas": fpas, "risco": risco}
     for f in ["ender_cep", "ender_dsclograd", "ender_nrlograd", "ender_complemento",
               "ender_bairro", "ender_cidade_nome", "ender_codmunic", "ender_uf"]:
         campos[f] = data.get(f)  # None limpa o campo
@@ -58418,7 +58437,8 @@ def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ord
         if cod not in pats:
             pats[cod] = _inss_patronal_perc(id_empresa, anomes, origem="rel_custo",
                                             fpas=estabs[cod]["fpas"],
-                                            fap=estabs[cod]["fap"])
+                                            fap=estabs[cod]["fap"],
+                                            risco=estabs[cod]["risco"])
         return pats[cod]
 
     funcs_sel = sorted([{"mat": f["mat"], "nome": f["nome"]} for f in todos],
@@ -61836,10 +61856,11 @@ def _filial_do_func(id_empresa, matricula):
         return None
 
 
-def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal", fpas=None, fap=None):
+def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal", fpas=None, fap=None,
+                        risco=None):
     """Percentuais da parte patronal do INSS desta empresa nesta competência.
 
-    fpas / fap: os do estabelecimento (filial), quando ele tem os seus. FPAS
+    fpas / fap / risco: os do estabelecimento (filial), quando ele tem os seus. FPAS
     igual ao da empresa usa os terceiros gravados na empresa (que o usuário
     pode ter ajustado à mão); FPAS diferente usa a tabela tab_aux_fpas. FAP
     da filial substitui o da empresa no ano. Sem eles, vale a empresa.
@@ -61880,6 +61901,8 @@ def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal", fpas=None, f
     # recolhidos pelo DAS — nada em GPS.
     is_simples_ou_mei = (ind_simples == "S") or (class_trib == "04")
     risco_grau  = int(emp.get("risco") or 0)   # 1=1% 2=2% 3=3%
+    if risco is not None and str(risco).strip() != "":
+        risco_grau = int(risco)                 # o da filial substitui o da empresa
     rat_pct     = float(risco_grau)             # % numérico direto
 
     # FAP do ano da folha (op1=34, campotxt1=ano, campotxt2=fator)
@@ -61967,7 +61990,7 @@ def _estabs_da_folha(id_empresa, anomes, anomes_tipo, mats):
 
     Devolve (estab_da_mat, estabs):
       estab_da_mat = {matricula: '000848'} — '' = usa a EMPRESA;
-      estabs       = {'000848': {"nome", "fpas", "fap"}} — só os da tela Filiais.
+      estabs       = {'000848': {"nome", "fpas", "fap", "risco"}} — só os da tela Filiais.
 
     Onde o funcionário estava vem do tab_total.filial; folha calculada antes de
     o cálculo gravar esse campo (até 10/2026) cai no cadastro atual
@@ -61994,7 +62017,7 @@ def _estabs_da_folha(id_empresa, anomes, anomes_tipo, mats):
     estabs = {}
     try:
         r_fil = (supabase.table("tab_filial")
-                 .select("id,cnpj,filial_nome,gps_fpas,situacao")
+                 .select("*")   # "*": o risco só existe depois do SQL de 23/10/2026
                  .eq("id_empresa", id_empresa).execute())
         _fils = sorted(r_fil.data or [], key=lambda f: f.get("situacao") == "A")
         _faps = {}
@@ -62011,7 +62034,8 @@ def _estabs_da_folha(id_empresa, anomes, anomes_tipo, mats):
             if cod:
                 estabs[cod] = {"nome": str(f.get("filial_nome") or "Filial").strip(),
                                "fpas": str(f.get("gps_fpas") or "").strip() or None,
-                               "fap":  _faps.get(f["id"])}
+                               "fap":  _faps.get(f["id"]),
+                               "risco": f.get("risco")}
     except Exception as e:
         print(f"[estabs_da_folha] falha ao ler tab_filial: {e}")
 
@@ -62267,12 +62291,13 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         if not varios_estabs:
             _b_emp, _b_ci = base_inss, base_inss_ci
         _pat = (_inss_patronal_perc(id_empresa, anomes, origem="resumo_folha",
-                                    fpas=_est["fpas"], fap=_est["fap"])
+                                    fpas=_est["fpas"], fap=_est["fap"],
+                                    risco=_est["risco"])
                 if _est else pat)
         if varios_estabs:
             _nome = (f"{_est['nome']} — {_cod[:4]}-{_cod[4:]}" if _est
                      else "Empresa (cadastro da empresa)")
-            _fap_txt = (f" · FAP {_pat['fap_fator']:.4f}".replace(".", ",")
+            _fap_txt = (f" · Risco {_pat['risco_grau']} · FAP {_pat['fap_fator']:.4f}".replace(".", ",")
                         if _pat["risco_grau"] else "")
             inss_emp_linhas.append({
                 "titulo": _nome,
