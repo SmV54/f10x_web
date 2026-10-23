@@ -14900,13 +14900,13 @@ def cad_filial():
         .select("*")
         .eq("id_cliente", id_cliente)
         .eq("id_empresa", id_empresa)
-        .eq("situacao", "A")
         .order("filial_nome")
         .execute()
     )
 
     import json
-    filiais = r.data or []
+    # Ativas primeiro; as desativadas aparecem no fim da lista para reativar.
+    filiais = sorted(r.data or [], key=lambda f: f.get("situacao") != "A")
 
     # FAP de cada filial, um por ano (tab_filial_fap).
     faps_por_filial = {}
@@ -15033,12 +15033,15 @@ def api_filial_incluir():
 
     dup = (
         supabase.table("tab_filial")
-        .select("id")
+        .select("id, situacao")
         .eq("id_empresa", id_empresa)
         .eq("cnpj", cnpj)
         .execute()
     )
     if dup.data:
+        if all(x.get("situacao") != "A" for x in dup.data):
+            return jsonify({"ok": False, "msg": f'CNPJ "{cnpj}" já cadastrado nesta empresa, '
+                                                'mas desativado: use o botão Reativar na lista'})
         return jsonify({"ok": False, "msg": f'CNPJ "{cnpj}" já cadastrado nesta empresa'})
 
     campos = {
@@ -15142,6 +15145,40 @@ def api_filial_desativar():
 
     try:
         supabase.table("tab_filial").update({"situacao": "D"}) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# FILIAIS — API REATIVAR
+# =========================================================
+@app.route("/api/filial/reativar", methods=["POST"])
+def api_filial_reativar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    id_reg     = data.get("id")
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado"})
+
+    try:
+        r = (supabase.table("tab_filial").select("cnpj")
+             .eq("id", id_reg).eq("id_cliente", id_cliente).execute())
+        if not r.data:
+            return jsonify({"ok": False, "msg": "Filial não encontrada"})
+        # Não reativa se o mesmo CNPJ já estiver ativo em outro registro.
+        dup = (supabase.table("tab_filial").select("id")
+               .eq("id_empresa", id_empresa).eq("cnpj", r.data[0]["cnpj"])
+               .eq("situacao", "A").neq("id", id_reg).execute())
+        if dup.data:
+            return jsonify({"ok": False, "msg": "Este CNPJ já está ativo em outra filial"})
+        supabase.table("tab_filial").update({"situacao": "A"}) \
             .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
         return jsonify({"ok": True})
     except Exception as e:
