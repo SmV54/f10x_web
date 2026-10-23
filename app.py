@@ -14907,6 +14907,14 @@ def cad_filial():
     import json
     filiais_json = json.dumps(r.data or [])
 
+    # FPAS da empresa: vem marcado na filial nova (o usuário pode trocar).
+    try:
+        re_ = (supabase.table("tab_empresa").select("gps_fpas")
+               .eq("id_empresa", id_empresa).limit(1).execute())
+        empresa_fpas = str((re_.data or [{}])[0].get("gps_fpas") or "").strip()
+    except Exception:
+        empresa_fpas = ""
+
     return render_template(
         "F10_Cad_Filial.html",
         versao=ler_versao(),
@@ -14914,7 +14922,18 @@ def cad_filial():
         empresa_info=session.get("empresa_info", ""),
         filiais=r.data or [],
         filiais_json=filiais_json,
+        empresa_fpas=empresa_fpas,
     )
+
+
+def _fpas_filial(data):
+    """Lê e valida o FPAS da filial. Devolve (fpas, msg_erro)."""
+    fpas = str(data.get("gps_fpas") or "").strip()
+    if not fpas:
+        return None, "FPAS obrigatório"
+    if not re.fullmatch(r"\d{3}", fpas):
+        return None, f'FPAS "{fpas}" inválido'
+    return fpas, None
 
 
 # =========================================================
@@ -14937,6 +14956,9 @@ def api_filial_incluir():
         return jsonify({"ok": False, "msg": "Nome da filial obrigatório"})
     if len(nome) > 40:
         return jsonify({"ok": False, "msg": "Nome muito longo (máx. 40 caracteres)"})
+    fpas, erro = _fpas_filial(data)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
 
     dup = (
         supabase.table("tab_filial")
@@ -14954,6 +14976,7 @@ def api_filial_incluir():
         "situacao":    "A",
         "cnpj":        cnpj,
         "filial_nome": nome,
+        "gps_fpas":    fpas,
     }
     for f in ["ender_cep", "ender_dsclograd", "ender_nrlograd", "ender_complemento",
               "ender_bairro", "ender_cidade_nome", "ender_codmunic", "ender_uf"]:
@@ -14989,6 +15012,9 @@ def api_filial_editar():
         return jsonify({"ok": False, "msg": "CNPJ obrigatório"})
     if not nome:
         return jsonify({"ok": False, "msg": "Nome obrigatório"})
+    fpas, erro = _fpas_filial(data)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
 
     dup = (
         supabase.table("tab_filial")
@@ -15001,7 +15027,7 @@ def api_filial_editar():
     if dup.data:
         return jsonify({"ok": False, "msg": f'CNPJ "{cnpj}" já está em uso por outra filial'})
 
-    campos = {"cnpj": cnpj, "filial_nome": nome}
+    campos = {"cnpj": cnpj, "filial_nome": nome, "gps_fpas": fpas}
     for f in ["ender_cep", "ender_dsclograd", "ender_nrlograd", "ender_complemento",
               "ender_bairro", "ender_cidade_nome", "ender_codmunic", "ender_uf"]:
         campos[f] = data.get(f)  # None limpa o campo

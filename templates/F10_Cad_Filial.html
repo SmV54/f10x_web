@@ -163,6 +163,7 @@
                 <tr>
                   <th>CNPJ</th>
                   <th>Nome</th>
+                  <th>FPAS</th>
                   <th style="width:60px;"></th>
                 </tr>
               </thead>
@@ -174,8 +175,9 @@
                   <td>{{ f.filial_nome }}
                       {% if f.ender_uf %}<br><span style="font-size:10px;color:#94a3b8;">{{ f.ender_bairro or '' }}{% if f.ender_bairro and f.ender_uf %} · {% endif %}{{ f.ender_uf }}</span>{% endif %}
                   </td>
+                  <td>{{ f.gps_fpas or '—' }}</td>
                   <td>
-                    <button class="btn-acao btn-edit"    onclick="editarFilial({{ f.id }})">✏️</button>
+                    <button class="btn-acao btn-edit"   onclick="editarFilial({{ f.id }})">✏️</button>
                     <button class="btn-acao btn-desativ" onclick="desativarFilial({{ f.id }}, '{{ f.filial_nome }}')">🚫</button>
                   </td>
                 </tr>
@@ -217,6 +219,14 @@
             </div>
           </div>
 
+          <div class="form-secao">
+            <label class="form-label">FPAS <span style="color:#ef4444;">*</span>
+              <span style="font-weight:400;color:#94a3b8;">— a empresa usa {{ empresa_fpas or 'nenhum' }}; altere se a filial for diferente</span></label>
+            <select class="form-input" id="inpFpas">
+              <option value="">Selecione...</option>
+            </select>
+          </div>
+
           {% include '_bloco_endereco.html' %}
 
           <div class="rodape-acoes">
@@ -238,6 +248,38 @@
 
 <script>
   const FILIAIS_DATA = {{ filiais_json | safe }};
+  const EMPRESA_FPAS = {{ (empresa_fpas or '') | tojson }};
+
+  // ── FPAS: mesma lista do cadastro da empresa ───────────────
+  // Código que não está na lista (ex.: gravado antes) entra como opção
+  // própria, para a tela não trocá-lo sozinha pelo "Selecione...".
+  function marcarFpas(cod) {
+    const combo = document.getElementById('inpFpas');
+    cod = String(cod || '').trim();
+    if (cod && ![...combo.options].some(o => o.value === cod)) {
+      const op = document.createElement('option');
+      op.value = cod; op.textContent = cod;
+      combo.appendChild(op);
+    }
+    combo.value = cod;
+  }
+
+  async function carregarListaFPAS() {
+    try {
+      const r = await fetch('/api/fpas');
+      const j = await r.json();
+      if (!j.ok) return;
+      const combo = document.getElementById('inpFpas');
+      (j.dados || []).forEach(item => {
+        const op = document.createElement('option');
+        op.value = String(item.cod_fpas).trim();
+        op.textContent = String(item.cod_fpas).trim() + ' — ' + (item.descricao || '').trim();
+        combo.appendChild(op);
+      });
+    } catch (e) { console.error('FPAS list:', e); }
+    if (!document.getElementById('inpId').value) marcarFpas(EMPRESA_FPAS);
+  }
+  carregarListaFPAS();
 
   // ── Máscara / validação CNPJ ───────────────────────────────
   function mascaraCnpj(el) {
@@ -288,6 +330,7 @@
     document.getElementById('inpCnpj').value  = '';
     document.getElementById('inpNome').value  = '';
     document.getElementById('inpCnpj').style.borderColor = '';
+    marcarFpas(EMPRESA_FPAS);
     Endereco.clear();
     document.getElementById('formTitulo').textContent    = '➕ Nova Filial';
     document.getElementById('formSubtitulo').textContent = 'Preencha os dados da filial';
@@ -310,6 +353,9 @@
     const cnpjEl = document.getElementById('inpCnpj');
     cnpjEl.value = f.cnpj || '';
     mascaraCnpj(cnpjEl);
+
+    // Filial gravada antes do campo FPAS existir: mostra o da empresa.
+    marcarFpas(f.gps_fpas || EMPRESA_FPAS);
 
     Endereco.setData({
       cep:         f.ender_cep        || '',
@@ -377,6 +423,8 @@
       return;
     }
     if (!nome) { mostrarErro('Informe o nome da filial.'); return; }
+    const fpas = document.getElementById('inpFpas').value;
+    if (!fpas) { mostrarErro('Selecione o FPAS da filial.'); return; }
 
     const end = Endereco.getData();
     const editando = !!id;
@@ -388,6 +436,7 @@
           id,
           cnpj:                cnpj.replace(/\D/g, ''),
           filial_nome:         nome,
+          gps_fpas:            fpas,
           ender_cep:           end.cep        || null,
           ender_dsclograd:     end.logradouro  || null,
           ender_nrlograd:      end.numero      || null,
