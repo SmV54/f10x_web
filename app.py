@@ -12627,6 +12627,7 @@ SUPORTE_TELAS = {
     "/calcular_folha_individual":  "Calculo da Folha",
     # card 7 — Relatórios
     "/contracheque":               "Contracheque",
+    "/whatsapp_contracheque":      "Enviar Contracheque por WhatsApp",
     "/gerador_relatorio":          "Log e Gerador de Relatorio",
     "/relatorios_config?rel=log":  "Log e Gerador de Relatorio",
     "/relatorios":                 ["Relatorios da Folha", "Relatorios de Cadastro",
@@ -59937,6 +59938,453 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
     resp = make_response(pdf_bytes)
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
+    return resp
+
+
+# =========================================================
+# CONTRACHEQUE POR WHATSAPP
+# =========================================================
+# Mesmo envio do Folha10 Desktop (Eventuais > W- Whatsapp Enviar, rotina
+# preparar_remessa_Whatsapp do SR2025.vb): o PDF de cada funcionário vai com
+# o texto do RH na legenda. Sai sempre do número do Folha10 (Z-API única).
+# Um envio por vez, comandado pela tela, com 50 a 80 s entre um e outro:
+# mandar tudo de uma vez faz o WhatsApp bloquear o número. Cada resultado
+# fica na tab_whatsapp_envio (relatório final e retomada da remessa).
+_WA_CC_TIPOS     = ("N", "A", "1")      # folha normal, adiantamento e 13º final
+_WA_CC_INTERVALO = (50, 80)             # segundos entre um envio e outro
+_WA_CC_SIT       = {"P": "Pendente", "X": "Enviando", "O": "Enviado",
+                    "E": "Erro", "S": "Sem celular válido"}
+
+
+def _wa_celular_func(cel):
+    """(numero_com_55, erro). Mesma regra do Desktop (ValidarCelularBrasileiro):
+    DDD + 9 dígitos, começando com 9."""
+    d = so_numeros(str(cel or ""))
+    if len(d) == 13 and d.startswith("55"):
+        d = d[2:]
+    if not d:
+        return "", "Celular não cadastrado"
+    if len(d) != 11 or d[2] != "9":
+        return "", f"Celular inválido ({d})"
+    return "55" + d, ""
+
+
+def _wa_fmt_cel(cel):
+    d = so_numeros(str(cel or ""))
+    if len(d) == 13 and d.startswith("55"):
+        d = d[2:]
+    return f"({d[:2]}) {d[2:7]}-{d[7:]}" if len(d) == 11 else d
+
+
+def _wa_cc_legenda(razao, nome, mat, anomes, anomes_tipo, texto_extra=""):
+    """Texto que vai junto do PDF — o mesmo do Desktop."""
+    ano, mes = str(anomes)[:4], str(anomes)[4:6]
+    if anomes_tipo == "A":
+        ref = f"do Adiantamento do 13º Salário do Ano de {ano}"
+    elif anomes_tipo == "1":
+        ref = f"do 13º Salário Final do Ano de {ano}"
+    else:
+        ref = f"de {mes}/{ano}"
+    linhas = ["Esta é uma mensagem do RH", str(razao or "").strip(),
+              f"para {str(nome or '').strip()}", f"Matricula: {int(mat):06d}",
+              "", f"Acima seu contracheque {ref}"]
+    if (texto_extra or "").strip():
+        linhas.append(texto_extra.strip())
+    linhas.append("Qualquer dúvida entre em contato com o RH")
+    return "\n".join(linhas)
+
+
+def _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo):
+    """Mensagem de bloqueio, ou '' se a folha pode ser enviada."""
+    if not anomes:
+        return "Nenhuma folha ativa."
+    if anomes_tipo not in _WA_CC_TIPOS:
+        return ("O envio por WhatsApp é só do contracheque da folha normal e do 13º "
+                f"salário. A folha ativa é de {_folha_tipo_label(anomes_tipo)}.")
+    st = ""
+    try:
+        r = (supabase.table("tab_anomes").select("situacao")
+             .eq("id_cliente", id_cliente).eq("id_empresa", int(id_empresa))
+             .eq("ano_mes", anomes).eq("tipo", anomes_tipo).limit(1).execute())
+        st = str((r.data or [{}])[0].get("situacao") or "")
+    except Exception:
+        st = str(session.get("anomes_situacao") or "")
+    if st in ("", "A"):
+        return "Calcule a folha antes de enviar os contracheques."
+    return ""
+
+
+def _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo):
+    """Funcionários com movimento na folha (como no Contracheque), com o celular
+    do cadastro e o último envio com sucesso desta folha."""
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
+    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
+    q = (supabase.table("tab_mov").select("matricula")
+         .eq("id_empresa", id_empresa).eq("situacao", "A")
+         .eq("folha", int(anomes)).eq("folha_tipo", folha_tipo_mov))
+    if id_cliente:
+        q = q.eq("id_cliente", id_cliente)
+    mats = sorted({int(r["matricula"]) for r in (q.execute().data or [])
+                   if r.get("matricula") and int(r["matricula"]) not in _mats_fora})
+    if not mats:
+        return []
+    r2 = (supabase.table("tab_cad").select("matricula,nome,nomer,celular")
+          .eq("id_empresa", id_empresa).in_("matricula", mats).execute())
+    cad = {int(r["matricula"]): r for r in (r2.data or []) if r.get("matricula")}
+
+    enviados = {}
+    try:
+        re_ = (supabase.table("tab_whatsapp_envio").select("matricula,enviado_em")
+               .eq("id_empresa", id_empresa).eq("anomes", int(anomes))
+               .eq("anomes_tipo", anomes_tipo).eq("situacao", "O")
+               .order("enviado_em").execute())
+        for x in (re_.data or []):
+            enviados[int(x["matricula"])] = x.get("enviado_em")
+    except Exception as e:
+        print(f"[whatsapp_cc] envios anteriores: {e}")
+
+    lista = []
+    for m in mats:
+        c = cad.get(m, {})
+        cel, erro = _wa_celular_func(c.get("celular"))
+        env = enviados.get(m)
+        lista.append({
+            "mat": m, "mat_fmt": f"{m:06d}",
+            "nome": str(c.get("nome") or c.get("nomer") or f"Matr. {m:06d}").strip(),
+            "celular": cel, "celular_fmt": _wa_fmt_cel(c.get("celular")),
+            "erro_cel": erro,
+            "enviado_em": _wa_fmt_dh(env) if env else "",
+        })
+    return lista
+
+
+def _wa_fmt_dh(iso):
+    """timestamptz do banco -> 'dd/mm/aaaa hh:mm' em Brasília."""
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if d.tzinfo:
+            d = d.astimezone(timezone(timedelta(hours=-3)))
+        return d.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return str(iso or "")[:16]
+
+
+_WA_CC_GUARDAR = 3      # remessas guardadas por empresa (pedido do SMV, 23/10/2026)
+
+
+def _wa_cc_limpar_antigas(id_cliente, id_empresa):
+    """Fica só com as últimas _WA_CC_GUARDAR remessas da empresa; chamada ao
+    iniciar uma remessa nova. Falha aqui não impede o envio."""
+    try:
+        r = (supabase.table("tab_whatsapp_envio").select("remessa")
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .order("remessa", desc=True).execute())
+        remessas = list(dict.fromkeys(x["remessa"] for x in (r.data or [])))
+        antigas = remessas[_WA_CC_GUARDAR:]
+        if antigas:
+            (supabase.table("tab_whatsapp_envio").delete()
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .in_("remessa", antigas).execute())
+    except Exception as e:
+        print(f"[whatsapp_cc] limpar remessas antigas: {e}")
+
+
+def _wa_cc_itens(id_cliente, id_empresa, remessa):
+    r = (supabase.table("tab_whatsapp_envio")
+         .select("id,matricula,nome,celular,situacao,msg_erro,enviado_em,criado_em,"
+                 "texto_extra,usuario,anomes,anomes_tipo")
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("remessa", remessa).order("id").execute())
+    return r.data or []
+
+
+@app.route("/whatsapp_contracheque")
+def whatsapp_contracheque():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    if not anomes:
+        return redirect("/menu")
+    meses_pt = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+    ano, mes = anomes[:4], anomes[4:6]
+    mes_nm   = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
+
+    bloqueio = _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo)
+    funcionarios, erro_tabela = [], ""
+    if not bloqueio:
+        try:
+            funcionarios = _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo)
+        except Exception as e:
+            erro_tabela = str(e)
+
+    # Remessa desta folha que ficou pela metade (tela fechada no meio).
+    retomar = None
+    try:
+        rp = (supabase.table("tab_whatsapp_envio").select("remessa,criado_em")
+              .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+              .eq("anomes", int(anomes)).eq("anomes_tipo", anomes_tipo)
+              .in_("situacao", ["P", "X"]).order("id", desc=True).limit(1).execute())
+        if rp.data:
+            rem = rp.data[0]["remessa"]
+            itens = _wa_cc_itens(id_cliente, id_empresa, rem)
+            retomar = {"remessa": rem, "criado_em": _wa_fmt_dh(rp.data[0]["criado_em"]),
+                       "pendentes": sum(1 for x in itens if x["situacao"] in ("P", "X")),
+                       "total": len(itens)}
+    except Exception as e:
+        print(f"[whatsapp_cc] remessa pendente: {e}")
+
+    return render_template(
+        "F10_WhatsApp_Contracheque.html",
+        versao       = ler_versao(),
+        nome         = session.get("nome", ""),
+        empresa      = str(session.get("empresa_info") or ""),
+        anomes_fmt   = f"{mes_nm} / {ano}",
+        tipo_lbl     = _folha_tipo_label(anomes_tipo),
+        bloqueio     = bloqueio,
+        erro_tabela  = erro_tabela,
+        funcionarios = funcionarios,
+        retomar      = retomar,
+        intervalo    = _WA_CC_INTERVALO,
+        exemplo      = _wa_cc_legenda("RAZÃO SOCIAL DA EMPRESA", "NOME DO FUNCIONÁRIO",
+                                      1, anomes, anomes_tipo, "{texto}"),
+    )
+
+
+@app.route("/api/whatsapp_cc/iniciar", methods=["POST"])
+def api_whatsapp_cc_iniciar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    bloqueio = _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo)
+    if bloqueio:
+        return jsonify({"ok": False, "msg": bloqueio})
+
+    d     = request.get_json(silent=True) or {}
+    texto = str(d.get("texto") or "").strip()
+    if len(texto) > 300:
+        return jsonify({"ok": False, "msg": "Texto muito longo (máximo 300 caracteres)."})
+    try:
+        sel = {int(m) for m in (d.get("mats") or [])}
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Seleção inválida."})
+    if not sel:
+        return jsonify({"ok": False, "msg": "Selecione ao menos um funcionário."})
+
+    conectada, info = _zapi_conectada()
+    if not conectada:
+        print(f"[whatsapp_cc] Z-API desconectada: {info}")
+        return jsonify({"ok": False, "msg": "O WhatsApp do Folha10 está desconectado no momento. "
+                                            "Avise o suporte do Folha10-Simples e tente mais tarde."})
+
+    funcs = [f for f in _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo)
+             if f["mat"] in sel]
+    if not funcs:
+        return jsonify({"ok": False, "msg": "Nenhum dos funcionários selecionados tem movimento nesta folha."})
+
+    agora   = _agora_brasilia()
+    remessa = agora.strftime("%Y%m%d%H%M%S") + f"{random.randint(0, 9999):04d}"
+    usuario = str(session.get("nome") or "")[:80]
+    linhas = [{
+        "id_cliente": id_cliente, "id_empresa": id_empresa, "remessa": remessa,
+        "anomes": int(anomes), "anomes_tipo": anomes_tipo, "tipo_doc": "CONTRACHEQUE",
+        "matricula": f["mat"], "nome": f["nome"][:80],
+        "celular": f["celular"] or so_numeros(f["celular_fmt"])[:15] or None,
+        "situacao": "P" if f["celular"] else "S",
+        "msg_erro": None if f["celular"] else f["erro_cel"],
+        "texto_extra": texto or None, "usuario": usuario,
+    } for f in funcs]
+    try:
+        supabase.table("tab_whatsapp_envio").insert(linhas).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Não foi possível registrar a remessa: {e}"})
+    _wa_cc_limpar_antigas(id_cliente, id_empresa)
+    gravar_log("WHATSAPP-CC", f"Remessa {remessa}: {len(linhas)} contracheque(s) "
+                              f"por WhatsApp, folha {anomes}/{anomes_tipo}")
+    return jsonify({"ok": True, "remessa": remessa,
+                    "itens": _wa_cc_itens(id_cliente, id_empresa, remessa)})
+
+
+@app.route("/api/whatsapp_cc/remessa")
+def api_whatsapp_cc_remessa():
+    """Itens de uma remessa — para retomar a que ficou pela metade. Quem estava
+    'X' (enviando quando a tela fechou) pode ter chegado ou não: vira erro com
+    aviso, para não mandar duas vezes."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    remessa    = str(request.args.get("remessa") or "")[:20]
+    try:
+        (supabase.table("tab_whatsapp_envio")
+         .update({"situacao": "E", "msg_erro": "Envio interrompido (tela fechada). "
+                  "Confira com o funcionário se o contracheque chegou."})
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("remessa", remessa).eq("situacao", "X").execute())
+        itens = _wa_cc_itens(id_cliente, id_empresa, remessa)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+    if not itens:
+        return jsonify({"ok": False, "msg": "Remessa não encontrada."})
+    return jsonify({"ok": True, "remessa": remessa, "itens": itens})
+
+
+@app.route("/api/whatsapp_cc/enviar", methods=["POST"])
+def api_whatsapp_cc_enviar():
+    """Envia UM contracheque da remessa. O número do Folha10 é um só para todos
+    os clientes: se outro envio (de qualquer cliente) saiu há menos de 50 s,
+    devolve 'aguardar' e a tela tenta de novo depois."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo.", "parar": True})
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    d       = request.get_json(silent=True) or {}
+    remessa = str(d.get("remessa") or "")[:20]
+    try:
+        id_item = int(d.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Item inválido."})
+
+    agora_utc = datetime.now(timezone.utc)
+    try:
+        ru = (supabase.table("tab_whatsapp_envio").select("enviado_em")
+              .not_.is_("enviado_em", "null").order("enviado_em", desc=True)
+              .limit(1).execute())
+        if ru.data:
+            ult = datetime.fromisoformat(str(ru.data[0]["enviado_em"]).replace("Z", "+00:00"))
+            falta = _WA_CC_INTERVALO[0] - (agora_utc - ult).total_seconds()
+            if falta > 0:
+                return jsonify({"ok": False, "aguardar": int(falta) + random.randint(1, 10)})
+    except Exception as e:
+        print(f"[whatsapp_cc] intervalo: {e}")
+
+    # Reserva o item (P -> X). Se outra aba já pegou, não manda de novo.
+    try:
+        rr = (supabase.table("tab_whatsapp_envio")
+              .update({"situacao": "X", "enviado_em": agora_utc.isoformat()})
+              .eq("id", id_item).eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+              .eq("remessa", remessa).eq("situacao", "P").execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+    if not rr.data:
+        return jsonify({"ok": False, "ja": True, "msg": "Este item já foi processado."})
+    it = rr.data[0]
+
+    def _fim(sit, erro=None, **extra):
+        try:
+            (supabase.table("tab_whatsapp_envio")
+             .update({"situacao": sit, "msg_erro": erro,
+                      "enviado_em": datetime.now(timezone.utc).isoformat()})
+             .eq("id", id_item).execute())
+        except Exception as e:
+            print(f"[whatsapp_cc] gravar resultado {id_item}: {e}")
+        return jsonify(dict({"ok": sit == "O", "situacao": sit, "msg": erro or ""}, **extra))
+
+    try:
+        anomes, anomes_tipo, mat = str(it["anomes"]), it["anomes_tipo"], int(it["matricula"])
+        empresa_nm = str(session.get("empresa_info") or "")
+        cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+        pdf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                      empresa_nm, cnpj_fmt, "1", [mat], False, False).read()
+        # Sem proventos nem descontos o PDF sai sem página. Pelo tamanho não dá:
+        # contracheque curto, sem a linha de assinatura, fica abaixo de 3000 bytes.
+        if not re.search(rb"/Type\s*/Page[^s]", pdf):
+            return _fim("E", "Sem proventos nem descontos nesta folha")
+        razao = empresa_nm
+        try:
+            re_ = (supabase.table("tab_empresa").select("razaosocial")
+                   .eq("id_empresa", id_empresa).limit(1).execute())
+            razao = str((re_.data or [{}])[0].get("razaosocial") or empresa_nm)
+        except Exception:
+            pass
+        legenda = _wa_cc_legenda(razao, it.get("nome"), mat, anomes, anomes_tipo,
+                                 it.get("texto_extra") or "")
+        arq = f"Contracheque_{anomes[4:6]}-{anomes[:4]}_Matricula_{mat:06d}.pdf"
+        ok, erro = _enviar_whatsapp_documento(it.get("celular"), pdf, arq, legenda)
+    except Exception as e:
+        return _fim("E", f"Falha ao gerar ou enviar: {e}")
+    if ok:
+        return _fim("O")
+    # WhatsApp do Folha10 caiu: não adianta seguir com os outros.
+    parar = "desconectada" in (erro or "") or "nao configurada" in (erro or "")
+    return _fim("E", erro, parar=parar)
+
+
+@app.route("/whatsapp_cc_relatorio_pdf")
+def whatsapp_cc_relatorio_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    remessa    = str(request.args.get("remessa") or "")[:20]
+    itens = _wa_cc_itens(id_cliente, id_empresa, remessa)
+    if not itens:
+        return "Remessa não encontrada.", 404
+
+    from xml.sax.saxutils import escape
+    buf   = io.BytesIO()
+    agora = _agora_brasilia()
+    azul  = colors.HexColor("#0b1f3a"); cinza = colors.HexColor("#64748b")
+    verde = colors.HexColor("#166534"); verm  = colors.HexColor("#991b1b")
+    borda = colors.HexColor("#dde3ec"); fundo = colors.HexColor("#f8fafc")
+    st_tit = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=13, textColor=azul, leading=16)
+    st_sub = ParagraphStyle("s", fontName="Helvetica", fontSize=9, textColor=cinza, leading=12)
+    st_cel = ParagraphStyle("c", fontName="Helvetica", fontSize=8, leading=10)
+
+    anomes, tipo = str(itens[0]["anomes"]), itens[0]["anomes_tipo"]
+    ref = f"{anomes[4:6]}/{anomes[:4]}" + _tipo_no_titulo(tipo)
+    empresa_nm = str(session.get("empresa_info") or "")
+    tot = {k: sum(1 for x in itens if x["situacao"] == k) for k in _WA_CC_SIT}
+
+    el = [Paragraph("Remessa de Contracheques por WhatsApp", st_tit),
+          Paragraph(escape(f"{empresa_nm}  ·  CNPJ {_fmt_cnpj(str(session.get('cnpj_empresa') or ''))}"), st_sub),
+          Paragraph(escape(f"Folha {ref}  ·  Remessa iniciada em {_wa_fmt_dh(itens[0]['criado_em'])}"
+                           f" por {itens[0].get('usuario') or '-'}"), st_sub)]
+    if itens[0].get("texto_extra"):
+        el.append(Paragraph(escape(f"Texto adicional: {itens[0]['texto_extra']}"), st_sub))
+    el.append(Spacer(1, 8))
+
+    dados = [["Matrícula", "Funcionário", "Celular", "Situação", "Hora / Motivo"]]
+    for x in itens:
+        sit = x["situacao"]
+        det = x.get("msg_erro") or (_wa_fmt_dh(x["enviado_em"])[-5:] if sit == "O" and x.get("enviado_em") else "")
+        dados.append([f"{int(x['matricula']):06d}", Paragraph(escape(x.get("nome") or ""), st_cel),
+                      _wa_fmt_cel(x.get("celular")), _WA_CC_SIT.get(sit, sit),
+                      Paragraph(escape(det), st_cel)])
+    t = Table(dados, colWidths=[2.0*cm, 5.6*cm, 3.0*cm, 2.7*cm, 4.7*cm], repeatRows=1)
+    estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
+              ("FONT", (0, 1), (-1, -1), "Helvetica", 8),
+              ("BACKGROUND", (0, 0), (-1, 0), fundo),
+              ("LINEBELOW", (0, 0), (-1, -1), 0.4, borda),
+              ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]
+    for i, x in enumerate(itens, start=1):
+        cor = verde if x["situacao"] == "O" else (verm if x["situacao"] in ("E", "S") else cinza)
+        estilo.append(("TEXTCOLOR", (3, i), (3, i), cor))
+    t.setStyle(TableStyle(estilo))
+    el.append(t)
+    el.append(Spacer(1, 10))
+    resumo = (f"Total: {len(itens)}  ·  Enviados: {tot['O']}  ·  Com erro: {tot['E']}"
+              f"  ·  Sem celular válido: {tot['S']}")
+    if tot["P"] or tot["X"]:
+        resumo += f"  ·  Não enviados (remessa interrompida): {tot['P'] + tot['X']}"
+    el.append(Paragraph(escape(resumo), ParagraphStyle("r", fontName="Helvetica-Bold",
+                                                       fontSize=9, textColor=azul)))
+    el.append(Spacer(1, 4))
+    el.append(Paragraph(escape(f"Emitido em {agora.strftime('%d/%m/%Y %H:%M')}  ·  Folha10-Simples"), st_sub))
+
+    SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm,
+                      topMargin=1.5*cm, bottomMargin=1.5*cm,
+                      title="Remessa de Contracheques por WhatsApp").build(el)
+    from flask import make_response
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="WhatsApp_Contracheques_{remessa}.pdf"'
     return resp
 
 

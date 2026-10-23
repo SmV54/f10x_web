@@ -914,6 +914,9 @@ const modulos = {
             const secFolha = { nome: 'Folha de Pagamento', itens: [
                 { icone: '🖨️', nome: 'Folha de Pagamento',  href: '/relatorio_folha', ok: true, classe: 'nav-fix2l', navLoading: true },
                 { icone: '🧾', nome: 'Contracheque',         href: '/contracheque',    ok: true, classe: 'nav-fix2l' },
+                // Um por vez, 50 a 80 s entre os envios (Desktop: Eventuais > W- Whatsapp Enviar).
+                // So com a folha calculada: o contracheque tem que estar pronto.
+                { icone: '📲', nome: 'Contracheque por WhatsApp', href: '/whatsapp_contracheque', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'calculada' },
                 { icone: '💵', nome: 'Relação dos Líquidos', href: '/rel_liquidos',    ok: true, classe: 'nav-fix2l', navLoading: true, bloqueioFolha: 'calculada' },
                 { icone: '⚖️', nome: 'Recibo de Pensão',      href: '/recibo_pensao',   ok: true, classe: 'nav-fix2l', bloqueioFolha: 'calculada' },
                 { icone: '📊', nome: 'Resumo da Folha',      href: '/resumo_folha',        ok: true, classe: 'nav-fix2l', navLoading: true },
