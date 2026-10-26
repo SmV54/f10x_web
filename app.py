@@ -17585,8 +17585,9 @@ def api_funcionario_alterar():
         if _k in d:
             campos[_k] = sv(_k)
 
-    # Centro de custo: faltava por completo no mapa de alteracao — o campo era
-    # enviado pela tela e descartado calado. Preenchido, grava; vazio, so
+    # Centro de custo: faltava por completo no mapa de alteracao, e a tela
+    # tambem nao o mandava no payload (so a partir de 26/10/2026, versao com
+    # "centrocusto: gv('centrocusto')" no F10_Cad_Funcionario). Preenchido, grava; vazio, so
     # preenche se o cadastro tambem estiver sem (ver logo abaixo, onde o
     # registro atual ja foi lido). Nunca sobrescreve um CC existente por vazio.
     _cc_novo = (sv("centrocusto") or "").strip()
