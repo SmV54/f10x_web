@@ -3250,11 +3250,31 @@ def rel_lista_funcionarios_pdf():
     tbl_data = [cab]
     lt_gray  = colors.HexColor("#f8fafc")
     linhas_grupo = []      # índices das linhas de título de grupo (CC/filial)
-    for f in (f for g in grupos for f in ([g] if g["rotulo"] else []) + g["funcs"]):
-        if "rotulo" in f:  # título do grupo: o próprio dict do grupo
+    linhas_sub   = []      # subtotal no fim de cada grupo
+    linhas_vao   = []      # linha em branco antes do grupo seguinte
+    vazio = [""] * (len(cab) - 1)
+
+    def _linhas():
+        for g in grupos:
+            if g["rotulo"]:
+                yield ("titulo", g)
+            yield from (("func", f) for f in g["funcs"])
+            if g["rotulo"]:
+                yield ("sub", g)
+
+    for tipo, f in _linhas():
+        if tipo == "titulo":
+            if linhas_grupo:
+                linhas_vao.append(len(tbl_data))
+                tbl_data.append([""] + vazio)
             linhas_grupo.append(len(tbl_data))
-            tbl_data.append([P(f"{f['rotulo']}  ({len(f['funcs'])})", fn="Helvetica-Bold",
-                               col=colors.HexColor("#1e3a8a"))] + [""] * (len(cab) - 1))
+            tbl_data.append([P(f"{f['rotulo']}  ({len(f['funcs'])})", fn="Helvetica-Bold", fs=9,
+                               col=colors.HexColor("#1e3a8a"))] + vazio)
+            continue
+        if tipo == "sub":
+            linhas_sub.append(len(tbl_data))
+            tbl_data.append([P(f"Subtotal: {len(f['funcs'])} funcionário(s)", fn="Helvetica-Bold",
+                               fs=7, align=2, col=colors.HexColor("#475569"))] + vazio)
             continue
         mat_i = int(f.get("matricula") or 0)
         mat   = f"{mat_i:06d}"
@@ -3279,8 +3299,17 @@ def rel_lista_funcionarios_pdf():
         row_bg.append(("BACKGROUND", (0, i), (-1, i), bg))
     for i in linhas_grupo:
         row_bg += [("SPAN", (0, i), (-1, i)),
-                   ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#eef2ff")),
+                   ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#e0e7ff")),
+                   ("LINEABOVE", (0, i), (-1, i), 1.2, colors.HexColor("#6366f1")),
                    ("TOPPADDING", (0, i), (-1, i), 6)]
+    for i in linhas_sub:
+        row_bg += [("SPAN", (0, i), (-1, i)),
+                   ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f8fafc"))]
+    for i in linhas_vao:
+        row_bg += [("SPAN", (0, i), (-1, i)),
+                   ("BACKGROUND", (0, i), (-1, i), colors.white),
+                   ("LINEBELOW", (0, i), (-1, i), 0, colors.white),
+                   ("TOPPADDING", (0, i), (-1, i), 5)]
 
     tbl.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
