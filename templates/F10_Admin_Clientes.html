@@ -346,6 +346,7 @@ tbody td.col-valor { font-variant-numeric: tabular-nums; }
 .tab-pag thead th, .tab-pag tbody td { padding: 8px 10px; }
 .tab-pag tbody td { font-size: 12px; }
 .pag-sub { display: block; font-size: 11px; color: #64748b; margin-top: 2px; }
+.pag-qtd { margin-left: 6px; font-size: 11px; color: #64748b; white-space: nowrap; }
 .pill-manual {
     display: inline-block; font-family: var(--sans, inherit);
     font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 8px;
@@ -639,7 +640,7 @@ function renderPagamentos(pagamentos) {
             <tr>
                 <td class="col-cnpj">${escHtml(p.data_br)}${p.manual ? '<span class="pag-sub"><span class="pill-manual" title="Pago por fora do Asaas">manual</span></span>' : ''}</td>
                 <td class="col-valor">${fmt(p.valor)}</td>
-                <td>${plural(p.meses, 'mês', 'meses')}<span class="pag-sub">${p.empresas} emp. · ${p.funcionarios} func.</span></td>
+                <td>${p.periodo ? escHtml(p.periodo) : plural(p.meses, 'mês', 'meses')} <span class="pag-qtd">E=${p.empresas} F=${p.funcionarios}</span></td>
                 <td class="col-num">${nf}</td>
             </tr>`;
         }).join('');

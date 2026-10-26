@@ -72270,6 +72270,9 @@ def _vendas_do_log(id_cliente=None):
             "empresas":     int(m.group(3)),
             "funcionarios": int(m.group(4)),
             "valor":        valor,
+            # Só no Asaas: último mês da licença depois do crédito ("2026-10").
+            "nova_data_limite": (lambda mm: mm.group(1) if mm else "")(
+                re.search(r"\bnova_data_limite=(\d{4}-\d{2})\b", obs)),
         })
     vendas.sort(key=lambda v: (v["data"], v["payment_id"]))
     return vendas
@@ -72315,7 +72318,21 @@ def _pagamentos_com_nf(id_cliente):
             if not v["nf"] and v["data"] <= n["data"]:
                 v["nf"] = f'{n["numero"]} de {n["data"].strftime("%d/%m/%Y")}'
                 break
+    def _periodo(v):
+        """Meses comprados: '10/2026' ou '09/2026 a 11/2026'. Venda manual não
+        guarda a data limite: '' e a tela mostra só a quantidade de meses."""
+        dl = v.get("nova_data_limite") or ""
+        if not dl:
+            return ""
+        ano, mes = int(dl[:4]), int(dl[5:7])
+        fim = f"{mes:02d}/{ano:04d}"
+        if v["meses"] <= 1:
+            return fim
+        t = ano * 12 + (mes - 1) - (v["meses"] - 1)
+        return f"{t % 12 + 1:02d}/{t // 12:04d} a {fim}"
+
     return [{"data_br": v["data_br"], "valor": v["valor"], "meses": v["meses"],
+             "periodo": _periodo(v),
              "empresas": v["empresas"], "funcionarios": v["funcionarios"],
              "manual": v["payment_id"].startswith("man_"), "nf": v["nf"]}
             for v in reversed(vendas)]
