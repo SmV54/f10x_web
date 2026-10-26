@@ -65704,7 +65704,13 @@ def api_admin_clientes_empresas(id_cliente):
             _dt = str(e.get("dt_desativacao") or "")[:10]
             e["dt_desativacao_fmt"] = (f"{_dt[8:10]}/{_dt[5:7]}/{_dt[:4]}"
                                        if len(_dt) == 10 else "")
-        return jsonify({"ok": True, "empresas": empresas})
+        try:
+            pagamentos = _pagamentos_com_nf(id_cliente)
+        except Exception as ex:
+            # Falha nos pagamentos nao pode esconder as empresas.
+            print(f"[admin_clientes] falha ao ler os pagamentos do cliente {id_cliente}: {ex}")
+            pagamentos = None
+        return jsonify({"ok": True, "empresas": empresas, "pagamentos": pagamentos})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})
 
@@ -72212,18 +72218,21 @@ _RE_VENDA = re.compile(
 _RE_VENDA_DATA = re.compile(r"\bdata=(\d{4})-(\d{2})-(\d{2})\b")
 
 
-def _vendas_do_log():
+def _vendas_do_log(id_cliente=None):
     """Vendas pagas, da mais antiga para a mais nova, lidas de tab_log.
+    Com id_cliente, só as daquele cliente (Lista de Clientes do ADMIN).
 
     Linha que não casar com o texto do webhook é ignorada em silêncio: tab_log é
     log, não tabela de vendas — um dia pode ter uma linha PAGTO_ASAAS escrita à
     mão, e ela não pode derrubar a planilha inteira."""
     linhas, ini, passo = [], 0, 1000
     while True:
-        r = (supabase.table("tab_log")
+        q = (supabase.table("tab_log")
              .select("id, id_cliente, observacao, data_hora_grava")
-             .in_("menu", [_MENU_PAGTO_ASAAS, _MENU_PAGTO_MANUAL])
-             .order("id")
+             .in_("menu", [_MENU_PAGTO_ASAAS, _MENU_PAGTO_MANUAL]))
+        if id_cliente is not None:
+            q = q.eq("id_cliente", id_cliente)
+        r = (q.order("id")
              .range(ini, ini + passo - 1).execute())
         lote = r.data or []
         linhas.extend(lote)
@@ -72264,6 +72273,52 @@ def _vendas_do_log():
         })
     vendas.sort(key=lambda v: (v["data"], v["payment_id"]))
     return vendas
+
+
+# Na base das notas (TabCLI_NF do NF10) o cliente do Folha10-Simples tem o
+# CodCLI 110000 + id_cliente (110028 = cliente 28). A emissão grava em tab_log
+# (menu NFSE_EMISSAO) "NFS-e amb=1 cod=110028 nDPS=248 chave=<50 dígitos> ...";
+# o número da nota são as posições 24 a 36 da chave.
+_NF_COD_CLIENTE_F10S = 110000
+_RE_NF_EMISSAO = re.compile(r"amb=1 cod=(\d+) .*?chave=(\d{50})")
+
+
+def _pagamentos_com_nf(id_cliente):
+    """Pagamentos do cliente (mais novo primeiro), cada um com a NFS-e emitida
+    para ele: cada nota vai para o pagamento mais recente feito até a hora dela
+    que ainda não tem nota (a nota sai depois do pagamento). Sem nota, "nf" = ""."""
+    vendas = _vendas_do_log(id_cliente)
+    cod = str(_NF_COD_CLIENTE_F10S + int(id_cliente))
+    notas = []
+    try:
+        r = (supabase.table("tab_log").select("observacao, data_hora_grava")
+             .eq("menu", "NFSE_EMISSAO").ilike("observacao", f"%cod={cod} %")
+             .execute())
+        for x in (r.data or []):
+            m = _RE_NF_EMISSAO.search(str(x.get("observacao") or ""))
+            if not m or m.group(1) != cod:
+                continue
+            try:
+                quando = datetime.strptime(str(x.get("data_hora_grava") or "").strip(),
+                                           "%Y%m%d %H%M")
+            except ValueError:
+                continue
+            notas.append({"data": quando, "numero": str(int(m.group(2)[23:36]))})
+    except Exception as e:
+        print(f"[pagamentos_com_nf] falha ao ler as notas do cliente {id_cliente}: {e}")
+    notas.sort(key=lambda n: n["data"])
+
+    for v in vendas:
+        v["nf"] = ""
+    for n in notas:
+        for v in reversed(vendas):
+            if not v["nf"] and v["data"] <= n["data"]:
+                v["nf"] = f'{n["numero"]} de {n["data"].strftime("%d/%m/%Y")}'
+                break
+    return [{"data_br": v["data_br"], "valor": v["valor"], "meses": v["meses"],
+             "empresas": v["empresas"], "funcionarios": v["funcionarios"],
+             "manual": v["payment_id"].startswith("man_"), "nf": v["nf"]}
+            for v in reversed(vendas)]
 
 
 def _vendas_nova_planilha():

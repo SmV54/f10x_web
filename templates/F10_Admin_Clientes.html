@@ -328,6 +328,23 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
 }
 tr.emp-desat td { color: #94a3b8; }
 
+/* ── PAGAMENTOS DO CLIENTE (abaixo das empresas) ── */
+.pag-titulo {
+    margin: 22px 0 8px; font-size: 13px; font-weight: 700; color: #334155;
+}
+.pag-titulo span { font-weight: 400; color: #64748b; }
+.pag-vazio { font-size: 13px; color: #94a3b8; padding: 4px 2px; }
+thead th.col-valor, tbody td.col-valor { text-align: right; white-space: nowrap; }
+tbody td.col-valor { font-variant-numeric: tabular-nums; }
+.tab-pag thead th, .tab-pag tbody td { padding: 8px 10px; }
+.tab-pag tbody td { font-size: 12px; }
+.pag-sub { display: block; font-size: 11px; color: #64748b; margin-top: 2px; }
+.pill-manual {
+    display: inline-block; font-family: var(--sans, inherit);
+    font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 8px;
+    background: #fffbeb; color: #92400e; border: 1px solid #fcd34d;
+}
+
 /* ── LOADING ── */
 .loading-empresas {
     display: flex; align-items: center; justify-content: center;
@@ -537,6 +554,7 @@ function selecionarCliente(idCliente, nomeCliente, qtdEmpresas) {
         .then(d => {
             if (!d.ok) { corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Erro ao carregar</span></div>'; return; }
             renderEmpresas(d.empresas);
+            renderPagamentos(d.pagamentos);
         })
         .catch(() => {
             corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Falha na requisição</span></div>';
@@ -589,6 +607,53 @@ function renderEmpresas(empresas) {
                 <tbody>${linhas}</tbody>
             </table>
         </div>`;
+}
+
+// Pagamentos do cliente (Asaas e manuais, de tab_log), abaixo das empresas,
+// com a NFS-e emitida para cada um — sem nota, "NÃO".
+function renderPagamentos(pagamentos) {
+    const corpo = document.getElementById('empresasCorpo');
+    let html;
+    if (pagamentos === null || pagamentos === undefined) {
+        html = '<div class="pag-vazio">Não foi possível ler os pagamentos.</div>';
+    } else if (pagamentos.length === 0) {
+        html = '<div class="pag-vazio">Nenhum pagamento registrado.</div>';
+    } else {
+        const fmt = v => (v === null || v === undefined) ? '—'
+            : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+        const linhas = pagamentos.map(p => {
+            // nf vem como "635 de 15/10/2026": numero em cima, data embaixo
+            const nf = p.nf
+                ? escHtml(p.nf.split(' de ')[0]) + '<span class="pag-sub">' + escHtml(p.nf.split(' de ')[1] || '') + '</span>'
+                : '<span class="pill-sit desat">NÃO</span>';
+            return `
+            <tr>
+                <td class="col-cnpj">${escHtml(p.data_br)}${p.manual ? '<span class="pag-sub"><span class="pill-manual" title="Pago por fora do Asaas">manual</span></span>' : ''}</td>
+                <td class="col-valor">${fmt(p.valor)}</td>
+                <td>${plural(p.meses, 'mês', 'meses')}<span class="pag-sub">${p.empresas} emp. · ${p.funcionarios} func.</span></td>
+                <td class="col-num">${nf}</td>
+            </tr>`;
+        }).join('');
+        html = `
+            <div class="tabela-wrap">
+                <table class="tab-pag">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th class="col-valor">Valor</th>
+                            <th>Comprado</th>
+                            <th class="col-num">NF</th>
+                        </tr>
+                    </thead>
+                    <tbody>${linhas}</tbody>
+                </table>
+            </div>`;
+    }
+    corpo.insertAdjacentHTML('beforeend',
+        '<div class="pag-titulo">Pagamentos' +
+        (pagamentos && pagamentos.length ? ' <span>(' + pagamentos.length + ')</span>' : '') +
+        '</div>' + html);
 }
 
 function ordenarClientes(modo) {
