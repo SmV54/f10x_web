@@ -36998,6 +36998,29 @@ def _recibo_s1200_anterior(id_empresa, matricula, ano_mes, folha_tipo,
     return ((mesmo_tipo or cands)[0].get("recibo") or "").strip()
 
 
+def _cnpj_estab_func(func, empresa):
+    """CNPJ do estabelecimento do trabalhador para o <ideEstabLot> (S-1200,
+    S-2299, S-2399): raiz do CNPJ da empresa + tab_cad.filial, quando a filial
+    esta cadastrada em tab_filial; senao, o CNPJ da empresa (matriz). E' a
+    regra do Desktop (SR_eSocialSR.vb, Gravacao_eSocial_S1200_ideEstabLot).
+    Antes ia sempre a matriz -- empresa 72, mat 5, que e' da filial 0008-48."""
+    cnpj = re.sub(r"\D", "", str(empresa.get("cnpj") or ""))
+    fil = re.sub(r"\D", "", str(func.get("filial") or ""))
+    if len(cnpj) != 14 or not fil or int(fil) == 0:
+        return cnpj
+    cnpj_fil = cnpj[:8] + fil.zfill(6)
+    if cnpj_fil == cnpj:
+        return cnpj
+    try:
+        ok = (supabase.table("tab_filial").select("id")
+              .eq("id_empresa", empresa.get("id_empresa") or func.get("id_empresa"))
+              .eq("cnpj", cnpj_fil).limit(1).execute().data)
+    except Exception as e:
+        print(f"[_cnpj_estab_func] mat={func.get('matricula')} erro: {e}")
+        ok = []
+    return cnpj_fil if ok else cnpj
+
+
 def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
                      rubr_map=None, ind_retif="1", nr_recibo_retif="",
                      dmdevs=None):
@@ -37242,7 +37265,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
       <infoPerApur>
         <ideEstabLot>
           <tpInsc>1</tpInsc>
-          <nrInsc>{x(cnpj_emp)}</nrInsc>
+          <nrInsc>{x(_cnpj_estab_func(func, empresa))}</nrInsc>
           <codLotacao>{x(cod_lotacao)}</codLotacao>
           <remunPerApur>{matricula_xml}{ind_simples_xml}{_itens_todos}{info_ag_nocivo_xml}
           </remunPerApur>
@@ -42865,7 +42888,7 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
           <infoPerApur>
             <ideEstabLot>
               <tpInsc>1</tpInsc>
-              <nrInsc>{x(cnpj_emp)}</nrInsc>
+              <nrInsc>{x(_cnpj_estab_func(func, empresa))}</nrInsc>
               <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}{info_ag_nocivo_xml}
             </ideEstabLot>
           </infoPerApur>
@@ -43000,7 +43023,7 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
           <ideDmDev>{_ide_dm_dev_resc(mat_es)}</ideDmDev>
           <ideEstabLot>
             <tpInsc>1</tpInsc>
-            <nrInsc>{x(cnpj_emp)}</nrInsc>
+            <nrInsc>{x(_cnpj_estab_func(func, empresa))}</nrInsc>
             <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}
           </ideEstabLot>
         </dmDev>
