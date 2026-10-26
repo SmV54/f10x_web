@@ -276,6 +276,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     background: #f0fdf4; border: 1px solid #86efac; color: #166534;
     border-radius: 10px; padding: 3px 12px;
 }
+.badge-total-func { margin-left: 6px; }
 .empresas-corpo { flex: 1; overflow-y: auto; padding: 16px 20px; }
 
 /* ── ESTADO VAZIO ── */
@@ -521,6 +522,7 @@ tbody td.col-valor { font-variant-numeric: tabular-nums; }
                 <div class="empresas-header-sub" id="headerSubCliente"></div>
             </div>
             <span class="badge-total-emp" id="headerTotalEmp"></span>
+            <span class="badge-total-emp badge-total-func" id="headerTotalFunc" title="Funcionários não demitidos, somando todas as empresas"></span>
         </div>
 
         <div class="empresas-corpo" id="empresasCorpo">
@@ -553,6 +555,8 @@ function selecionarCliente(idCliente, nomeCliente, qtdEmpresas) {
     document.getElementById('headerSubCliente').textContent  = '';
     document.getElementById('headerTotalEmp').textContent    =
         qtdEmpresas + (qtdEmpresas === 1 ? ' empresa' : ' empresas');
+    const badgeFunc = document.getElementById('headerTotalFunc');
+    badgeFunc.textContent = '… funcionários';
 
     const corpo = document.getElementById('empresasCorpo');
     corpo.innerHTML = '<div class="loading-empresas"><div class="spinner"></div> Carregando empresas…</div>';
@@ -560,12 +564,16 @@ function selecionarCliente(idCliente, nomeCliente, qtdEmpresas) {
     fetch('/api/admin_clientes/' + idCliente)
         .then(r => r.json())
         .then(d => {
-            if (!d.ok) { corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Erro ao carregar</span></div>'; return; }
+            if (!d.ok) { corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Erro ao carregar</span></div>'; badgeFunc.textContent = ''; return; }
+            // qtd_funcionarios de cada empresa ja vem sem os demitidos
+            const totFunc = (d.empresas || []).reduce((s, e) => s + (e.qtd_funcionarios || 0), 0);
+            badgeFunc.textContent = totFunc + (totFunc === 1 ? ' funcionário' : ' funcionários');
             renderEmpresas(d.empresas);
             renderPagamentos(d.pagamentos);
         })
         .catch(() => {
             corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Falha na requisição</span></div>';
+            badgeFunc.textContent = '';
         });
 }
 
