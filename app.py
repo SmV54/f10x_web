@@ -36895,6 +36895,23 @@ def _folhas_da_remessa(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
     return saida or [{"folha_tipo": ft, "mov_items": []}]
 
 
+def _recibos_excluidos_cadeia(rows):
+    """Recibos que nao valem mais: o das linhas EXCLUIDO e, subindo pelo
+    recibo_ref, o do original e das retificacoes anteriores a elas (o S-3000
+    tira do eSocial o evento inteiro, nao so a ultima versao)."""
+    ref_de = {(r.get("recibo") or "").strip(): (r.get("recibo_ref") or "").strip()
+              for r in rows if (r.get("recibo") or "").strip()}
+    fora = set()
+    for r in rows:
+        if (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO":
+            continue
+        rec = (r.get("recibo") or "").strip()
+        while rec and rec not in fora:
+            fora.add(rec)
+            rec = ref_de.get(rec, "")
+    return fora
+
+
 def _recibo_s1200_anterior(id_empresa, matricula, ano_mes, folha_tipo,
                            id_esocial_atual=None, layout="1200"):
     """Recibo de um S-1200/S-1210 JÁ ACEITO para o mesmo trabalhador e a mesma
@@ -36912,7 +36929,7 @@ def _recibo_s1200_anterior(id_empresa, matricula, ano_mes, folha_tipo,
     tipos = list(_TIPOS_FOLHA_JUNTAS) if ft in _TIPOS_FOLHA_JUNTAS else [ft]
     try:
         rows = (supabase.table("tab_esocial")
-                .select("id_esocial, folha_tipo, recibo, observacao_erro,"
+                .select("id_esocial, folha_tipo, recibo, recibo_ref, observacao_erro,"
                         " data_cad, hora_cad")
                 .eq("id_empresa", id_empresa)
                 .eq("layout", layout)
@@ -36926,9 +36943,14 @@ def _recibo_s1200_anterior(id_empresa, matricula, ano_mes, folha_tipo,
         print(f"[_recibo_s1200_anterior] mat={matricula} {ano_mes} erro: {e}")
         return ""
 
+    # O S-3000 de uma retificacao exclui o evento inteiro, original incluido, mas
+    # so a linha da retificacao ficava EXCLUIDO. O recibo do original continuava
+    # valendo aqui e a remessa seguinte saia como retificacao dele: erro [459]
+    # (empresa 72, mat 5, 08/2026). Sobe pelo recibo_ref de cada excluida.
+    excluidos = _recibos_excluidos_cadeia(rows)
     cands = [r for r in rows
              if (r.get("recibo") or "").strip()
-             and (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+             and (r.get("recibo") or "").strip() not in excluidos
              and (id_esocial_atual is None
                   or int(r.get("id_esocial") or 0) != int(id_esocial_atual))]
     if not cands:
@@ -51365,6 +51387,22 @@ def api_esocial_s3000_enviar():
         supabase.table("tab_esocial").update({
             "observacao_erro": "EXCLUIDO",
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        # Se era retificacao, o evento inteiro saiu do eSocial: marca tambem o
+        # original e as retificacoes anteriores (pelo recibo_ref)
+        try:
+            _ref = (es.get("recibo_ref") or "").strip()
+            _vistos = set()
+            while _ref and _ref not in _vistos:
+                _vistos.add(_ref)
+                _ant = (supabase.table("tab_esocial").select("id_esocial, recibo_ref")
+                        .eq("id_empresa", id_empresa).eq("recibo", _ref)
+                        .execute().data or [])
+                for _a in _ant:
+                    supabase.table("tab_esocial").update({"observacao_erro": "EXCLUIDO"})\
+                        .eq("id_esocial", int(_a["id_esocial"])).execute()
+                _ref = ((_ant[0].get("recibo_ref") if _ant else "") or "").strip()
+        except Exception as e:
+            print(f"[S-3000] id={id_reg}: erro ao marcar o original como excluido: {e}")
 
     # Grava registro S-3000
     novo_es = {
