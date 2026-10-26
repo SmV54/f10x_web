@@ -327,6 +327,13 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
     background: var(--accent); color: #fff; border: 1px solid var(--accent);
 }
 tr.emp-desat td { color: #94a3b8; }
+/* Empresas do cliente: razão social e CNPJ numa linha só cada um (o painel é
+   estreito); nome longo termina em "…" e aparece inteiro ao passar o mouse. */
+.tab-emp { table-layout: fixed; }
+.tab-emp thead th, .tab-emp tbody td { padding: 9px 10px; }
+.tab-emp td.col-razao { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-emp td.col-cnpj  { white-space: nowrap; }
+.tab-emp .btn-reativar { margin: 4px 0 0; }
 
 /* ── PAGAMENTOS DO CLIENTE (abaixo das empresas) ── */
 .pag-titulo {
@@ -586,7 +593,7 @@ function renderEmpresas(empresas) {
             : `<span class="pill-sit ativa">Ativa</span>`;
         return `
             <tr${e.desativada ? ' class="emp-desat"' : ''}>
-                <td><span class="emp-id">${idEmp}</span>${escHtml(e.razao_fmt)}</td>
+                <td class="col-razao" title="${escHtml(e.razao_fmt)}"><span class="emp-id">${idEmp}</span>${escHtml(e.razao_fmt)}</td>
                 <td class="col-cnpj">${escHtml(e.cnpj_fmt || '—')}</td>
                 <td class="col-num">${pill}</td>
                 <td class="col-num">${sit}</td>
@@ -595,12 +602,13 @@ function renderEmpresas(empresas) {
 
     corpo.innerHTML = `
         <div class="tabela-wrap">
-            <table>
+            <table class="tab-emp">
+                <colgroup><col><col style="width:132px"><col style="width:56px"><col style="width:84px"></colgroup>
                 <thead>
                     <tr>
                         <th>Empresa</th>
                         <th>CNPJ</th>
-                        <th class="col-num">Funcionários</th>
+                        <th class="col-num" title="Funcionários ativos">Func.</th>
                         <th class="col-num">Situação</th>
                     </tr>
                 </thead>
