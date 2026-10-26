@@ -70824,8 +70824,11 @@ def _arquivo_nf():
     if p and os.path.isfile(p):
         candidatos = [p]
     elif p and os.path.isdir(p):
+        # ignora as cópias em conflito do Dropbox ("NF10 (Cópia em conflito de ...).accdb"):
+        # na ordem alfabética ela vem antes do NF10.accdb e era lida no lugar dele
         candidatos = [os.path.join(p, f) for f in sorted(os.listdir(p))
-                      if f.lower().endswith(('.accdb', '.mdb'))]
+                      if f.lower().endswith(('.accdb', '.mdb'))
+                      and 'conflito' not in f.lower() and 'conflicted' not in f.lower()]
     else:
         for ext in ('.accdb', '.mdb'):
             if p and os.path.isfile(p + ext):
