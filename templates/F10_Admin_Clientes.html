@@ -565,8 +565,9 @@ function selecionarCliente(idCliente, nomeCliente, qtdEmpresas) {
         .then(r => r.json())
         .then(d => {
             if (!d.ok) { corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Erro ao carregar</span></div>'; badgeFunc.textContent = ''; return; }
-            // qtd_funcionarios de cada empresa ja vem sem os demitidos
-            const totFunc = (d.empresas || []).reduce((s, e) => s + (e.qtd_funcionarios || 0), 0);
+            // qtd_funcionarios de cada empresa ja vem sem os demitidos; empresa desativada fica fora
+            const totFunc = (d.empresas || []).filter(e => !e.desativada)
+                .reduce((s, e) => s + (e.qtd_funcionarios || 0), 0);
             badgeFunc.textContent = totFunc + (totFunc === 1 ? ' funcionário' : ' funcionários');
             renderEmpresas(d.empresas);
             renderPagamentos(d.pagamentos);
