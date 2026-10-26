@@ -111,6 +111,13 @@
     .rodape-acoes { display: flex; gap: 8px; margin-top: 6px; }
     .rodape-final { margin-top: 14px; }
 
+    .lot { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; text-decoration: none; }
+    .lot-ok    { background: #dcfce7; color: #166534; }
+    .lot-fila  { background: #fff7ed; color: #9a3412; }
+    .lot-falta { background: #fee2e2; color: #991b1b; }
+    .lot-falta:hover, .lot-fila:hover { text-decoration: underline; }
+    .aviso-lot { font-size: 11px; color: #64748b; line-height: 1.4; }
+
     .vazio { padding: 20px; font-size: 13px; color: #64748b; text-align: center; border: 1px dashed #cbd5e1; border-radius: 10px; background: #fafafa; }
 
     @media (max-width: 860px) {
@@ -179,6 +186,7 @@
                 <tr>
                   <th style="width:90px;">Código</th>
                   <th>Nome</th>
+                  <th title="Lotação tributária no eSocial: o código do centro de custo é o da lotação">eSocial (S-1020)</th>
                   <th style="width:60px;"></th>
                 </tr>
               </thead>
@@ -187,6 +195,14 @@
                 <tr id="tr_{{ c.id }}" data-busca="{{ (c.codigo_cc ~ ' ' ~ c.nomecc)|lower }}">
                   <td><span style="font-family:monospace;font-weight:600;">{{ c.codigo_cc }}</span></td>
                   <td>{{ c.nomecc }}</td>
+                  <td>
+                    {% set s = c.lot.get('sit', '') %}
+                    {% if s == 'E' %}<span class="lot lot-ok" title="Início {{ c.lot.ini }}">✓ Enviado{% if c.lot.fpas %} · FPAS {{ c.lot.fpas }}{% endif %}</span>
+                    {% elif s == 'W' %}<a class="lot lot-fila" href="/esocial_s1020">Aguardando o governo</a>
+                    {% elif s == 'P' %}<a class="lot lot-fila" href="/esocial_s1020">Gravado, falta enviar</a>
+                    {% else %}<a class="lot lot-falta" href="/esocial_s1020?cc={{ c.codigo_cc | urlencode }}">{{ 'Com erro' if s == 'X' else 'Não enviado' }} · Enviar S-1020</a>
+                    {% endif %}
+                  </td>
                   <td>
                     <button class="btn-acao btn-edit"    onclick="editarCC({{ c.id }})">✏️</button>
                     <button class="btn-acao btn-desativ" onclick="desativarCC({{ c.id }}, '{{ c.nomeCC }}')">🚫</button>
@@ -235,6 +251,9 @@
             <button class="btn btn-gravar"   onclick="gravarCC()">💾 &nbsp;Gravar</button>
             <button class="btn btn-cancelar" id="btnCancelar" style="display:none;" onclick="modoNovo()">✖ Cancelar</button>
           </div>
+          <div class="aviso-lot">O código do centro de custo é o da <strong>lotação tributária</strong> do eSocial.
+            Centro de custo novo precisa do S-1020 antes do S-1200 de quem for posto nele:
+            use o link "Enviar S-1020" na lista ao lado.</div>
 
         </div>
       </div>

@@ -14658,6 +14658,12 @@ def cad_cc():
     import json
     centros_json = json.dumps(r.data or [])
 
+    # Situacao da lotacao no eSocial (S-1020) de cada centro de custo: o codigo
+    # do centro de custo e o codLotacao do S-1200
+    lot = _lotacoes_s1020(id_empresa)
+    for c in (r.data or []):
+        c["lot"] = lot.get(str(c.get("codigo_cc") or "").strip().upper()) or {}
+
     return render_template(
         "F10_Cad_CC.html",
         versao=ler_versao(),
@@ -40094,6 +40100,63 @@ def _fpas_tercs_empresa(id_empresa):
     return fpas, cod_tercs
 
 
+def _lotacoes_s1020(id_empresa):
+    """Situacao do S-1020 de cada codigo de lotacao da empresa, olhando todas
+    as competencias: {codigo: {"sit": E|W|P|X, "fpas": ..., "ini": ...}}.
+    E = aceito (inclusive o "considerado ja declarado" da tela do S-1200),
+    W = aguardando o governo, P = gravado e nao enviado, X = so com erro.
+    Remessa excluida por S-3000 nao conta. Fica a melhor situacao do codigo.
+
+    O codigo da lotacao e o proprio centro de custo (tab_cc.codigo_cc): e ele
+    que vai no codLotacao do S-1200. Por isso a tela de Centros de Custo
+    mostra esta situacao ao lado de cada um."""
+    import json as _json
+    ordem = {"E": 4, "W": 3, "P": 2, "X": 1}
+    out = {}
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("recibo, observacao_erro, data_cad, hora_cad")
+                .eq("id_empresa", id_empresa).eq("layout", "1020")
+                .order("data_cad").order("hora_cad")
+                .execute().data or [])
+    except Exception as e:
+        print(f"[_lotacoes_s1020] empresa={id_empresa} erro: {e}")
+        return out
+    for r in rows:
+        obs = (r.get("observacao_erro") or "").strip()
+        params, status = (obs.split("|", 1) + [""])[:2] if "|" in obs else (obs, "")
+        if not params.startswith("PARAMS:"):
+            continue
+        try:
+            p = _json.loads(params[7:])
+        except Exception:
+            continue
+        cod = str(p.get("codLotacao") or "").strip().upper()
+        if not cod:
+            continue
+        recibo = (r.get("recibo") or "").strip()
+        if recibo and status == "EXCLUIDO":
+            continue
+        sit = ("E" if recibo else "W" if status.startswith("AGUARDANDO:")
+               else "X" if status else "P")
+        atual = out.get(cod)
+        # >= : entre duas de mesma situacao fica a mais recente (FPAS atual)
+        if not atual or ordem[sit] >= ordem[atual["sit"]]:
+            out[cod] = {"sit": sit, "fpas": str(p.get("fpas") or ""),
+                        "ini": str(p.get("ini") or "")}
+    return out
+
+
+def _centros_custo_ativos(id_empresa):
+    try:
+        return (supabase.table("tab_cc").select("id, codigo_cc, nomecc")
+                .eq("id_empresa", id_empresa).eq("situacao", "A")
+                .order("codigo_cc").execute().data or [])
+    except Exception as e:
+        print(f"[_centros_custo_ativos] empresa={id_empresa} erro: {e}")
+        return []
+
+
 @app.route("/esocial_s1020")
 def esocial_s1020():
     if not session.get("logado"):
@@ -40199,6 +40262,14 @@ def esocial_s1020():
 
     cnpj_fmt = _fmt_cnpj(cnpj_emp) if len(cnpj_emp) == 14 else cnpj_emp
 
+    # O codigo da lotacao sai da lista de Centros de Custo (antes era digitado
+    # e o cliente 74 declarou a lotacao 002 sem ter o centro de custo 002).
+    lot = _lotacoes_s1020(id_empresa)
+    centros = _centros_custo_ativos(id_empresa)
+    for c in centros:
+        c["sit"] = (lot.get(str(c.get("codigo_cc") or "").strip().upper()) or {}).get("sit", "")
+    sem_s1020 = [c for c in centros if c["sit"] in ("", "X")]
+
     return render_template(
         "F10_eSocial_S1020.html",
         versao=ler_versao(),
@@ -40208,6 +40279,9 @@ def esocial_s1020():
         total=len(rows),
         fpas_empresa=fpas_empresa,
         cod_tercs_empresa=cod_tercs_empresa,
+        centros=centros,
+        sem_s1020=sem_s1020,
+        cc_inicial=(request.args.get("cc") or "").strip().upper(),
     )
 
 
@@ -40243,6 +40317,14 @@ def api_esocial_s1020_gravar():
         return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
     if not cod_lotacao:
         return jsonify({"ok": False, "msg": "Código da lotação é obrigatório."})
+    # A lotacao e o centro de custo: sem ele cadastrado, nenhum funcionario pode
+    # ser posto nela e a lotacao declarada nao serve para nada.
+    if cod_lotacao.upper() not in {str(c.get("codigo_cc") or "").strip().upper()
+                                   for c in _centros_custo_ativos(id_empresa)}:
+        return jsonify({"ok": False, "msg": (
+            f'O centro de custo "{cod_lotacao}" não está cadastrado nesta empresa. '
+            "Cadastre-o primeiro em Tabelas Auxiliares → Centros de Custo: o código "
+            "da lotação é o código do centro de custo.")})
     if not fpas:
         return jsonify({"ok": False, "msg": "Código FPAS é obrigatório."})
     if not cod_tercs:

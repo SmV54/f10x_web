@@ -200,6 +200,12 @@ tr:hover td { background: #f8fafc; }
 .msg-erro { background: #fee2e2; color: #991b1b; }
 
 .separador { border: none; border-top: 1px solid #f1f5f9; margin: 14px 0; }
+.aviso-cc {
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 12px;
+    padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #78350f;
+}
+.aviso-cc-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.form-hint a { color: var(--accent); }
 #btnTour {
     position: fixed; bottom: 24px; right: 24px; z-index: 9999;
     width: 44px; height: 44px; border-radius: 50%;
@@ -244,6 +250,20 @@ tr:hover td { background: #f8fafc; }
         </div>
         <button class="btn-novo" onclick="abrirModal()">＋ Nova Remessa</button>
     </div>
+
+    {% if sem_s1020 %}
+    <div class="aviso-cc">
+        <div><strong>Centro{{ 's' if sem_s1020|length > 1 else '' }} de custo sem S-1020 aceito.</strong>
+            Sem a lotação declarada o eSocial recusa o S-1200 de quem está nele.</div>
+        <div class="aviso-cc-lista">
+            {% for c in sem_s1020 %}
+            <button class="btn-acao btn-enviar" onclick="abrirModal('{{ c.codigo_cc }}')">
+                {{ c.codigo_cc }} — {{ c.nomecc }}{% if c.sit == 'X' %} (com erro){% endif %} · Criar remessa
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="tabela-wrap" id="secaoTabela">
         <table>
@@ -375,9 +395,17 @@ tr:hover td { background: #f8fafc; }
             <div class="form-grid">
                 <div class="form-group">
                     <label class="form-label">Código da Lotação *</label>
-                    <input type="text" id="f-cod-lot" class="form-input mono" maxlength="30"
-                           value="001" placeholder="Ex: 001">
-                    <span class="form-hint">Até 30 caracteres alfanuméricos</span>
+                    {% if centros %}
+                    <select id="f-cod-lot" class="form-select mono">
+                        {% for c in centros %}
+                        <option value="{{ c.codigo_cc }}">{{ c.codigo_cc }} — {{ c.nomecc }}{% if c.sit == 'E' %} (já enviado){% elif c.sit in ('W', 'P') %} (já na fila){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="form-hint">É o centro de custo. <a href="/cad_cc">Cadastrar outro</a></span>
+                    {% else %}
+                    <select id="f-cod-lot" class="form-select mono" disabled><option value="">—</option></select>
+                    <span class="form-hint" style="color:#b91c1c;">Nenhum centro de custo. <a href="/cad_cc">Cadastre em Centros de Custo</a></span>
+                    {% endif %}
                 </div>
                 <div class="form-group">
                     <label class="form-label">Tipo de Lotação *</label>
@@ -474,16 +502,19 @@ async function atualizarTercsPorFpas() {
     } catch (e) { /* silencioso: mantém o valor atual */ }
 }
 
-function abrirModal() {
+// Centros de custo sem S-1020 (nem aceito nem na fila), na ordem do codigo
+const CC_SEM_S1020 = {{ sem_s1020 | map(attribute='codigo_cc') | list | tojson }};
+
+function abrirModal(cc) {
     document.getElementById('f-tp-op').value    = 'inclusao';
     document.getElementById('f-ini-valid').value = '';
     document.getElementById('f-fim-valid').value = '';
-    // 001, nao 01: o codLotacao tem que casar com o tab_cad.centrocusto do
-    // funcionario, e ali o padrao sao tres digitos -- 202 dos 207 cadastros,
-    // 190 deles exatamente '001'. Com '01' o S-1020 saía declarando uma
-    // lotacao que a folha nao usa, e o S-1200 continuava sendo barrado por
-    // falta de lotacao declarada mesmo depois de alguem ter criado o S-1020.
-    document.getElementById('f-cod-lot').value   = '001';
+    // O codigo vem da lista de Centros de Custo (o codLotacao tem que casar com
+    // o tab_cad.centrocusto do funcionario). Abre no pedido, ou no primeiro que
+    // ainda nao tem S-1020, ou no primeiro da lista.
+    const sel = document.getElementById('f-cod-lot');
+    const cod = cc || CC_SEM_S1020[0] || '';
+    if (cod && [...sel.options].some(o => o.value === cod)) sel.value = cod;
     document.getElementById('f-tp-lot').value    = '01';
     document.getElementById('f-fpas').value      = FPAS_EMPRESA || '';
     document.getElementById('f-cod-tercs').value = CODTERCS_EMPRESA || '';
@@ -499,6 +530,8 @@ function fecharModal() {
 document.getElementById('modal-novo').addEventListener('click', function(e) {
     if (e.target === this) fecharModal();
 });
+// Vindo da tela de Centros de Custo (/esocial_s1020?cc=002): ja abre a remessa
+{% if cc_inicial %}abrirModal({{ cc_inicial | tojson }});{% endif %}
 
 function gravarS1020() {
     const tpOp     = document.getElementById('f-tp-op').value;
