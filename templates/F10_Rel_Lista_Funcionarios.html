@@ -79,6 +79,13 @@ tbody td.col-adm { font-family: 'IBM Plex Mono', monospace; font-size: 12px; col
 /* Demissão em vermelho discreto: na lista "Todos" é o que separa quem saiu. */
 tbody td.col-dem { color: #b91c1c; }
 tbody tr:last-child td { border-bottom: none; }
+/* Título do grupo (centro de custo / filial) */
+tbody tr.grupo td {
+    background: #eef2ff; color: #1e3a8a; font-weight: 600; font-size: 12px;
+    padding: 7px 16px; border-bottom: 1px solid #dbe3ee;
+}
+tbody tr.grupo td span { font-weight: 400; color: #64748b; }
+tbody tr.grupo:hover { background: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
 .card-total { padding: 8px 16px; font-size: 12px; color: #64748b; text-align: right; border-top: 1px solid #f1f5f9; }
@@ -134,7 +141,7 @@ tbody tr:hover { background: #f8fafc; }
             {% elif situacao_filtro == 'D' %}Desligados
             {% else %}Todos{% endif %}
             &nbsp;·&nbsp;
-            {% if classificacao == 'A' %}Ordem Alfabética{% else %}Ordem Numérica{% endif %}
+            {{ ord_label }}
         </span>
     </div>
     <div class="topo-dir">
@@ -162,6 +169,14 @@ tbody tr:hover { background: #f8fafc; }
                 <span class="filtro-label">Ordenação:</span>
                 <label class="radio-op"><input type="radio" name="classificacao" value="A" {% if classificacao == 'A' %}checked{% endif %}> Alfabética</label>
                 <label class="radio-op"><input type="radio" name="classificacao" value="N" {% if classificacao == 'N' %}checked{% endif %}> Numérica</label>
+                {% if tem_cc %}
+                <label class="radio-op"><input type="radio" name="classificacao" value="CA" {% if classificacao == 'CA' %}checked{% endif %}> C. Custo / Nome</label>
+                <label class="radio-op"><input type="radio" name="classificacao" value="CN" {% if classificacao == 'CN' %}checked{% endif %}> C. Custo / Matrícula</label>
+                {% endif %}
+                {% if tem_filial %}
+                <label class="radio-op"><input type="radio" name="classificacao" value="FA" {% if classificacao == 'FA' %}checked{% endif %}> Filial / Nome</label>
+                <label class="radio-op"><input type="radio" name="classificacao" value="FN" {% if classificacao == 'FN' %}checked{% endif %}> Filial / Matrícula</label>
+                {% endif %}
             </div>
 
             <button type="submit" class="btn-filtrar">Atualizar a Lista</button>
@@ -190,7 +205,11 @@ tbody tr:hover { background: #f8fafc; }
                 </tr>
             </thead>
             <tbody>
-                {% for f in funcs %}
+                {% for g in grupos %}
+                {% if g.rotulo %}
+                <tr class="grupo"><td colspan="{{ 4 if ver_demissao else 3 }}">{{ g.rotulo }} <span>({{ g.funcs|length }})</span></td></tr>
+                {% endif %}
+                {% for f in g.funcs %}
                 <tr>
                     <td class="mat">{{ "%06d"|format(f.matricula) }}</td>
                     <td>{{ f.nome_fmt }}</td>
@@ -199,6 +218,7 @@ tbody tr:hover { background: #f8fafc; }
                     <td class="col-adm col-dem">{{ f.dtdem_fmt }}</td>
                     {% endif %}
                 </tr>
+                {% endfor %}
                 {% endfor %}
             </tbody>
         </table>

@@ -3082,27 +3082,105 @@ def _aviso_previo_datas(id_empresa):
 # =========================================================
 # RELATÓRIO DE SALÁRIOS — AUMENTOS
 # =========================================================
-@app.route("/rel_lista_funcionarios")
-def rel_lista_funcionarios():
-    if not session.get("logado"):
-        return redirect("/")
-    id_empresa     = _get_id_empresa()
-    classificacao  = _def_classificacao()  # A=Alfabética N=Numérica
-    situacao_filtro = request.args.get("situacao", "A").strip()       # A=Ativos D=Desligados T=Todos
+_LISTA_FUNC_ORDENS = {
+    "A":  "Ordem Alfabética",
+    "N":  "Ordem Numérica",
+    "CA": "Centro de Custo / Nome",
+    "CN": "Centro de Custo / Matrícula",
+    "FA": "Filial / Nome",
+    "FN": "Filial / Matrícula",
+}
 
-    order_col = "nome" if classificacao == "A" else "matricula"
 
-    # A coluna Demissão só faz sentido onde há desligado na lista.
-    ver_demissao = situacao_filtro in ("D", "T")
+def _lista_func_dados(id_empresa, classificacao, situacao_filtro):
+    """Funcionários da Lista de Funcionários (tela e PDF), já em grupos.
+
+    Classificação por centro de custo (CA/CN) só é oferecida com mais de um CC
+    ativo; por filial (FA/FN), só com filial ativa cadastrada além da matriz.
+    Pedida sem se aplicar, cai na alfabética/numérica.
+    Devolve (classificacao, grupos, tem_cc, tem_filial);
+    grupos = [{"rotulo": str|None, "funcs": [...]}] — rótulo None = sem grupos.
+    """
+    ccs, fils, tem_filial = {}, {}, False
+    try:
+        r = (supabase.table("tab_cc").select("codigo_cc,nomecc")
+             .eq("id_cliente", session.get("id_cliente")).eq("id_empresa", id_empresa)
+             .eq("situacao", "A").execute())
+        for c in (r.data or []):
+            cod = str(c.get("codigo_cc") or "").strip()
+            if cod:
+                ccs[cod.lstrip("0") or "0"] = (cod, str(c.get("nomecc") or "").strip())
+    except Exception as e:
+        print(f"[lista_func] falha ao ler tab_cc: {e}")
+    matriz = _fil6(session.get("cnpj_empresa"))
+    try:
+        r = (supabase.table("tab_filial").select("cnpj,filial_nome,situacao")
+             .eq("id_empresa", id_empresa).execute())
+        for f in sorted(r.data or [], key=lambda f: f.get("situacao") == "A"):
+            cod = _fil6(f.get("cnpj"))
+            if cod and cod != matriz:
+                fils[cod] = str(f.get("filial_nome") or "").strip()
+                tem_filial = tem_filial or f.get("situacao") == "A"
+    except Exception as e:
+        print(f"[lista_func] falha ao ler tab_filial: {e}")
+    tem_cc = len(ccs) > 1
+
+    if classificacao not in _LISTA_FUNC_ORDENS \
+            or (classificacao[0] == "C" and not tem_cc) \
+            or (classificacao[0] == "F" and not tem_filial):
+        classificacao = "N" if classificacao.endswith("N") else "A"
+
+    order_col = "matricula" if classificacao.endswith("N") else "nome"
     try:
         q = supabase.table("tab_cad").select(
-            "matricula, nome, nomer, situacao, dtadm, datarescisao") \
+            "matricula, nome, nomer, situacao, dtadm, datarescisao, centrocusto, filial") \
             .eq("id_empresa", id_empresa).order(order_col)
         if situacao_filtro != "T":
             q = q.eq("situacao", situacao_filtro)
         funcs = q.execute().data or []
     except Exception:
         funcs = []
+
+    if len(classificacao) == 1:
+        return classificacao, [{"rotulo": None, "funcs": funcs}], tem_cc, tem_filial
+
+    def _fmt_fil(cod):
+        return f"{cod[:4]}-{cod[4:]}"
+
+    def _grupo(f):
+        """(chave de ordem, rótulo) do grupo do funcionário."""
+        if classificacao[0] == "C":
+            cod = str(f.get("centrocusto") or "").strip()
+            if not cod:
+                return ("~", "Sem centro de custo")
+            cod_cc, nome_cc = ccs.get(cod.lstrip("0") or "0", (cod, ""))
+            return (cod_cc.zfill(10), f"Centro de Custo {cod_cc}" + (f" - {nome_cc}" if nome_cc else ""))
+        cod = _fil6(f.get("filial")) or matriz
+        if not cod or cod == matriz:
+            return ("", "Matriz" + (f" {_fmt_fil(matriz)}" if matriz else ""))
+        nome_f = fils.get(cod, "")
+        return (cod, f"Filial {_fmt_fil(cod)}" + (f" - {nome_f}" if nome_f else ""))
+
+    grupos = {}
+    for f in funcs:                       # já vem na ordem de nome/matrícula
+        chave, rotulo = _grupo(f)
+        grupos.setdefault(chave, {"rotulo": rotulo, "funcs": []})["funcs"].append(f)
+    return classificacao, [grupos[k] for k in sorted(grupos)], tem_cc, tem_filial
+
+
+@app.route("/rel_lista_funcionarios")
+def rel_lista_funcionarios():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa     = _get_id_empresa()
+    classificacao  = _def_classificacao()  # A/N, ou CA CN FA FN (ver _LISTA_FUNC_ORDENS)
+    situacao_filtro = request.args.get("situacao", "A").strip()       # A=Ativos D=Desligados T=Todos
+
+    # A coluna Demissão só faz sentido onde há desligado na lista.
+    ver_demissao = situacao_filtro in ("D", "T")
+    classificacao, grupos, tem_cc, tem_filial = _lista_func_dados(
+        id_empresa, classificacao, situacao_filtro)
+    funcs = [f for g in grupos for f in g["funcs"]]
 
     for f in funcs:
         # Nome completo (tab_cad.nome); cai no abreviado so se o completo faltar.
@@ -3118,7 +3196,11 @@ def rel_lista_funcionarios():
         "F10_Rel_Lista_Funcionarios.html",
         **_ctx_relatorio(),
         funcs=funcs,
+        grupos=grupos,
         classificacao=classificacao,
+        ord_label=_LISTA_FUNC_ORDENS[classificacao],
+        tem_cc=tem_cc,
+        tem_filial=tem_filial,
         situacao_filtro=situacao_filtro,
         ver_demissao=ver_demissao,
     )
@@ -3140,22 +3222,14 @@ def rel_lista_funcionarios_pdf():
     classificacao   = _def_classificacao()
     situacao_filtro = request.args.get("situacao", "A").strip()
 
-    order_col = "nome" if classificacao == "A" else "matricula"
     ver_demissao = situacao_filtro in ("D", "T")     # mesma regra da tela
-    try:
-        q = supabase.table("tab_cad").select(
-            "matricula, nome, nomer, situacao, dtadm, datarescisao") \
-            .eq("id_empresa", id_empresa).order(order_col)
-        if situacao_filtro != "T":
-            q = q.eq("situacao", situacao_filtro)
-        funcs = q.execute().data or []
-    except Exception:
-        funcs = []
+    classificacao, grupos, _, _ = _lista_func_dados(id_empresa, classificacao, situacao_filtro)
+    funcs = [f for g in grupos for f in g["funcs"]]
 
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
     sit_label  = {"A": "Ativos", "D": "Desligados", "T": "Todos"}.get(situacao_filtro, "")
-    ord_label  = "Ordem Alfabética" if classificacao == "A" else "Ordem Numérica"
+    ord_label  = _LISTA_FUNC_ORDENS[classificacao]
     titulo     = f"Lista de Funcionários — {sit_label} · {ord_label}"
 
     def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
@@ -3175,7 +3249,13 @@ def rel_lista_funcionarios_pdf():
         cab.append(P("Demissão", fn="Helvetica-Bold", align=1))
     tbl_data = [cab]
     lt_gray  = colors.HexColor("#f8fafc")
-    for f in funcs:
+    linhas_grupo = []      # índices das linhas de título de grupo (CC/filial)
+    for f in (f for g in grupos for f in ([g] if g["rotulo"] else []) + g["funcs"]):
+        if "rotulo" in f:  # título do grupo: o próprio dict do grupo
+            linhas_grupo.append(len(tbl_data))
+            tbl_data.append([P(f"{f['rotulo']}  ({len(f['funcs'])})", fn="Helvetica-Bold",
+                               col=colors.HexColor("#1e3a8a"))] + [""] * (len(cab) - 1))
+            continue
         mat_i = int(f.get("matricula") or 0)
         mat   = f"{mat_i:06d}"
         nome  = (f.get("nome") or f.get("nomer") or "").strip()
@@ -3197,6 +3277,10 @@ def rel_lista_funcionarios_pdf():
     for i in range(1, len(tbl_data)):
         bg = lt_gray if i % 2 == 0 else colors.white
         row_bg.append(("BACKGROUND", (0, i), (-1, i), bg))
+    for i in linhas_grupo:
+        row_bg += [("SPAN", (0, i), (-1, i)),
+                   ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#eef2ff")),
+                   ("TOPPADDING", (0, i), (-1, i), 6)]
 
     tbl.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
