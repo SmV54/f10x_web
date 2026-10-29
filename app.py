@@ -31397,10 +31397,15 @@ def rel_aumento():
                     _agora_es = _agora_brasilia()
                     _anomes   = str(session.get("anomes_atual") or "")
                     _ts_es    = _agora_es.strftime("%Y%m%d%H%M%S")
+                    # data_cad vira o <dtAlteracao> do S-2206. Aumento de um mes
+                    # anterior a folha leva o dia 1o desse mes, como o Desktop
+                    # (a data da alteracao); na folha atual, a data do lancamento.
+                    _dc_es = (vigencia_raw + "01" if len(_anomes) == 6 and vigencia_raw < _anomes
+                              else _agora_es.strftime("%Y%m%d"))
                     supabase.table("tab_esocial").insert({
                         "id_cliente": id_cliente,
                         "id_empresa": id_empresa,
-                        "data_cad":   _agora_es.strftime("%Y%m%d"),
+                        "data_cad":   _dc_es,
                         "hora_cad":   _agora_es.strftime("%H%M"),
                         "id_remessa": f"{_ts_es}2206{mat}",
                         "ano_mes":    int(_anomes) if len(_anomes) == 6 else None,
