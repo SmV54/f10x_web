@@ -31193,8 +31193,13 @@ def cad_aumento():
     vr_inferior_str = _cents_to_str(p_vr_inferior, "0,00")
     vr_superior_str = _cents_to_str(p_vr_superior, "99.999.999,99")
 
+    # O mes do aumento pode ser a folha atual ou um anterior, nunca depois.
+    _am = str(session.get("anomes_atual") or "")
+    vigencia_max = f"{_am[:4]}-{_am[4:6]}" if len(_am) == 6 else vigencia_default[:7]
+
     return render_template(
         "F10_Cad_Aumento.html",
+        vigencia_max=vigencia_max,
         versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
@@ -31244,6 +31249,10 @@ def rel_aumento():
     # Validação mínima
     if len(vigencia_raw) != 6 or not vigencia_raw.isdigit():
         vigencia_raw = str(session.get("anomes_atual") or "")
+    # Mes anterior a folha vale (aumento lancado atrasado); posterior, nao.
+    _am_atual = str(session.get("anomes_atual") or "")
+    if len(_am_atual) == 6 and vigencia_raw > _am_atual:
+        vigencia_raw = _am_atual
     vig_year  = int(vigencia_raw[:4])
     vig_month = int(vigencia_raw[4:6])
 
@@ -31379,7 +31388,7 @@ def rel_aumento():
                             .replace(",", "X").replace(".", ",").replace("X", "."))
                 gravar_log(
                     "SAL-AUMENTO",
-                    f"Salario: de {_brl(sal_at)} para {_brl(sal_novo)}",
+                    f"Salario: de {_brl(sal_at)} para {_brl(sal_novo)} | Vig {vigencia_fmt}",
                     matricula=mat,
                 )
 

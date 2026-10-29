@@ -241,11 +241,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div>
                 <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
                     <div>
-                        <div class="opcao-label">Data do Aumento</div>
-                        <span class="input-std" style="min-width:160px;display:inline-flex;align-items:center;background:#f1f5f9;border-color:#e2e8f0;color:#475569;cursor:default;">
-                            {{ vigencia_default[8:10] }}/{{ vigencia_default[5:7] }}/{{ vigencia_default[0:4] }}
-                        </span>
+                        <div class="opcao-label">Mês do Aumento</div>
+                        <!-- A folha atual ou um mes anterior (aumento que valeu antes de
+                             ser lancado); o dia e sempre o 1o do mes. -->
+                        <input type="month" id="vigencia_mes" class="input-std" style="min-width:160px;"
+                            value="{{ vigencia_default[0:7] }}" max="{{ vigencia_max }}"
+                            onchange="syncVigencia()">
                         <input type="hidden" id="vigencia" value="{{ vigencia_default }}">
+                        <div id="vigencia_aviso" style="display:none;font-size:11px;color:#b45309;margin-top:4px;max-width:260px;">
+                            Mês anterior à folha atual: o salário e o histórico ficam nesse mês, mas a diferença dos meses já pagos não é calculada aqui.
+                        </div>
                     </div>
                     <div>
                         <div class="opcao-label">Percentual de Reajuste</div>
@@ -417,6 +422,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 <script>
 const MATS = '{{ mats_raw }}';
+const VIGENCIA_MAX = '{{ vigencia_max }}';   // "YYYY-MM" da folha atual
+
+// O mes escolhido vira o "YYYY-MM-01" que o resto da tela ja usava.
+function syncVigencia() {
+    const m = document.getElementById('vigencia_mes').value;   // "YYYY-MM"
+    document.getElementById('vigencia').value = m ? m + '-01' : '';
+    document.getElementById('vigencia_aviso').style.display =
+        (m && m < VIGENCIA_MAX) ? 'block' : 'none';
+}
+document.addEventListener('DOMContentLoaded', syncVigencia);
 const ULTIMA_VIGENCIA = {
 {% for f in funcionarios %}
     {{ f.matricula }}: {{ f.ultima_vigencia if f.ultima_vigencia else 'null' }},
@@ -485,8 +500,14 @@ async function processar() {
         return;
     }
 
+    syncVigencia();
     var vigencia = document.getElementById('vigencia').value;  // "YYYY-MM-DD"
-    if (!vigencia) { alert('Informe a data do aumento.'); return; }
+    if (!vigencia) { alert('Informe o mês do aumento.'); return; }
+    if (vigencia.slice(0, 7) > VIGENCIA_MAX) {
+        alert('O mês do aumento não pode ser depois da folha atual (' +
+              VIGENCIA_MAX.split('-').reverse().join('/') + ').');
+        return;
+    }
 
     // Bloqueia vigência anterior a um aumento já registrado
     var vigAnomes = parseInt(vigencia.replace(/-/g, '').slice(0, 6), 10);  // YYYYMM
