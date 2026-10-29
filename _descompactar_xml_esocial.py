@@ -40,6 +40,10 @@ PLANILHAS = r"C:\XMLeSocial\Planilhas"
 RE_LAYOUT = re.compile(r"\.(S-\d{4})\.xml$", re.I)
 # Nome do ZIP do portal: "202105 - 22821433.zip" -> competencia 202105
 RE_COMPET = re.compile(r"(20\d{4})")
+# Nome novo do portal (out/2026): "40916084 - 01.09 a 30.09.2026.zip" -> 202609
+# (o mes do fim do periodo). Testado antes do antigo: o numero do pedido, na
+# frente, pode ter "20" seguido de 4 digitos e dar uma competencia falsa.
+RE_PERIODO = re.compile(r"\d{2}\.\d{2}\s*a\s*\d{2}\.(\d{2})\.(20\d{2})")
 
 # Todo XML baixado traz o recibo DELE proprio no bloco <recibo> do download; o
 # S-3000 aponta o recibo do evento que ele EXCLUIU. Casando um no outro sabemos
@@ -301,7 +305,11 @@ def normalizar_layouts(itens):
 
 
 def competencia_do_zip(nome):
-    m = RE_COMPET.search(os.path.basename(nome))
+    base = os.path.basename(nome)
+    m = RE_PERIODO.search(base)
+    if m:
+        return m.group(2) + m.group(1)
+    m = RE_COMPET.search(base)
     return m.group(1) if m else ""
 
 
