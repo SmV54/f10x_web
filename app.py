@@ -9247,6 +9247,7 @@ VR_FERIAS_AVISO= 44    # FERIAS RESCISAO AVISO PREVIO
 VR_TERCO_FERIAS= 42    # 1/3 FERIAS (sobre 43 + 44 + 49)
 VR_AVISO_IND   = 61    # AVISO PREVIO (indenizado)   — provento (empresa deve o aviso)
 VR_AVISO_EMP   = 60    # AVISO PREVIO EMPREGADO      — desconto (empregado deve o aviso)
+VR_AVISO_EXTRA = 69    # AVISO PREVIO ACIMA DOS 30 DIAS — acréscimo da Lei 12.506 no aviso trabalhado
 VR_ART_479     = 63    # ART 479 DA CLT  — provento (empregador rompe o contrato a termo)
 VR_ART_480     = 64    # ART 480 DA CLT  — desconto (empregado rompe o contrato a termo)
 VR_INSS        = 101   # INSS (saldo)
@@ -10198,6 +10199,17 @@ def _calc_rescisao_nucleo(body, sim=None):
         if aviso_ind and dias_aviso > 0 and not aviso_pedido:
             from datetime import timedelta as _td
             dt_proj = dt_resc + _td(days=dias_aviso)
+        # Aviso TRABALHADO dado pela empresa: cumprem-se só os 30 dias (ref1) e o
+        # acréscimo da Lei 12.506/2011 (ref2, 3 dias por ano) é pago como
+        # indenizado na verba 69, como no Desktop ("o acréscimo será PAGO como
+        # INDENIZADO") — e, indenizado, também projeta a data. Antes não se
+        # pagava nada: empresa 72, mat 8, 10/2026 (aviso de 30 + 3 dias).
+        dias_aviso_extra = 0
+        if (not aviso_ind and not aviso_pedido and not is_estag
+                and dias_aviso > dias_aviso_ref1 > 0):
+            from datetime import timedelta as _td
+            dias_aviso_extra = dias_aviso - dias_aviso_ref1
+            dt_proj = dt_resc + _td(days=dias_aviso_extra)
 
         # ── Rescisão ANTECIPADA de contrato a termo (motivos 03 e 04) ──
         # Art. 481: havendo cláusula assecuratória do direito recíproco de
@@ -10346,6 +10358,11 @@ def _calc_rescisao_nucleo(body, sim=None):
             aviso_val = round(sal_mes_ad * dias_aviso / 30)
             if multa_pct == 20:   # acordo 484-A → aviso 50%
                 aviso_val = round(aviso_val / 2)
+        aviso_extra = 0
+        if dias_aviso_extra:
+            aviso_extra = round(sal_mes_ad * dias_aviso_extra / 30)
+            if multa_pct == 20:   # acordo 484-A → 50%, como o aviso indenizado
+                aviso_extra = round(aviso_extra / 2)
         # Pedido de demissão sem cumprir o aviso → DESCONTO (verba 60). Descontam-se
         # só os 30 dias do aviso legal (ref1): o acréscimo da Lei 12.506/2011
         # (ref2, 3 dias por ano de casa) é direito de quem RECEBE o aviso, não
@@ -10447,6 +10464,7 @@ def _calc_rescisao_nucleo(body, sim=None):
             falta_val  = _aplica_aj(VR_FALTA, falta_val)
             dsr_val    = _aplica_aj(VR_DSR_FALTA, dsr_val)
             aviso_val  = _aplica_aj(VR_AVISO_IND, aviso_val)
+            aviso_extra = _aplica_aj(VR_AVISO_EXTRA, aviso_extra)
             aviso_desc = _aplica_aj(VR_AVISO_EMP, aviso_desc)
             d13        = _aplica_aj(VR_13_PROP, d13)
             _fer_antes = (fer_prop, fer_venc)
@@ -10603,7 +10621,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
         # (férias indenizadas não têm FGTS)
         # A categoria manda (_tem_fgts): estagiário e 700-799, menos a 721, não têm.
-        base_fgts = (max(0, saldo + atest_val + d13 + aviso_val + add_fgts - desc_fgts)
+        base_fgts = (max(0, saldo + atest_val + d13 + aviso_val + aviso_extra + add_fgts - desc_fgts)
                      if _tem_fgts(_categ_n) else 0)
         fgts_val = round(base_fgts * 8 / 100)
 
@@ -10627,7 +10645,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # dois sistemas darem o mesmo valor.
         # Recalcula a cada rodada: mexeu numa verba da rescisão, o desconto do
         # empréstimo se ajusta sozinho no próximo cálculo.
-        total_prov = (saldo + atest_val + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
+        total_prov = (saldo + atest_val + aviso_val + aviso_extra + d13 + fer_prop + fer_venc + terco_fer + man_prov
                       + art479)
 
         if consig_pend:
@@ -10698,6 +10716,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         if dsr_val:   recs.append({**base_mov, "cod_verba": VR_DSR_FALTA,    "qtd": dsr_sem,   "valor": dsr_val})
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
         if aviso_desc:recs.append({**base_mov, "cod_verba": VR_AVISO_EMP,    "qtd": dias_aviso_desc, "valor": aviso_desc})
+        if aviso_extra: recs.append({**base_mov, "cod_verba": VR_AVISO_EXTRA, "qtd": dias_aviso_extra, "valor": aviso_extra})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
         if d13:       recs.append({**base_mov, "cod_verba": VR_13_PROP,      "qtd": avos_13,  "valor": d13})
         if fer_venc:  recs.append({**base_mov, "cod_verba": VR_FERIAS_VENC,  "qtd": venc_qtd, "valor": fer_venc})
@@ -10743,14 +10762,16 @@ def _calc_rescisao_nucleo(body, sim=None):
         if not sim:
             _log_av = (f" avisoDesc={_fmt_brl(aviso_desc)}({dias_aviso_desc}d)" if aviso_desc
                        else (" avisoDispensado" if (aviso_ind and aviso_pedido and aviso_disp) else ""))
+            if aviso_extra:
+                _log_av += f" aviso69={_fmt_brl(aviso_extra)}({dias_aviso_extra}d)"
             gravar_log("CALC_RES",
-                       f"Rescisão calc: saldo={_fmt_brl(saldo)}({dias_saldo}d) "
+                       (f"Rescisão calc: saldo={_fmt_brl(saldo)}({dias_saldo}d) "
                        + (f"atest={_fmt_brl(atest_val)}({dias_atest}d) " if atest_val else "")
                        + f"13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
                        f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
                        f"INSS={_fmt_brl(g_inss_saldo+g_inss_13)} IRRF={_fmt_brl(g_irrf_saldo+g_irrf_13)} "
                        f"Liq={_fmt_brl(liquido)}" + _log_av
-                       + (" [cliente sem encargos]" if _enc0 else ""),
+                       + (" [cliente sem encargos]" if _enc0 else ""))[:300],
                        matricula=mat)
 
         # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no
@@ -10780,6 +10801,7 @@ def _calc_rescisao_nucleo(body, sim=None):
             "motivo": motivo, "aviso_ind": aviso_ind, "dias_aviso": dias_aviso,
             "aviso_quem": aviso_quem, "aviso_pedido": aviso_pedido, "aviso_disp": aviso_disp,
             "aviso_desc": aviso_desc, "dias_aviso_desc": dias_aviso_desc,
+            "aviso_extra": aviso_extra, "dias_aviso_extra": dias_aviso_extra,
             "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dias_saldo,
             "saldo_sal": saldo_sal, "saldo_adics": saldo_adics,
             "dias_atest": dias_atest, "dias_afast_inss": dias_afast_inss,
@@ -10834,7 +10856,8 @@ def _calc_rescisao_nucleo(body, sim=None):
             "terco_fmt": _fmt_brl(terco_fer) if terco_fer else "—",
             # coluna única "Aviso": o desconto do art. 487, § 2º sai com sinal
             "aviso_fmt": (_fmt_brl(aviso_val) if aviso_val
-                          else ("-" + _fmt_brl(aviso_desc) if aviso_desc else "—")),
+                          else (_fmt_brl(aviso_extra) if aviso_extra
+                                else ("-" + _fmt_brl(aviso_desc) if aviso_desc else "—"))),
             "med_fmt": _fmt_brl(med_total) if med_total else "—",
             "inss_fmt": _fmt_brl(g_inss_saldo + g_inss_13), "irrf_fmt": _fmt_brl(g_irrf_saldo + g_irrf_13),
             "fgts_fmt": _fmt_brl(g_fgts_val), "prov_fmt": _fmt_brl(total_prov),
@@ -11027,6 +11050,9 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 aviso_txt = "Aviso prévio não cumprido — sem desconto"
             elif r["aviso_ind"]:
                 aviso_txt = f"Aviso prévio INDENIZADO ({r['dias_aviso']} dias)"
+            elif r.get("aviso_extra"):
+                aviso_txt = (f"Aviso prévio TRABALHADO — acréscimo de {r['dias_aviso_extra']} "
+                             f"dias indenizado (verba {VR_AVISO_EXTRA:04d})")
             else:
                 aviso_txt = "Sem aviso prévio indenizado"
             lin_proj = f"{aviso_txt}   Data projetada (avos): {r['dt_proj_fmt']}"
@@ -11150,6 +11176,13 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     f"<b>{_B(r['aviso_desc'])}</b>  (desconto)",
                     "Descontam-se só os 30 dias do aviso legal: o acréscimo da Lei "
                     "12.506/2011 é direito de quem RECEBE o aviso, não de quem o deve",
+                ]))
+            elif r.get("aviso_extra"):
+                e.append(_etapa("ETAPA 3030 - AVISO PREVIO TRABALHADO: ACRÉSCIMO INDENIZADO (VERBA 69)", [
+                    "Aviso trabalhado: o funcionário cumpre os 30 dias e o acréscimo da "
+                    "Lei 12.506/2011 (3 dias por ano de casa) é pago como indenizado",
+                    f"{_rem_lbl} {_B(_rem)} × {r['dias_aviso_extra']} dias / 30 = <b>{_B(r['aviso_extra'])}</b>"
+                    + ("  (acordo 484-A: 50%)" if r["multa_pct"] == 20 else ""),
                 ]))
             elif r["aviso_ind"] and r.get("aviso_disp"):
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO", [],
