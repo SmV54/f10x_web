@@ -29578,11 +29578,13 @@ def _diss_flowables_func(f, estilos, larg, empresa_nm="", cnpj_fmt="", anomes=""
     out.append(Paragraph(f"<b>{f['matricula']:06d} — {f['nome']}</b>   "
                          f"Salário atual: {_fmt_brl(f['sal_atual'])}", estilos["txt"]))
     out.append(Spacer(1, 4))
-    dados = [["Mês", "Salário no mês", "Índice", "Verba", "Valor pago no mês", "Diferença"]]
+    # Mês origem = pago no mês base; Mês atual = corrigido pelo índice (no
+    # desconto também cresce: a diferença é que sai negativa).
+    dados = [["Mês", "Salário no mês", "Índice", "Verba", "Mês origem", "Mês atual", "Diferença"]]
     estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
               ("FONT", (0, 1), (-1, -1), "Helvetica", 8),
               ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
-              ("ALIGN", (1, 0), (2, -1), "RIGHT"), ("ALIGN", (4, 0), (5, -1), "RIGHT"),
+              ("ALIGN", (1, 0), (2, -1), "RIGHT"), ("ALIGN", (4, 0), (6, -1), "RIGHT"),
               ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#94a3b8")),
               ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]
     for m in f["meses"]:
@@ -29593,18 +29595,20 @@ def _diss_flowables_func(f, estilos, larg, empresa_nm="", cnpj_fmt="", anomes=""
                           _diss_pct(m["indice"]) if k == 0 else "",
                           f"{ln['cod']:04d} {ln['dsc'][:28]}",
                           _fmt_val(ln["valor_base"]),
+                          _fmt_val(ln["valor_base"] + abs(ln["valor_dif"])),
                           _fmt_val(ln["valor_dif"])])
-        dados.append(["", "", "", f"Total de {m['label']}", "", _fmt_val(m["total"])])
+        dados.append(["", "", "", f"Total de {m['label']}", "", "", _fmt_val(m["total"])])
         fim = len(dados) - 1
         estilo += [("FONT", (3, fim), (-1, fim), "Helvetica-Bold", 8),
                    ("LINEABOVE", (3, fim), (-1, fim), 0.3, colors.HexColor("#cbd5e1"))]
         if ini > 1:
             estilo.append(("LINEABOVE", (0, ini), (-1, ini), 0.5, colors.HexColor("#94a3b8")))
-    dados.append(["", "", "", "TOTAL DA DIFERENÇA", "", _fmt_val(f["total"])])
+    dados.append(["", "", "", "TOTAL DA DIFERENÇA", "", "", _fmt_val(f["total"])])
     estilo += [("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 9),
                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#dcfce7"))]
     w = larg
-    t = Table(dados, colWidths=[w * .13, w * .14, w * .11, w * .32, w * .15, w * .15], repeatRows=1)
+    t = Table(dados, colWidths=[w * .1, w * .13, w * .1, w * .3, w * .12, w * .12, w * .13],
+              repeatRows=1)
     t.setStyle(TableStyle(estilo))
     out.append(t)
     return out
@@ -29718,17 +29722,17 @@ def dissidio_pdf():
           Spacer(1, 8)]
 
     # ── Listagem contínua ──
-    dados = [["Funcionário / Mês", "Sal. atual", "Sal. no mês", "Índice", "Verba",
-              "Valor no mês\nde origem", "Diferença"]]
+    dados = [["Funcionário\n/ Mês", "Sal. atual", "Sal. no mês", "Índice", "Verba",
+              "Mês origem", "Mês atual", "Diferença"]]
     estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.5),
               ("FONT", (0, 1), (-1, -1), "Helvetica", 7.5),
               ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
-              ("ALIGN", (1, 0), (3, -1), "RIGHT"), ("ALIGN", (5, 0), (6, -1), "RIGHT"),
+              ("ALIGN", (1, 0), (3, -1), "RIGHT"), ("ALIGN", (5, 0), (7, -1), "RIGHT"),
               ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]
     for f in res["funcionarios"]:
         ini = len(dados)
         # Nome na linha inteira; o salário atual desce para a linha de cada mês.
-        dados.append([f"{f['matricula']:06d} - {f['nome']}", "", "", "", "", "", ""])
+        dados.append([f"{f['matricula']:06d} - {f['nome']}", "", "", "", "", "", "", ""])
         estilo += [("SPAN", (0, ini), (-1, ini)),
                    ("FONT", (0, ini), (-1, ini), "Helvetica-Bold", 7.5),
                    ("BACKGROUND", (0, ini), (-1, ini), colors.HexColor("#f8fafc"))]
@@ -29740,21 +29744,23 @@ def dissidio_pdf():
                               _fmt_val(f["sal_atual"]) if k == 0 else "",
                               _fmt_val(m["sal_base"]) if k == 0 else "",
                               _diss_pct(m["indice"]) if k == 0 else "",
-                              f"{ln['cod']:04d} {ln['dsc'][:34]}",
-                              _fmt_val(ln["valor_base"]), _fmt_val(ln["valor_dif"])])
+                              f"{ln['cod']:04d} {ln['dsc'][:28]}",
+                              _fmt_val(ln["valor_base"]),
+                              _fmt_val(ln["valor_base"] + abs(ln["valor_dif"])),
+                              _fmt_val(ln["valor_dif"])])
             if len(f["meses"]) > 1:
-                dados.append(["", "", "", "", f"Total {m['label']}", "", _fmt_val(m["total"])])
+                dados.append(["", "", "", "", f"Total {m['label']}", "", "", _fmt_val(m["total"])])
                 estilo.append(("FONT", (4, len(dados) - 1), (-1, len(dados) - 1), "Helvetica-Oblique", 7.5))
-        dados.append(["", "", "", "", "Total do funcionário", "", _fmt_val(f["total"])])
+        dados.append(["", "", "", "", "Total do funcionário", "", "", _fmt_val(f["total"])])
         estilo.append(("FONT", (4, len(dados) - 1), (-1, len(dados) - 1), "Helvetica-Bold", 7.5))
     dados.append(["TOTAL GERAL DA DIFERENÇA", "", "", "", f"{len(res['funcionarios'])} funcionário(s)",
-                  "", _fmt_val(res["total_geral"])])
+                  "", "", _fmt_val(res["total_geral"])])
     estilo += [("SPAN", (0, -1), (3, -1)), ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
                ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 8.5),
                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#dcfce7")),
                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#166534"))]
-    t = Table(dados, colWidths=[larg * .12, larg * .11, larg * .11, larg * .09, larg * .29,
-                                larg * .15, larg * .13], repeatRows=1)
+    t = Table(dados, colWidths=[larg * .1, larg * .1, larg * .1, larg * .09, larg * .28,
+                                larg * .11, larg * .11, larg * .11], repeatRows=1)
     t.setStyle(TableStyle(estilo))
     st.append(t)
 
