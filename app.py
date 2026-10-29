@@ -34596,6 +34596,52 @@ def _obs_mov_fixo(cod_verba, valor, payload):
     return " | ".join(partes)
 
 
+# Rotulos do log do "antes > depois" da alteracao. Valor, verba e vigencia sao
+# montados a parte (precisam de formato); o resto compara o campo como esta.
+_MF_DIFF_ROTULOS = {
+    "matricula": "Mat", "id_sindicato": "Sind", "id_funcao": "Func", "categoria": "Cat",
+    "datanascimento1": "Nasc de", "datanascimento2": "Nasc ate",
+    "dataadmissao1": "Adm de", "dataadmissao2": "Adm ate",
+    "salariobase1": "Sal de", "salariobase2": "Sal ate",
+    "idade1": "Idade de", "idade2": "Idade ate",
+    "tempo_servico1": "TServ de", "tempo_servico2": "TServ ate",
+    "nas_ferias": "Fer", "se_afastado": "Afs", "mes_admissao": "Adm", "mes_rescisao": "Rsc",
+}
+
+
+def _mf_diff_log(antes, depois):
+    """So o que a alteracao mudou: 'Valor R$200.00>R$255.00; Fer 3>4'."""
+    def _n(v):
+        return "" if v in (None, "", 0) else str(v).strip()
+
+    def _valor(r):
+        tp = str(r.get("tipo_valor") or "V").upper()
+        v = int(r.get("valor") or 0)
+        return (f"R${v/100:,.2f}" if tp == "V"
+                else f"{_mf_pct_fmt(v)}% {_MF_TIPOS_VALOR.get(tp, tp)[2:]}")
+
+    def _vig(r):
+        return _obs_mov_fixo(r.get("cod_verba") or 0, r.get("valor") or 0, r).split(" | ")[1]
+
+    mud = []
+    if _n(antes.get("cod_verba")) != _n(depois.get("cod_verba")):
+        mud.append(f"Verba {str(antes.get('cod_verba') or '').zfill(4)}>"
+                   f"{str(depois.get('cod_verba') or '').zfill(4)}")
+    va, vd = _valor(antes), _valor(depois)
+    if va != vd:
+        mud.append(f"Valor {va}>{vd}")
+    ga, gd = _vig(antes), _vig(depois)
+    if ga != gd:
+        mud.append(f"Vig {ga}>{gd}")
+    for k, rot in _MF_DIFF_ROTULOS.items():
+        a, d = _n(antes.get(k)), _n(depois.get(k))
+        if k.startswith("data"):              # datas podem vir com ou sem traco
+            a, d = a.replace("-", ""), d.replace("-", "")
+        if a != d:
+            mud.append(f"{rot} {a or '-'}>{d or '-'}")
+    return "; ".join(mud) or "nada"
+
+
 # =========================================================
 # MOVIMENTO FIXO — Tela de manutenção
 # =========================================================
@@ -35298,23 +35344,28 @@ def api_mov_fixo_alterar():
     # movimento parado o ressuscitaria sem ninguem pedir. So vale quando o
     # registro ja era de parcelas: se ele veio do modo periodo, a folha final
     # era vigencia e morre junto com a troca de modo.
-    if campos["qtd_parcelas"] and campos["folha_final"] is None:
-        try:
-            r_atual = (supabase.table("tab_mov_fixo").select("qtd_parcelas, folha_final")
-                       .eq("id", id_reg).eq("id_empresa", id_empresa)
-                       .eq("id_cliente", id_cliente).limit(1).execute())
-            atual = (r_atual.data or [{}])[0]
-            if atual.get("qtd_parcelas"):
-                campos["folha_final"] = atual.get("folha_final")
-        except Exception:
-            pass
+    # O registro como estava: serve a regra acima e ao log do "antes > depois".
+    atual = {}
+    try:
+        r_atual = (supabase.table("tab_mov_fixo").select("*")
+                   .eq("id", id_reg).eq("id_empresa", id_empresa)
+                   .eq("id_cliente", id_cliente).limit(1).execute())
+        atual = (r_atual.data or [{}])[0]
+    except Exception:
+        pass
+    if campos["qtd_parcelas"] and campos["folha_final"] is None and atual.get("qtd_parcelas"):
+        campos["folha_final"] = atual.get("folha_final")
 
     try:
         supabase.table("tab_mov_fixo").update(campos) \
             .eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute()
         mat = _int(data.get("matricula"))
         obs = _obs_mov_fixo(cod_verba, valor, campos)
-        gravar_log("MOV-FIXO-ALT", f"ID {id_reg} | {obs}", matricula=mat)
+        mudou = _mf_diff_log(atual, campos) if atual else "?"
+        # O que mudou vai na frente: a observacao do tab_log nao guarda mais de
+        # ~300 caracteres e o que passar disso nao pode derrubar a linha.
+        gravar_log("MOV-FIXO-ALT", f"ID {id_reg} | Mudou: {mudou} | Ficou: {obs}"[:300],
+                   matricula=mat)
         return jsonify({"ok": True, "msg": "Movimento fixo alterado com sucesso."})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
