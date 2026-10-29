@@ -1084,7 +1084,10 @@ function editarRegistro(id) {
         document.getElementById('inp-parc-before').value = r.qtd_parcelas_before || 0;
     } else {
         selecionarVig('periodo');
-        document.getElementById('inp-folha-ini').value = FOLHA_INI_DEFAULT;
+        // A alteracao mantem o inicio gravado; com a folha atual aqui, todo
+        // salvar trocava o inicio para o mes corrente e perdia o historico.
+        document.getElementById('inp-folha-ini').value =
+            r.folha_inicial ? formatFolha(r.folha_inicial) : FOLHA_INI_DEFAULT;
         const indeterminado = !r.folha_final || r.folha_final === 999912;
         document.getElementById('chk-indeterminado').checked = indeterminado;
         toggleIndeterminado(indeterminado);
