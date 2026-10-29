@@ -29719,7 +29719,7 @@ def dissidio_pdf():
 
     # ── Listagem contínua ──
     dados = [["Funcionário / Mês", "Sal. atual", "Sal. no mês", "Índice", "Verba",
-              "Valor no mês", "Diferença"]]
+              "Valor no mês\nde origem", "Diferença"]]
     estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.5),
               ("FONT", (0, 1), (-1, -1), "Helvetica", 7.5),
               ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
@@ -29727,18 +29727,20 @@ def dissidio_pdf():
               ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]
     for f in res["funcionarios"]:
         ini = len(dados)
-        dados.append([f"{f['matricula']:06d} - {f['nome'][:34]}", _fmt_val(f["sal_atual"]),
-                      "", "", "", "", ""])
-        estilo += [("FONT", (0, ini), (-1, ini), "Helvetica-Bold", 7.5),
+        # Nome na linha inteira; o salário atual desce para a linha de cada mês.
+        dados.append([f"{f['matricula']:06d} - {f['nome']}", "", "", "", "", "", ""])
+        estilo += [("SPAN", (0, ini), (-1, ini)),
+                   ("FONT", (0, ini), (-1, ini), "Helvetica-Bold", 7.5),
                    ("BACKGROUND", (0, ini), (-1, ini), colors.HexColor("#f8fafc"))]
         if ini > 1:
             estilo.append(("LINEABOVE", (0, ini), (-1, ini), 0.6, colors.HexColor("#94a3b8")))
         for m in f["meses"]:
             for k, ln in enumerate(m["linhas"]):
-                dados.append(["    " + m["label"] if k == 0 else "", "",
+                dados.append(["    " + m["label"] if k == 0 else "",
+                              _fmt_val(f["sal_atual"]) if k == 0 else "",
                               _fmt_val(m["sal_base"]) if k == 0 else "",
                               _diss_pct(m["indice"]) if k == 0 else "",
-                              f"{ln['cod']:04d} {ln['dsc'][:24]}",
+                              f"{ln['cod']:04d} {ln['dsc'][:34]}",
                               _fmt_val(ln["valor_base"]), _fmt_val(ln["valor_dif"])])
             if len(f["meses"]) > 1:
                 dados.append(["", "", "", "", f"Total {m['label']}", "", _fmt_val(m["total"])])
@@ -29747,11 +29749,12 @@ def dissidio_pdf():
         estilo.append(("FONT", (4, len(dados) - 1), (-1, len(dados) - 1), "Helvetica-Bold", 7.5))
     dados.append(["TOTAL GERAL DA DIFERENÇA", "", "", "", f"{len(res['funcionarios'])} funcionário(s)",
                   "", _fmt_val(res["total_geral"])])
-    estilo += [("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 8.5),
+    estilo += [("SPAN", (0, -1), (3, -1)), ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
+               ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 8.5),
                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#dcfce7")),
                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#166534"))]
-    t = Table(dados, colWidths=[larg * .27, larg * .1, larg * .1, larg * .09, larg * .22,
-                                larg * .11, larg * .11], repeatRows=1)
+    t = Table(dados, colWidths=[larg * .12, larg * .11, larg * .11, larg * .09, larg * .29,
+                                larg * .15, larg * .13], repeatRows=1)
     t.setStyle(TableStyle(estilo))
     st.append(t)
 
