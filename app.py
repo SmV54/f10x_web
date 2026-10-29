@@ -74801,6 +74801,23 @@ _PXML_DOMINIO = {
 }
 
 
+# Colunas do tab_cad mais curtas que o campo do eSocial: o texto entra cortado
+# (e anotado) em vez de derrubar o lote inteiro com 22001. nmcargo é
+# varchar(40), como o campo da tela; o nmCargo do eSocial vai até 100 —
+# cliente 73, empresa 79, 29/10/2026, cargo de 50 letras.
+_PXML_TAMANHO = {"nmcargo": 40}
+
+
+def _pxml_corta_tamanho(rec, trocou):
+    for col, n in _PXML_TAMANHO.items():
+        v = rec.get(col)
+        if isinstance(v, str) and len(v) > n:
+            rec[col] = v[:n].rstrip()
+            chave = f"{col} cortado em {n} letras"
+            trocou[chave] = trocou.get(chave, 0) + 1
+    return rec
+
+
 def _pxml_aplica_dominio(rec, trocou):
     """Troca código fora do domínio pelo genérico, anotando o que trocou."""
     for col, (validos, padrao) in _PXML_DOMINIO.items():
@@ -74998,7 +75015,8 @@ def _pxml_importar(pasta, id_cliente, id_empresa, cnpj_empresa, progresso=None):
             if v not in (None, "", 0):
                 rec[col] = v
         rec.setdefault("situacao", "A")
-        rec = _pxml_aplica_dominio(_pxml_ajusta_colunas(rec, mat), trocou)
+        rec = _pxml_corta_tamanho(_pxml_aplica_dominio(_pxml_ajusta_colunas(rec, mat), trocou),
+                                  trocou)
         registros.append(_pxml_completa_obrigatorios(rec, faltou))
 
     if not registros:
