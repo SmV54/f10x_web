@@ -25,6 +25,7 @@ Sai um PDF (padrão em C:\\XMLeSocial\\Planilhas) com:
 Não grava nada no banco.
 """
 import os, re, sys, argparse
+from datetime import datetime
 from collections import defaultdict
 
 for _s in (sys.stdout, sys.stderr):
@@ -95,7 +96,7 @@ def nome_empresa(cnpj):
         app = I._supabase()
         rows = (app.supabase.table("tab_empresa").select("id_empresa, razaosocial, cnpj")
                 .like("cnpj", raiz + "%").execute().data or [])
-        return " / ".join(f"{int(r['id_empresa']):04d} - {(r.get('razaosocial') or '').strip()}" for r in rows)
+        return " / ".join(sorted({(r.get("razaosocial") or "").strip() for r in rows}))
     except Exception as e:
         print(f"(nome da empresa nao lido: {str(e)[:80]})")
         return ""
@@ -166,7 +167,7 @@ def main():
         rows = [[Paragraph(h, s_cb) for h in cab]]
         for c in cods:
             r = rub.get(c) or {}
-            dsc = r.get("dsc") or "(sem S-1010 nos ZIPs)"
+            dsc = r.get("dsc") or "(sem cadastro no S-1010)"
             if r.get("excluida"):
                 dsc += " — excluída no S-1010"
             lin = [c, dsc, r.get("tipo", ""), r.get("nat", ""),
@@ -185,44 +186,50 @@ def main():
     def nada(txt):
         return Paragraph(f"<font color='#166534'><b>Nenhuma.</b></font> {txt}", s_txt)
 
-    el = [Paragraph("CONFERÊNCIA DA PLANILHA DE-PARA × RUBRICAS DO eSOCIAL (S-1010)", s_tit),
-          Paragraph(f"Empresa: <b>{empresa or '(não cadastrada no Folha10)'}</b> — CNPJ {cnpj or '—'}<br/>"
-                    f"Planilha: <b>{os.path.basename(a.depara)}</b> — aba “{aba}”, {len(plan)} código(s)<br/>"
-                    f"ZIPs: {a.origem} — {len(rub)} rubrica(s) no S-1010, {n_ev} S-1200 válido(s) "
-                    "(sem os anulados por S-3000 e sem os originais retificados)", s_sub),
-          Spacer(1, 4)]
+    hoje = datetime.now().strftime("%d/%m/%Y")
+    el = [Paragraph("CONFERÊNCIA DA PLANILHA DE-PARA DE RUBRICAS", s_tit),
+          Paragraph(f"Empresa: <b>{empresa or '—'}</b> — CNPJ {cnpj or '—'}<br/>"
+                    f"Planilha conferida: <b>{os.path.basename(a.depara)}</b> (aba “{aba}”, {len(plan)} rubricas)<br/>"
+                    f"Comparada com o backup do eSocial da empresa: {len(rub)} rubricas cadastradas (S-1010) e "
+                    f"{n_ev} folhas de pagamento enviadas (S-1200). Conferência de {hoje}.", s_sub),
+          Spacer(1, 6)]
     tot_perdido = sum(uso[c]["vr"] for c in fora_usadas)
     el.append(Paragraph(
-        f"<b>Resultado:</b> {len(fora_usadas)} rubrica(s) com valor no S-1200 fora da planilha"
-        + (f" (<font color='#B91C1C'><b>{brl(tot_perdido)}</b></font> que ficariam de fora da importação)" if fora_usadas else "")
-        + f"; {len(fora_sem_uso)} fora da planilha sem uso; {len(plan_sem_s1010)} código(s) da planilha sem S-1010.",
-        ParagraphStyle("r", parent=s_sub, fontSize=9.5, textColor=colors.black)))
+        "Para trazer a ficha financeira do eSocial para o Folha10, cada rubrica da folha precisa estar na "
+        "planilha de-para, dizendo para qual verba do Folha10 ela vai (ou que não deve ser importada). "
+        "A rubrica que não está na planilha fica de fora da importação.", s_txt))
+    el.append(Paragraph(
+        f"<b>Resultado:</b> {len(fora)} rubrica(s) do eSocial não estão na planilha. Destas, "
+        f"<font color='#B91C1C'><b>{len(fora_usadas)} têm valores nas folhas</b></font>"
+        + (f" ({brl(tot_perdido)})" if fora_usadas else "")
+        + f" e precisam ser incluídas; as outras {len(fora_sem_uso)} nunca tiveram valor e podem ficar de fora.",
+        ParagraphStyle("r", parent=s_sub, fontSize=9.5, leading=12, textColor=colors.black)))
 
-    el.append(Paragraph("1. Fora da planilha e COM valor nos S-1200 — incluir antes de importar", s_sec))
-    el.append(Paragraph("O valor destas rubricas não entra no movimento se a planilha não disser para qual verba vai "
-                        "(ou que não deve ser importada).", s_txt))
+    el.append(Paragraph(f"1. Incluir na planilha — rubricas com valores nas folhas ({len(fora_usadas)})", s_sec))
+    el.append(Paragraph("Informe na planilha a verba do Folha10 de cada uma (ou “NÃO IMPORTAR”). Sem isso, "
+                        "estes valores não entram no histórico do funcionário — e o histórico é a base das médias "
+                        "de férias, 13º e rescisão.", s_txt))
     el.append(tabela(fora_usadas, True) if fora_usadas else nada("Todas as rubricas com valor estão na planilha."))
 
-    el.append(Paragraph("2. Fora da planilha e SEM uso nos S-1200 — não afetam a importação", s_sec))
-    el.append(Paragraph("Estão cadastradas no S-1010, mas nenhum S-1200 dos ZIPs tem valor nelas. Podem ficar fora; "
-                        "inclua se quiser a planilha completa.", s_txt))
-    el.append(tabela(fora_sem_uso, False) if fora_sem_uso else nada("Todas as rubricas do S-1010 estão na planilha."))
+    el.append(Paragraph(f"2. Opcional — rubricas cadastradas sem nenhum valor nas folhas ({len(fora_sem_uso)})", s_sec))
+    el.append(Paragraph("Estão cadastradas no eSocial, mas nenhuma folha usou. Não afetam a importação; inclua "
+                        "se quiser a planilha completa.", s_txt))
+    el.append(tabela(fora_sem_uso, False) if fora_sem_uso else nada("Todas as rubricas do eSocial estão na planilha."))
 
-    el.append(Paragraph("3. Na planilha mas sem S-1010 nem S-1200 nos ZIPs — conferir o código", s_sec))
+    el.append(Paragraph("3. Códigos da planilha que não existem no eSocial da empresa", s_sec))
     el.append(Paragraph("Pode ser erro de digitação (zero a mais, letra trocada) ou rubrica de outra empresa.", s_txt))
     if plan_sem_s1010:
-        rows = [[Paragraph(h, s_cb) for h in ("Código na planilha", "Linha")]] + \
-               [[Paragraph(c, s_cb), Paragraph(str(plan[c]), s_c)] for c in plan_sem_s1010]
+        rows = [[Paragraph(h, s_cb) for h in ("Código na planilha", "Linha")]] +                [[Paragraph(c, s_cb), Paragraph(str(plan[c]), s_c)] for c in plan_sem_s1010]
         t = Table(rows, colWidths=[.2 * W, .1 * W], repeatRows=1, hAlign="LEFT")
         t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF1FB")),
                                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1"))]))
         el.append(t)
     else:
-        el.append(nada("Todo código da planilha existe nos ZIPs."))
+        el.append(nada("Todos os códigos da planilha existem no eSocial da empresa."))
 
     def rodape(c, d):
         c.saveState(); c.setFont("Helvetica", 7); c.setFillColor(colors.HexColor("#64748B"))
-        c.drawString(1.5 * cm, 0.8 * cm, "Folha10-Simples · Conferência de-para × S-1010")
+        c.drawString(1.5 * cm, 0.8 * cm, "Folha10-Simples · Conferência da planilha de-para de rubricas")
         c.drawRightString(landscape(A4)[0] - 1.5 * cm, 0.8 * cm, f"Página {d.page}"); c.restoreState()
 
     saida = a.saida or os.path.join(DX.PLANILHAS, "Conferencia_DePara_S1010_"
