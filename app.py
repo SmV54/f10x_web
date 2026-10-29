@@ -29712,7 +29712,8 @@ def dissidio_pdf():
                     + (f" — Verba destino: {destino_txt}" if destino_txt else ""), est["sub"]),
           Paragraph((f"Verbas que não entram: {nao_txt} — " if nao_txt else "")
                     + f"Descontos que reduzem a diferença: "
-                    + ", ".join(f"{c:04d}" for c in DISSIDIO_DESCONTOS) + f" — {situacao}", est["sub"]),
+                    + ", ".join(f"{c:04d}" for c in DISSIDIO_DESCONTOS), est["sub"]),
+          Paragraph(situacao, est["sub"]),
           Spacer(1, 8)]
 
     # ── Listagem contínua ──
