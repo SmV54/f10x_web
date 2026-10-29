@@ -35310,7 +35310,17 @@ def api_mov_fixo_alterar():
 
     # Mesma trava da inclusao: a alteracao pode trocar a verba ou o funcionario
     # e cair num caso que o cadastro ja cobre.
-    _mat_alt = data.get("matricula")
+    # A tela manda a lista "matriculas" (o mesmo coletarDados do incluir). Lendo
+    # so "matricula", toda alteracao apagava a matricula e o movimento passava a
+    # valer para todos (empresa 9, ID 495, verba 0323 da mat 8, em 29/10/2026).
+    _mats = data.get("matriculas")
+    if _mats is None:
+        _mats = [data.get("matricula")] if data.get("matricula") else []
+    if len(_mats) > 1:
+        return jsonify({"ok": False, "msg":
+            "Na alteração escolha um funcionário só: o registro é de uma matrícula. "
+            "Para os outros, use Incluir."})
+    _mat_alt = _mats[0] if _mats else None
     bloqueio = _bloqueio_adicional_mov_fixo(
         id_empresa, id_cliente, str(session.get("anomes_atual") or ""),
         cod_verba, [_mat_alt] if _mat_alt else None)
@@ -35326,7 +35336,7 @@ def api_mov_fixo_alterar():
         return None if (n is None or n >= 999912) else n
 
     campos = {
-        "matricula":           _int(data.get("matricula")),
+        "matricula":           _int(_mat_alt),
         "id_sindicato":        _int(data.get("id_sindicato")),
         "id_funcao":           _int(data.get("id_funcao")),
         "categoria":           _str(data.get("categoria")),
@@ -35375,7 +35385,7 @@ def api_mov_fixo_alterar():
     try:
         supabase.table("tab_mov_fixo").update(campos) \
             .eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute()
-        mat = _int(data.get("matricula"))
+        mat = _int(_mat_alt)
         obs = _obs_mov_fixo(cod_verba, valor, campos)
         mudou = _mf_diff_log(atual, campos) if atual else "?"
         # O que mudou vai na frente: a observacao do tab_log nao guarda mais de
