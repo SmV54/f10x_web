@@ -34726,6 +34726,19 @@ def mov_fixo():
     except Exception:
         pass
 
+    # So para mostrar o nome na lista e no filtro: movimento em vigencia de quem
+    # ja nao esta ativo (demitido, transferido) aparecia como "—".
+    nomes_func = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer")
+             .eq("id_empresa", id_empresa)
+             .execute())
+        nomes_func = {f["matricula"]: (f.get("nomer") or f.get("nome") or "").strip()
+                      for f in (r.data or [])}
+    except Exception:
+        pass
+
     categorias = []
     try:
         r = (supabase.table("tab_tabela_total")
@@ -34755,6 +34768,7 @@ def mov_fixo():
         **_ctx_relatorio(),
         modo_alterar=modo_alterar,
         funcionarios=funcionarios,
+        nomes_func=nomes_func,
         verbas=verbas,
         sindicatos=sindicatos,
         funcoes=funcoes,

@@ -215,6 +215,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     font-size: 11.5px; font-weight: 500; color: #475569; cursor: pointer;
     white-space: nowrap; }
 .chk-mostrar-todos input { accent-color: var(--accent); cursor: pointer; }
+#lista-titulo { white-space: nowrap; }
+.filtros-alt { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 20px 4px; }
+.filtro-box { flex: 1 1 280px; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; background: #fff; }
+.filtro-tit { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.filtro-box select { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1;
+    border-radius: 6px; font-family: var(--sans); font-size: 12px; background: #fff; }
+.filtro-obs { font-size: 10.5px; color: #64748b; margin-top: 5px; }
 .td-num { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 28px; text-align: right; }
 .td-cod { font-family: var(--mono); font-size: 11px; }
 .td-val { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
@@ -519,14 +527,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <div class="card-titulo">
             <span id="lista-titulo">{{ 'Escolha o movimento fixo e clique em ✏️ para alterar' if modo_alterar else 'Movimentos Fixos em Vigência' }}</span>
             <span style="display:flex;align-items:center;gap:14px;">
-                {% if modo_alterar %}
-                <label class="chk-mostrar-todos">
-                    Verba:
-                    <select id="sel-filtro-verba" onchange="renderLista(REGISTROS)">
-                        <option value="">Todas</option>
-                    </select>
-                </label>
-                {% endif %}
                 <label class="chk-mostrar-todos">
                     <input type="checkbox" id="chk-todos" onchange="renderLista(REGISTROS)">
                     Mostrar também os encerrados
@@ -534,6 +534,23 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
             </span>
         </div>
+        {% if modo_alterar %}
+        <div class="filtros-alt">
+            <div class="filtro-box">
+                <div class="filtro-tit">🔎 Filtrar uma verba (Rubrica)</div>
+                <select id="sel-filtro-verba" onchange="renderLista(REGISTROS)">
+                    <option value="">Todas</option>
+                </select>
+            </div>
+            <div class="filtro-box">
+                <div class="filtro-tit">👤 Filtrar um funcionário</div>
+                <select id="sel-filtro-func" onchange="renderLista(REGISTROS)">
+                    <option value="">Todos</option>
+                </select>
+                <div class="filtro-obs">Só os lançados direto para o funcionário; os de grupo (sindicato, função, todos) saem da lista.</div>
+            </div>
+        </div>
+        {% endif %}
         <div id="msg-lista" class="msg-form" style="margin:0 16px;"></div>
         <div id="lista-container"><div class="vazio">Carregando…</div></div>
     </div>
@@ -551,6 +568,7 @@ const FOLHA_INI_DEFAULT = '{{ folha_ini_default }}';
 // Card "Alterar Mov. Fixo": so a lista com o lapis; o formulario abre ao escolher.
 const MODO_ALTERAR = {{ 'true' if modo_alterar else 'false' }};
 const FUNCIONARIOS = {{ funcionarios | tojson | safe }};
+const NOMES_FUNC   = {{ nomes_func   | tojson | safe }};   // todos, ativos ou nao — so para exibir
 const VERBAS       = {{ verbas       | tojson | safe }};
 const SINDICATOS   = {{ sindicatos   | tojson | safe }};
 const FUNCOES      = {{ funcoes      | tojson | safe }};
@@ -1144,7 +1162,7 @@ async function pararRegistro(id) {
 }
 
 // ── LISTA ──
-function nomeFunc(mat) { const f = FUNCIONARIOS.find(x => x.matricula === mat); return f ? f.nome : '—'; }
+function nomeFunc(mat) { const f = FUNCIONARIOS.find(x => x.matricula === mat); return f ? f.nome : (NOMES_FUNC[mat] || '—'); }
 function nomeVerba(cod) { const v = VERBAS.find(x => x.cod_rubr === cod); return v ? v.dsc_rubr : '—'; }
 function nomeSind(id) { const s = SINDICATOS.find(x => x.id === id); return s ? s.nome : `Sind.#${id}`; }
 function nomeFunc2(id) { const f = FUNCOES.find(x => x.id === id); return f ? f.nome : `Func.#${id}`; }
@@ -1187,17 +1205,19 @@ function jaEncerrado(r) {
               && ANOMES_ATUAL && r.folha_final < ANOMES_ATUAL);
 }
 
-// Opcoes do filtro: cada verba que aparece na lista, com quantos registros tem.
-// A verba escolhida continua na lista mesmo que suma (ex.: desmarcar encerrados).
-function montarFiltroVerba(sel, regs) {
+// Opcoes de um filtro: cada verba (ou matricula) que aparece na lista, com
+// quantos registros tem. A escolhida continua na lista mesmo que suma (ex.:
+// desmarcar encerrados), para nao trocar o filtro sozinha.
+function montarFiltro(sel, regs, campo, todos, rotulo) {
     const atual = sel.value;
     const cont = {};
-    regs.forEach(r => { cont[r.cod_verba] = (cont[r.cod_verba] || 0) + 1; });
+    regs.forEach(r => { if (r[campo]) cont[r[campo]] = (cont[r[campo]] || 0) + 1; });
     if (atual && !cont[atual]) cont[atual] = 0;
-    const cods = Object.keys(cont).map(Number).sort((a, b) => a - b);
-    sel.innerHTML = '<option value="">Todas</option>' + cods.map(c =>
-        `<option value="${c}">${String(c).padStart(4,'0')} — ${nomeVerba(c)} (${cont[c]})</option>`
-    ).join('');
+    const cods = Object.keys(cont).map(Number);
+    if (campo === 'matricula') cods.sort((a, b) => nomeFunc(a).localeCompare(nomeFunc(b)));
+    else cods.sort((a, b) => a - b);
+    sel.innerHTML = `<option value="">${todos}</option>` + cods.map(c =>
+        `<option value="${c}">${rotulo(c)} (${cont[c]})</option>`).join('');
     sel.value = atual;
 }
 
@@ -1212,19 +1232,25 @@ function renderLista(regs) {
     const ocultos = tudo ? 0 : regs.filter(jaEncerrado).length;
     if (!tudo) regs = regs.filter(r => !jaEncerrado(r));
 
-    // Card Alterar: filtro por verba, com as verbas que tem movimento na lista.
+    // Card Alterar: filtros por verba e por funcionario (valem juntos).
     const selVerba = document.getElementById('sel-filtro-verba');
+    const selFunc  = document.getElementById('sel-filtro-func');
+    const filtrando = !!(selVerba && (selVerba.value || selFunc.value));
     if (selVerba) {
-        montarFiltroVerba(selVerba, regs);
+        montarFiltro(selVerba, regs, 'cod_verba', 'Todas',
+                     c => `${String(c).padStart(4,'0')} — ${nomeVerba(c)}`);
+        montarFiltro(selFunc, regs, 'matricula', 'Todos',
+                     m => `${String(m).padStart(6,'0')} — ${nomeFunc(m)}`);
         if (selVerba.value) regs = regs.filter(r => String(r.cod_verba) === selVerba.value);
+        if (selFunc.value)  regs = regs.filter(r => String(r.matricula) === selFunc.value);
     }
 
     document.getElementById('lista-titulo').textContent =
         MODO_ALTERAR ? 'Escolha o movimento fixo e clique em ✏️ para alterar'
         : tudo ? 'Movimentos Fixos Cadastrados' : 'Movimentos Fixos em Vigência';
 
-    if (!regs.length && selVerba && selVerba.value) {
-        el.innerHTML = '<div class="vazio">Nenhum movimento fixo nesta verba.</div>';
+    if (!regs.length && filtrando) {
+        el.innerHTML = '<div class="vazio">Nenhum movimento fixo com este filtro.</div>';
         return;
     }
     if (!regs.length) {
