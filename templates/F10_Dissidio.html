@@ -171,6 +171,13 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .btn-gravar:hover { background: #1a5fb8; }
 .btn:disabled { background: #e2e8f0; color: #94a3b8; border-color: #e2e8f0; cursor: not-allowed; }
 .resumo-acao { font-size: 12px; color: #64748b; margin-left: auto; }
+.prog-box { padding: 12px 20px 14px; border-top: 1px solid var(--border); background: #f8fafc; }
+.prog-track { height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden; }
+.prog-fill {
+    height: 100%; width: 0%; background: linear-gradient(90deg, #2a7de1, #38bdf8);
+    border-radius: 99px; transition: width 0.3s ease;
+}
+.prog-txt { display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-top: 6px; }
 
 /* ── AVISOS ── */
 .aviso {
@@ -331,6 +338,10 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
             <button class="btn btn-gravar" id="btn-gravar" onclick="gravar()" disabled
                     {% if not pode_gravar %}title="Só com a folha Normal e Aberta"{% endif %}>💾 Gravar no movimento de {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</button>
             <span class="resumo-acao" id="resumo-acao"></span>
+        </div>
+        <div class="prog-box" id="prog-box" style="display:none;">
+            <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+            <div class="prog-txt"><span id="prog-txt"></span><span id="prog-pct">0%</span></div>
         </div>
     </div>
 {% endif %}
@@ -531,20 +542,15 @@ async function gravar(substituir) {
     if (!ultimo) return;
     const p = Object.assign({}, ultimo.p, { verba_destino: document.getElementById('verba-destino').value });
     if (!p.verba_destino) { msg('Escolha a verba destino da diferença.'); return; }
-    if (!substituir) {
-        const sim = await f10Confirm(
-            `Gravar a diferença de dissídio de ${ultimo.d.funcionarios.length} funcionário(s), ` +
-            `total R$ ${brl(ultimo.d.total_geral)}, na verba ${fmtCod(p.verba_destino)}?\n\n` +
-            'Depois é preciso calcular a folha para a diferença entrar no contracheque.',
-            { titulo: 'Gravar diferença de dissídio', okText: 'Gravar' });
-        if (!sim) return;
-    }
     p.substituir = !!substituir;
     const btn = document.getElementById('btn-gravar');
     btn.disabled = true;
     try {
+        // 1º só confere (verba destino já lançada no mês, dissídio já gravado...),
+        // para o aviso vir antes da confirmação.
         const r = await fetch('/api/dissidio/gravar', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p)
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({}, p, { conferir: true }))
         });
         const d = await r.json();
         if (!d.ok && d.ja_gravado) {
@@ -557,12 +563,69 @@ async function gravar(substituir) {
             return;
         }
         if (!d.ok) { msg(d.msg || 'Não foi possível gravar.'); btn.disabled = false; return; }
-        await f10Alert(d.msg, { titulo: 'Diferença de dissídio gravada' });
+        if (!substituir) {
+            const sim = await f10Confirm(
+                `Gravar a diferença de dissídio de ${ultimo.d.funcionarios.length} funcionário(s), ` +
+                `total R$ ${brl(ultimo.d.total_geral)}, na verba ${fmtCod(p.verba_destino)}?\n\n` +
+                'Depois é preciso calcular a folha para a diferença entrar no contracheque.',
+                { titulo: 'Gravar diferença de dissídio', okText: 'Gravar' });
+            if (!sim) { btn.disabled = false; return; }
+        }
+        const fim = await gravarComBarra(p);
+        if (!fim || !fim.ok) {
+            msg((fim && fim.msg) || 'Não foi possível gravar.');
+            btn.disabled = false;
+            return;
+        }
+        await f10Alert(fim.msg, { titulo: 'Diferença de dissídio gravada' });
         window.location.reload();
     } catch (e) {
+        barra(null);
         msg('Erro de comunicação: ' + e);
         btn.disabled = false;
     }
+}
+
+function barra(pct, txt) {
+    const box = document.getElementById('prog-box');
+    if (pct === null) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    document.getElementById('prog-fill').style.width = pct + '%';
+    document.getElementById('prog-pct').textContent = pct + '%';
+    if (txt) document.getElementById('prog-txt').textContent = txt;
+}
+
+// Grava lendo o fluxo de linhas JSON do servidor: {p, t} move a barra; a
+// linha com "ok" é o resultado.
+async function gravarComBarra(p) {
+    msg('');
+    barra(0, 'Iniciando...');
+    const r = await fetch('/api/dissidio/gravar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p)
+    });
+    if ((r.headers.get('Content-Type') || '').indexOf('ndjson') < 0) {
+        const d = await r.json();            // recusa de última hora (validação)
+        barra(null);
+        return d;
+    }
+    const leitor = r.body.getReader(), dec = new TextDecoder();
+    let buf = '', fim = null;
+    const tratar = (lin) => {
+        if (!lin.trim()) return;
+        const ev = JSON.parse(lin);
+        if (ev.p !== undefined) barra(ev.p, ev.t);
+        if (ev.ok !== undefined) fim = ev;
+    };
+    while (true) {
+        const { value, done } = await leitor.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) { tratar(buf.slice(0, i)); buf = buf.slice(i + 1); }
+    }
+    tratar(buf);
+    if (!fim || !fim.ok) barra(null);
+    return fim;
 }
 
 async function excluirDissidio() {

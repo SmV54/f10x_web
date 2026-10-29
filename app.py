@@ -29495,56 +29495,88 @@ def api_dissidio_gravar():
         return jsonify({"ok": False, "msg": (
             f"A verba {destino:04d} já tem {len(existentes)} lançamento(s) nesta folha. "
             "Escolha outra verba destino — o dissídio precisa de uma verba só para ele.")})
-
+    # Movimento fixo da verba destino valendo nesta folha: o cálculo da folha
+    # lançaria a verba de novo e ela somaria com o dissídio.
     try:
-        res = _diss_calcular(id_cliente, id_empresa, anomes, bases, nao, mats or None, com_aumento)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro no cálculo: {str(e)[:200]}"})
-    funcs = res["funcionarios"]
-    if not funcs:
+        fixos = [r for r in _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente)
+                 if int(r.get("cod_verba") or 0) == destino]
+    except Exception:
+        fixos = []
+    if fixos:
         return jsonify({"ok": False, "msg": (
-            "Nenhuma diferença encontrada: o salário atual de quem foi escolhido é igual "
-            "ao dos meses base.")})
+            f"A verba {destino:04d} está no Movimento Fixo valendo para {anomes[4:6]}/{anomes[:4]} "
+            f"({len(fixos)} registro(s)). Escolha outra verba destino — o dissídio precisa "
+            "de uma verba só para ele.")})
+    # A tela confere antes de pedir a confirmação: o aviso vem na hora, sem calcular.
+    if d.get("conferir"):
+        return jsonify({"ok": True, "conferido": True})
 
     cpf = str(session.get("cpf") or "")[:11]
-    movs, det = [], []
-    for f in funcs:
-        movs.append({"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
-                     "matricula": f["matricula"], "folha": int(anomes), "folha_tipo": "N",
-                     "cod_verba": destino, "qtd": 0, "valor": f["total"],
-                     "lote": DISSIDIO_LOTE, "origem": "M", "controle": 0, "os": 0})
-        for m in f["meses"]:
-            for ln in m["linhas"]:
-                det.append({"id_cliente": id_cliente, "id_empresa": id_empresa,
-                            "folha": int(anomes), "folha_tipo": "N",
-                            "matricula": f["matricula"], "folha_base": m["ym"],
-                            "folha_base_tipo": m["tipo"], "sal_atual": f["sal_atual"],
-                            "sal_base": m["sal_base"], "indice": round(m["indice"], 8),
-                            "cod_verba": ln["cod"], "valor_base": ln["valor_base"],
-                            "valor_dif": ln["valor_dif"], "cod_verba_destino": destino,
-                            "cpf_usuario": cpf})
-    try:
-        if ja:
-            _diss_apagar(id_empresa, anomes)
-        for i in range(0, len(det), 500):
-            supabase.table("tab_dissidio").insert(det[i:i + 500]).execute()
-        for i in range(0, len(movs), 500):
-            supabase.table("tab_mov").insert(movs[i:i + 500]).execute()
-    except Exception as e:
-        # Sem transação no Supabase: o que entrou pela metade sai de novo.
-        try:
-            _diss_apagar(id_empresa, anomes)
-        except Exception:
-            pass
-        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}. Nada foi gravado."})
 
-    meses_txt = ", ".join(_diss_label(*b) for b in bases)
-    gravar_log("DISSIDIO", (f"Dif. dissidio {meses_txt} -> verba {destino:04d}: "
-                            f"{len(funcs)} func., total {_fmt_val(res['total_geral'])}")[:200])
-    return jsonify({"ok": True, "funcionarios": len(funcs), "total": res["total_geral"],
-                    "msg": (f"Diferença de dissídio gravada para {len(funcs)} funcionário(s), "
-                            f"total {_fmt_brl(res['total_geral'])}, na verba {destino:04d}. "
-                            "Calcule a folha para ela entrar no contracheque.")})
+    # Daqui em diante a resposta é um fluxo de linhas JSON: {"p": %, "t": texto}
+    # para a barra de progresso e, por último, {"ok": ..., "msg": ...}.
+    @stream_with_context
+    def _passos():
+        def _ev(**k):
+            return json.dumps(k, ensure_ascii=False) + "\n"
+        yield _ev(p=5, t="Calculando a diferença...")
+        try:
+            res = _diss_calcular(id_cliente, id_empresa, anomes, bases, nao, mats or None, com_aumento)
+        except Exception as e:
+            yield _ev(ok=False, msg=f"Erro no cálculo: {str(e)[:200]}")
+            return
+        funcs = res["funcionarios"]
+        if not funcs:
+            yield _ev(ok=False, msg=("Nenhuma diferença encontrada: o salário atual de quem foi "
+                                     "escolhido é igual ao dos meses base."))
+            return
+        movs, det = [], []
+        for f in funcs:
+            movs.append({"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                         "matricula": f["matricula"], "folha": int(anomes), "folha_tipo": "N",
+                         "cod_verba": destino, "qtd": 0, "valor": f["total"],
+                         "lote": DISSIDIO_LOTE, "origem": "M", "controle": 0, "os": 0})
+            for m in f["meses"]:
+                for ln in m["linhas"]:
+                    det.append({"id_cliente": id_cliente, "id_empresa": id_empresa,
+                                "folha": int(anomes), "folha_tipo": "N",
+                                "matricula": f["matricula"], "folha_base": m["ym"],
+                                "folha_base_tipo": m["tipo"], "sal_atual": f["sal_atual"],
+                                "sal_base": m["sal_base"], "indice": round(m["indice"], 8),
+                                "cod_verba": ln["cod"], "valor_base": ln["valor_base"],
+                                "valor_dif": ln["valor_dif"], "cod_verba_destino": destino,
+                                "cpf_usuario": cpf})
+        lotes = ([("tab_dissidio", det[i:i + 100]) for i in range(0, len(det), 100)]
+                 + [("tab_mov", movs[i:i + 100]) for i in range(0, len(movs), 100)])
+        yield _ev(p=30, t=f"Gravando {len(funcs)} funcionário(s)...")
+        try:
+            if ja:
+                _diss_apagar(id_empresa, anomes)
+                yield _ev(p=35, t="Dissídio anterior apagado. Gravando...")
+            for k, (tab, chunk) in enumerate(lotes, 1):
+                supabase.table(tab).insert(chunk).execute()
+                yield _ev(p=35 + int(60 * k / len(lotes)),
+                          t=("Gravando o detalhe do cálculo..." if tab == "tab_dissidio"
+                             else "Gravando no movimento da folha..."))
+        except Exception as e:
+            # Sem transação no Supabase: o que entrou pela metade sai de novo.
+            try:
+                _diss_apagar(id_empresa, anomes)
+            except Exception:
+                pass
+            yield _ev(ok=False, msg=f"Erro ao gravar: {str(e)[:200]}. Nada foi gravado.")
+            return
+
+        meses_txt = ", ".join(_diss_label(*b) for b in bases)
+        gravar_log("DISSIDIO", (f"Dif. dissidio {meses_txt} -> verba {destino:04d}: "
+                                f"{len(funcs)} func., total {_fmt_val(res['total_geral'])}")[:200])
+        yield _ev(p=100, t="Gravado.", ok=True, funcionarios=len(funcs), total=res["total_geral"],
+                  msg=(f"Diferença de dissídio gravada para {len(funcs)} funcionário(s), "
+                       f"total {_fmt_brl(res['total_geral'])}, na verba {destino:04d}. "
+                       "Calcule a folha para ela entrar no contracheque."))
+
+    return Response(_passos(), mimetype="application/x-ndjson",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/dissidio/excluir", methods=["POST"])
