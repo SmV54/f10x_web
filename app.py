@@ -10100,6 +10100,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         id_empresa, id_cliente, folha_int, [int(c.get("matricula") or 0) for c in demitidos])
     resultados = []
     _extras = {"aviso": "", "movs": {}, "tot": {}, "cad": {}}
+    # Plano de saude por faixa de idade (ETAPA 3075). None = sem tabela no mes.
+    _plano_idade_ctx = _plano_idade_carregar(id_empresa, anomes)
     for cad in demitidos:
         mat = int(cad.get("matricula") or 0)
         nome = (cad.get("nome") or cad.get("nomer") or "").strip()
@@ -10590,6 +10592,29 @@ def _calc_rescisao_nucleo(body, sim=None):
                                 "unid": unid_m, "qtd": qtd_m, "det": det_m,
                                 "inc": "+".join(incs) if incs else "—"})
 
+        # ── Plano de saúde por faixa de idade (ETAPA 3075) ──
+        # Desktop (Calculo_Plano_Saude, RESCISAO_CALCULAR): o valor da faixa
+        # proporcional ao dia do desligamento sobre os dias do mes. A verba
+        # digitada na rescisao prevalece. Sem incidencia: so abate o liquido.
+        plano_desc, plano_det, plano_recs = 0, [], []
+        if _plano_idade_ctx:
+            _pi_itens, _pi_avisos = _plano_idade_do_func(_plano_idade_ctx, mat)
+            _pi_man = {int(r.get("cod_verba") or 0) for r in manual_mov.get(mat, [])}
+            _pi_dmes = calendar.monthrange(dt_resc.year, dt_resc.month)[1]
+            for it in _pi_itens:
+                cod_p = it["verba"]
+                _idade_s = "idade não informada" if it["idade"] is None else f"{it['idade']} anos"
+                _txt = (f"{cod_p:04d} {_rubr_desc.get(cod_p, f'Verba {cod_p:04d}')} — {it['quem']}, "
+                        f"{_idade_s}, faixa {it['faixa']}: {_fmt_brl(it['valor'])}")
+                if cod_p in _pi_man:
+                    plano_det.append(_txt + " — fica o valor digitado na rescisão (ETAPA 3070)")
+                    continue
+                val_p = int(it["valor"] * dt_resc.day / _pi_dmes + 0.5)
+                plano_desc += val_p
+                plano_recs.append({"cod_verba": cod_p, "qtd": 0, "valor": val_p})
+                plano_det.append(_txt + f" × {dt_resc.day}/{_pi_dmes} dias = <b>{_fmt_brl(val_p)}</b>")
+            plano_det += [f"<font color='#b91c1c'>Atenção: {_av}</font>" for _av in _pi_avisos]
+
         # ── Bases e impostos ──
         # As médias são REFLEXO (entram no 13º e nas férias), não são pagas como
         # linha própria. Saldo de salário incide INSS sobre o salário do período.
@@ -10684,7 +10709,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # A verba 60 não tem incidência de INSS/IRRF/FGTS (tab_rubrica: R=N/N/N/N),
         # por isso entra só no total de descontos, depois das bases já fechadas.
         total_desc = (g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
-                      + art480 + aviso_desc + falta_val + dsr_val)
+                      + art480 + aviso_desc + falta_val + dsr_val + plano_desc)
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -10728,6 +10753,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         if g_inss_13: recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": g_inss_13})
         if g_irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,       "qtd": 0, "valor": g_irrf_saldo})
         if g_irrf_13: recs.append({**base_mov, "cod_verba": VR_IRRF_13,      "qtd": 0, "valor": g_irrf_13})
+        recs += [{**base_mov, **_p} for _p in plano_recs if _p["valor"]]
         if recs and not sim:
             try:
                 supabase.table("tab_mov").insert(recs).execute()
@@ -10848,6 +10874,7 @@ def _calc_rescisao_nucleo(body, sim=None):
             # o que foi gravado/descontado está nos *_fmt e é zero.
             "enc0": _enc0, "enc0_cli": int(id_cliente or 0),
             "man_prov": man_prov, "man_desc": man_desc, "manuais_det": manuais_det,
+            "plano_desc": plano_desc, "plano_det": plano_det,
             "add_inss": add_inss, "add_irrf": add_irrf, "add_fgts": add_fgts,
             "total_prov": total_prov, "total_desc": total_desc, "liquido": liquido,
             # formatados p/ a tela
@@ -10901,7 +10928,7 @@ def _calc_rescisao_nucleo(body, sim=None):
 # não vão no JSON da tela.
 _CAMPOS_SO_PDF = {"medias_info", "inss_saldo_det", "inss_13_det",
                   "irrf_saldo_info", "irrf_13_info", "manuais_det", "faltas_resc",
-                  "avos13_det"}
+                  "avos13_det", "plano_det"}
 
 
 @app.route("/api/calc_rescisao_calcular", methods=["POST"])
@@ -11401,6 +11428,12 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             else:
                 e.append(_etapa("ETAPA 3070 - VERBAS MANUAIS LANCADAS", [],
                                 na="nenhuma verba digitada no movimento desta rescisão"))
+            # Plano de saúde por faixa de idade — só aparece com tabela na empresa
+            if r.get("plano_det"):
+                _lin_pl = list(r["plano_det"])
+                if r.get("plano_desc"):
+                    _lin_pl.append(f"<b>Total descontado: {_B(r['plano_desc'])}</b>")
+                e.append(_etapa("ETAPA 3075 - PLANO DE SAUDE POR FAIXA DE IDADE", _lin_pl))
             # 0007 — INSS
             _base_lbl = ("saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
                          + (" - faltas/DSR" if r.get("desc_inss") else ""))
@@ -21945,6 +21978,21 @@ def api_plano_dep_gravar():
             return jsonify({"ok": False, "msg": (
                 "Este dependente já está vinculado a esta verba num período que "
                 "se cruza com o informado. Encerre ou corrija o vínculo existente.")})
+    # Verba com tabela por faixa de idade (ver PLANO DE SAUDE POR FAIXA DE
+    # IDADE): o valor da faixa e' de UM dependente — dois na mesma verba
+    # somariam as faixas e o S-1210 dividiria em partes iguais.
+    if _plano_faixa_linhas(id_empresa, PLANO_DEP_OP1, cod):
+        for v in _vinculos_plano_dep(id_empresa, mat):
+            if vid and str(v.get("id")) == str(vid):
+                continue
+            if int(v.get("op2") or 0) != cod or int(v.get("ref1") or 0) == dep_id:
+                continue
+            if _am_periodo_cruza(inicio, fim, _am_do_evento(v, "data1i"), _am_do_evento(v, "data1f")):
+                return jsonify({"ok": False, "msg": (
+                    f"A verba {cod:04d} tem tabela por faixa de idade e já está com outro "
+                    "dependente neste período. Cada dependente precisa da sua verba "
+                    "(a tabela pode ser copiada em Tabelas Auxiliares → Plano de Saúde "
+                    "por Idade).")})
 
     ult = _cal.monthrange(int(fim[:4]), int(fim[4:]))[1] if fim else 0
     registro = {
@@ -21998,6 +22046,428 @@ def api_plano_dep_excluir():
     gravar_log("PLANO_DEP", f"EXC plano dependente: dep {v.get('ref1')} "
                f"verba {int(v.get('op2') or 0):04d}", matricula=v.get("matricula"))
     return jsonify({"ok": True, "msg": "Vínculo excluído."})
+
+
+# =========================================================
+# PLANO DE SAUDE POR FAIXA DE IDADE — tabela de valores por verba
+# =========================================================
+# Mesma forma do Folha10 Desktop (SR_Preenche Preenche_Matriz_PlanoSaude e
+# SR_Calculo Calculo_Plano_Saude): a tabela fica no mesmo op1 do vinculo,
+# com registro 0 (aqui matricula 0), uma linha por faixa:
+#   op2    = verba do plano (no Desktop, o plano da TABTAB 22)
+#   ref1   = valor da faixa em centavos — e' o desconto inteiro
+#   ref2   = idade ate (anos completos); 999 = todas as idades
+#   data1i = inicio (AAAAMM01) / data1f = fim (ultimo dia do mes) ou vazio
+# A idade e' a do ultimo dia da folha, e vale a primeira faixa com a idade
+# ate o limite. op1 33 = dependente; op1 32 = titular, pronto no calculo mas
+# ainda sem tela de vinculo (SMV 29/10/2026).
+# Cada dependente tem a sua verba: com tabela, a verba aceita um so
+# dependente ativo por mes, e o S-1210 manda o valor inteiro para ele (sem
+# rateio). Mudou o preco: linha nova a partir do mes, a antiga com Fim — o
+# mes ja calculado continua achando o preco que valia nele.
+PLANO_TIT_OP1     = 32
+PLANO_IDADE_TODAS = 999
+
+
+def _plano_faixa_linhas(id_empresa, op1=PLANO_DEP_OP1, cod_verba=None):
+    try:
+        q = (supabase.table("tab_eventos").select("*")
+             .eq("id_empresa", id_empresa).eq("matricula", 0).eq("op1", op1))
+        if cod_verba:
+            q = q.eq("op2", int(cod_verba))
+        return q.order("op2").order("data1i").order("ref2").execute().data or []
+    except Exception as e:
+        print(f"[plano_faixa] erro ao ler a tabela: {e}")
+        return []
+
+
+def _plano_faixas_vigentes(id_empresa, ano_mes, op1=PLANO_DEP_OP1):
+    """{verba: [faixas vigentes no mes, da menor idade para a maior]}."""
+    out = {}
+    for r in _plano_faixa_linhas(id_empresa, op1):
+        if _plano_dep_ativo(r, ano_mes):
+            out.setdefault(int(r.get("op2") or 0), []).append(r)
+    for v in out.values():
+        v.sort(key=lambda r: int(r.get("ref2") or 0))
+    return out
+
+
+def _plano_faixa_achar(faixas, idade):
+    """Primeira faixa que cobre a idade (999 cobre todas)."""
+    for r in faixas or []:
+        ate = int(r.get("ref2") or 0)
+        if ate == PLANO_IDADE_TODAS or (idade is not None and idade <= ate):
+            return r
+    return None
+
+
+def _plano_faixa_txt(faixas, r):
+    """'0 a 18 anos', '59 anos ou mais', 'todas as idades' — o 'de' e' o
+    'ate' da faixa anterior + 1."""
+    ate = int(r.get("ref2") or 0)
+    if ate == PLANO_IDADE_TODAS:
+        ants = [int(x.get("ref2") or 0) for x in faixas or []
+                if int(x.get("ref2") or 0) < PLANO_IDADE_TODAS]
+        return f"{max(ants) + 1} anos ou mais" if ants else "todas as idades"
+    de = max([int(x.get("ref2") or 0) + 1 for x in faixas or []
+              if int(x.get("ref2") or 0) < ate] or [0])
+    return f"{de} a {ate} anos"
+
+
+def _idade_na_data(dtnasc, dref):
+    """Anos completos em dref (date). dtnasc em AAAAMMDD ou AAAA-MM-DD."""
+    s = re.sub(r"\D", "", str(dtnasc or ""))[:8]
+    if len(s) != 8 or s == _DATA_VAZIA_LEGADO:
+        return None
+    a, m, d = int(s[:4]), int(s[4:6]), int(s[6:])
+    if not (1900 <= a <= dref.year and 1 <= m <= 12):
+        return None
+    return dref.year - a - (1 if (dref.month, dref.day) < (m, d) else 0)
+
+
+def _am_periodo_cruza(ini1, fim1, ini2, fim2):
+    """Dois periodos AAAAMM ('' = sem limite) se cruzam?"""
+    return (ini1 or "000000") <= (fim2 or "999999") and (ini2 or "000000") <= (fim1 or "999999")
+
+
+def _am_do_evento(v, campo):
+    s = str(v.get(campo) or "").strip()
+    return "" if _plano_dep_vazio(s) else s[:6]
+
+
+def _plano_dep_dois_na_verba(id_empresa, cod_verba, matricula=None):
+    """Matriculas com dois dependentes diferentes na mesma verba em periodos
+    que se cruzam — o que a tabela por idade nao aceita."""
+    try:
+        q = (supabase.table("tab_eventos").select("matricula, ref1, data1i, data1f")
+             .eq("id_empresa", id_empresa).eq("op1", PLANO_DEP_OP1)
+             .eq("op2", int(cod_verba)).gt("matricula", 0))
+        if matricula:
+            q = q.eq("matricula", int(matricula))
+        rows = q.execute().data or []
+    except Exception as e:
+        print(f"[plano_faixa] erro ao ler vinculos da verba {cod_verba}: {e}")
+        return []
+    por_mat, ruins = {}, []
+    for r in rows:
+        por_mat.setdefault(int(r["matricula"]), []).append(r)
+    for mat, vs in sorted(por_mat.items()):
+        for i, a in enumerate(vs):
+            if any(int(a.get("ref1") or 0) != int(b.get("ref1") or 0)
+                   and _am_periodo_cruza(_am_do_evento(a, "data1i"), _am_do_evento(a, "data1f"),
+                                         _am_do_evento(b, "data1i"), _am_do_evento(b, "data1f"))
+                   for b in vs[i + 1:]):
+                ruins.append(mat)
+                break
+    return ruins
+
+
+def _plano_idade_carregar(id_empresa, ano_mes):
+    """Pre-carga do calculo (uma vez por empresa). None quando a empresa nao
+    tem tabela vigente no mes — ai o calculo nem le os vinculos."""
+    am = str(ano_mes)[:6]
+    fx = {op: _plano_faixas_vigentes(id_empresa, am, op)
+          for op in (PLANO_DEP_OP1, PLANO_TIT_OP1)}
+    ops = [op for op, f in fx.items() if f]
+    if not ops:
+        return None
+    y, m = int(am[:4]), int(am[4:])
+    ctx = {"faixas": fx, "dref": date(y, m, calendar.monthrange(y, m)[1]),
+           "vinc": {}, "deps": {}, "nasc_tit": {}}
+    verbas = sorted({c for op in ops for c in fx[op]})
+    try:
+        rows = (supabase.table("tab_eventos").select("*")
+                .eq("id_empresa", id_empresa).gt("matricula", 0)
+                .in_("op1", ops).in_("op2", verbas).order("id").execute().data or [])
+    except Exception as e:
+        print(f"[plano_faixa] erro ao ler vinculos: {e}")
+        rows = []
+    for r in rows:
+        if _plano_dep_ativo(r, am):
+            ctx["vinc"].setdefault(int(r["matricula"]), []).append(r)
+    ids_dep = sorted({int(r.get("ref1") or 0) for vs in ctx["vinc"].values()
+                      for r in vs if int(r["op1"]) == PLANO_DEP_OP1})
+    mats_tit = sorted({int(r["matricula"]) for vs in ctx["vinc"].values()
+                       for r in vs if int(r["op1"]) == PLANO_TIT_OP1})
+    try:
+        if ids_dep:
+            ctx["deps"] = {int(d["id"]): d for d in (
+                supabase.table("tab_dependentes").select("id, nome, dtnascto")
+                .eq("id_empresa", id_empresa).in_("id", ids_dep).execute().data or [])}
+        if mats_tit:
+            ctx["nasc_tit"] = {int(c["matricula"]): c.get("dtnascto") for c in (
+                supabase.table("tab_cad").select("matricula, dtnascto")
+                .eq("id_empresa", id_empresa).in_("matricula", mats_tit).execute().data or [])}
+    except Exception as e:
+        print(f"[plano_faixa] erro ao ler nascimentos: {e}")
+    return ctx
+
+
+def _plano_idade_do_func(ctx, matricula):
+    """(itens, avisos) do funcionario: itens = [{verba, valor, quem, idade,
+    faixa}], um por vinculo ativo numa verba com tabela."""
+    itens, avisos = [], []
+    if not ctx:
+        return itens, avisos
+    for v in ctx["vinc"].get(int(matricula), []):
+        op1, cod = int(v["op1"]), int(v.get("op2") or 0)
+        faixas = ctx["faixas"].get(op1, {}).get(cod)
+        if not faixas:
+            continue
+        if op1 == PLANO_DEP_OP1:
+            dp = ctx["deps"].get(int(v.get("ref1") or 0))
+            if not dp:
+                continue
+            quem, nasc = (dp.get("nome") or "").strip() or "Dependente", dp.get("dtnascto")
+        else:
+            quem, nasc = "Titular", ctx["nasc_tit"].get(int(matricula))
+        idade = _idade_na_data(nasc, ctx["dref"])
+        fx = _plano_faixa_achar(faixas, idade)
+        if not fx:
+            avisos.append(f"verba {cod:04d}: {quem} "
+                          + ("sem data de nascimento" if idade is None
+                             else f"com {idade} anos, fora das faixas da tabela")
+                          + " — sem desconto")
+            continue
+        itens.append({"verba": cod, "valor": int(fx.get("ref1") or 0), "quem": quem,
+                      "idade": idade, "faixa": _plano_faixa_txt(faixas, fx)})
+    n_verba = {}
+    for it in itens:
+        n_verba[it["verba"]] = n_verba.get(it["verba"], 0) + 1
+    for cod, n in sorted(n_verba.items()):
+        if n > 1:
+            avisos.append(f"verba {cod:04d} com {n} pessoas no plano por idade: os valores "
+                          "somam e o S-1210 divide em partes iguais — use uma verba por dependente")
+    return itens, avisos
+
+
+@app.route("/plano_faixa_idade")
+def plano_faixa_idade():
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template(
+        "F10_Plano_Faixa_Idade.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=str(session.get("anomes_atual") or ""),
+    )
+
+
+@app.route("/api/plano_faixa_dados")
+def api_plano_faixa_dados():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    verbas = _verbas_plano_saude(session.get("id_cliente"), anomes)
+    linhas = _plano_faixa_linhas(id_empresa)
+    por_verba = {}
+    for r in linhas:
+        por_verba.setdefault(int(r.get("op2") or 0), []).append(r)
+    lista = []
+    for cod, rs in sorted(por_verba.items()):
+        for r in rs:
+            ini, fim = _am_do_evento(r, "data1i"), _am_do_evento(r, "data1f")
+            # o texto da faixa e' o do conjunto vigente junto com ela
+            mesmo = [x for x in rs if _am_periodo_cruza(
+                ini, fim, _am_do_evento(x, "data1i"), _am_do_evento(x, "data1f"))]
+            lista.append({
+                "id": r["id"], "cod_verba": cod, "ate": int(r.get("ref2") or 0),
+                "faixa": _plano_faixa_txt(sorted(mesmo, key=lambda x: int(x.get("ref2") or 0)), r),
+                "valor": int(r.get("ref1") or 0), "inicio": ini, "fim": fim,
+                "ativo": _plano_dep_ativo(r, anomes) if len(anomes) == 6 else True,
+                "passada": bool(len(anomes) == 6 and ini and ini < anomes),
+            })
+    return jsonify({"ok": True, "anomes": anomes, "linhas": lista, "verbas": [{
+        "cod": c, "nome": (r.get("dsc_rubr") or "").strip(),
+        "cnpj": re.sub(r"\D", "", str(r.get("plano_cnpj_oper") or "")),
+    } for c, r in sorted(verbas.items())]})
+
+
+def _am_mes_anterior(am):
+    y, m = int(am[:4]), int(am[4:])
+    return f"{y - 1}12" if m == 1 else f"{y}{m - 1:02d}"
+
+
+@app.route("/api/plano_faixa_gravar", methods=["POST"])
+def api_plano_faixa_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    d = request.get_json(force=True) or {}
+    try:
+        cod   = int(d.get("cod_verba") or 0)
+        ate   = int(d.get("ate") if d.get("ate") not in (None, "") else -1)
+        valor = int(d.get("valor") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Dados inválidos."})
+    vid    = d.get("id")
+    inicio = re.sub(r"\D", "", str(d.get("inicio") or ""))[:6]
+    fim    = re.sub(r"\D", "", str(d.get("fim") or ""))[:6]
+    if not id_empresa or not id_cliente or len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Sessão incompleta."})
+
+    def _am_ok(s):
+        return len(s) == 6 and 1900 <= int(s[:4]) <= 2100 and 1 <= int(s[4:]) <= 12
+    if not cod:
+        return jsonify({"ok": False, "msg": "Escolha a verba do plano de saúde."})
+    if not (0 <= ate <= 120 or ate == PLANO_IDADE_TODAS):
+        return jsonify({"ok": False, "msg": "Idade até: de 0 a 120 anos, ou 999 para todas as idades."})
+    if valor <= 0:
+        return jsonify({"ok": False, "msg": "Informe o valor da faixa."})
+    if not _am_ok(inicio):
+        return jsonify({"ok": False, "msg": "Informe o mês de início (MM/AAAA)."})
+    if fim and not _am_ok(fim):
+        return jsonify({"ok": False, "msg": "Mês de fim inválido (MM/AAAA)."})
+    if fim and fim < inicio:
+        return jsonify({"ok": False, "msg": "O fim não pode ser antes do início."})
+    rb = _verbas_plano_saude(id_cliente, anomes).get(cod)
+    if not rb:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {cod:04d} não é de plano de saúde (natureza 9219). Confira "
+            "em Cadastros → Rubricas (Verbas).")})
+
+    linhas = _plano_faixa_linhas(id_empresa, PLANO_DEP_OP1, cod)
+    atual = None
+    if vid:
+        atual = next((x for x in linhas if str(x["id"]) == str(vid)), None)
+        if not atual:
+            return jsonify({"ok": False, "msg": "Faixa não encontrada."})
+        # Faixa que ja valeu em mes anterior: folhas calculadas usaram o
+        # valor dela. So o Fim pode mudar (encerrar), e nao para tras do mes
+        # anterior a folha atual.
+        a_ini = _am_do_evento(atual, "data1i")
+        if a_ini and a_ini < anomes:
+            if (inicio != a_ini or ate != int(atual.get("ref2") or 0)
+                    or valor != int(atual.get("ref1") or 0)):
+                return jsonify({"ok": False, "msg": (
+                    "Esta faixa já valeu em meses anteriores: só dá para informar o Fim. "
+                    "Para mudar o valor, encerre esta faixa e grave uma nova a partir "
+                    "do mês do reajuste.")})
+            if fim and fim < _am_mes_anterior(anomes):
+                return jsonify({"ok": False, "msg": (
+                    f"O Fim não pode ser antes de {_am_mes_anterior(anomes)[4:]}/"
+                    f"{_am_mes_anterior(anomes)[:4]}: os meses já calculados usaram esta faixa.")})
+    for x in linhas:
+        if atual and x["id"] == atual["id"]:
+            continue
+        if int(x.get("ref2") or 0) == ate and _am_periodo_cruza(
+                inicio, fim, _am_do_evento(x, "data1i"), _am_do_evento(x, "data1f")):
+            return jsonify({"ok": False, "msg": (
+                "Já existe uma faixa com esta idade nesta verba num período que se cruza "
+                "com o informado. Encerre a outra (Fim) ou corrija o período.")})
+    dois = _plano_dep_dois_na_verba(id_empresa, cod)
+    if dois:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {cod:04d} tem mais de um dependente no mesmo funcionário "
+            f"(matrícula {', '.join(str(m) for m in dois[:10])}). Com a tabela por idade "
+            "cada dependente precisa da sua verba: ajuste em Cadastros → Plano de Saúde "
+            "do Dependente antes.")})
+
+    ult = calendar.monthrange(int(fim[:4]), int(fim[4:]))[1] if fim else 0
+    registro = {"op2": cod, "ref1": valor, "ref2": ate, "data1i": inicio + "01",
+                "data1f": f"{fim}{ult:02d}" if fim else _DATA_VAZIA_LEGADO}
+    try:
+        if atual:
+            (supabase.table("tab_eventos").update(registro)
+             .eq("id", int(atual["id"])).eq("id_empresa", id_empresa)
+             .eq("matricula", 0).eq("op1", PLANO_DEP_OP1).execute())
+        else:
+            registro.update({"id_cliente": id_cliente, "id_empresa": id_empresa,
+                             "matricula": 0, "folha": int(anomes), "op1": PLANO_DEP_OP1})
+            supabase.table("tab_eventos").insert(registro).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+    gravar_log("PLANO_IDADE",
+               f"{'ALT' if atual else 'INC'} faixa verba {cod:04d} ate "
+               f"{'todas' if ate == PLANO_IDADE_TODAS else ate} {_fmt_brl(valor)} "
+               f"{inicio[4:]}/{inicio[:4]}" + (f" a {fim[4:]}/{fim[:4]}" if fim else ""))
+    return jsonify({"ok": True, "msg": "Faixa gravada."})
+
+
+@app.route("/api/plano_faixa_excluir", methods=["POST"])
+def api_plano_faixa_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    vid = (request.get_json(force=True) or {}).get("id")
+    if not vid:
+        return jsonify({"ok": False, "msg": "Faixa não informada."})
+    try:
+        r = (supabase.table("tab_eventos").select("*")
+             .eq("id", int(vid)).eq("id_empresa", id_empresa)
+             .eq("matricula", 0).eq("op1", PLANO_DEP_OP1).limit(1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler: {e}"})
+    if not r.data:
+        return jsonify({"ok": False, "msg": "Faixa não encontrada."})
+    x = r.data[0]
+    ini = _am_do_evento(x, "data1i")
+    if ini and len(anomes) == 6 and ini < anomes:
+        return jsonify({"ok": False, "msg": (
+            "Esta faixa já valeu em meses anteriores e não pode ser excluída: "
+            "informe o Fim para encerrar.")})
+    try:
+        (supabase.table("tab_eventos").delete()
+         .eq("id", int(vid)).eq("id_empresa", id_empresa)
+         .eq("matricula", 0).eq("op1", PLANO_DEP_OP1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {e}"})
+    gravar_log("PLANO_IDADE", f"EXC faixa verba {int(x.get('op2') or 0):04d} ate "
+               f"{int(x.get('ref2') or 0)} {_fmt_brl(int(x.get('ref1') or 0))}")
+    return jsonify({"ok": True, "msg": "Faixa excluída."})
+
+
+@app.route("/api/plano_faixa_copiar", methods=["POST"])
+def api_plano_faixa_copiar():
+    """Copia as faixas vigentes na folha atual de uma verba para outra — cada
+    dependente tem a sua verba, e a tabela da operadora e' a mesma."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    d = request.get_json(force=True) or {}
+    try:
+        de, para = int(d.get("de") or 0), int(d.get("para") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Dados inválidos."})
+    if not de or not para or de == para:
+        return jsonify({"ok": False, "msg": "Escolha a verba de origem e uma verba de destino diferente."})
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Sessão incompleta."})
+    if para not in _verbas_plano_saude(id_cliente, anomes):
+        return jsonify({"ok": False, "msg": f"A verba {para:04d} não é de plano de saúde (natureza 9219)."})
+    origem = [x for x in _plano_faixa_linhas(id_empresa, PLANO_DEP_OP1, de)
+              if _plano_dep_ativo(x, anomes)]
+    if not origem:
+        return jsonify({"ok": False, "msg": f"A verba {de:04d} não tem faixas valendo em {anomes[4:]}/{anomes[:4]}."})
+    if _plano_faixa_linhas(id_empresa, PLANO_DEP_OP1, para):
+        return jsonify({"ok": False, "msg": (
+            f"A verba {para:04d} já tem tabela. A cópia só vale para verba sem nenhuma faixa.")})
+    dois = _plano_dep_dois_na_verba(id_empresa, para)
+    if dois:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {para:04d} tem mais de um dependente no mesmo funcionário "
+            f"(matrícula {', '.join(str(m) for m in dois[:10])}): cada dependente precisa da sua verba.")})
+    recs = [{"id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": 0,
+             "folha": int(anomes), "op1": PLANO_DEP_OP1, "op2": para,
+             "ref1": int(x.get("ref1") or 0), "ref2": int(x.get("ref2") or 0),
+             # a verba nova comeca na folha atual: os meses ja calculados
+             # dela nao tinham tabela
+             "data1i": max(str(x.get("data1i") or ""), anomes + "01"),
+             "data1f": x.get("data1f") or _DATA_VAZIA_LEGADO}
+            for x in origem]
+    try:
+        supabase.table("tab_eventos").insert(recs).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao copiar: {e}"})
+    gravar_log("PLANO_IDADE", f"COPIA {len(recs)} faixas da verba {de:04d} para {para:04d}")
+    return jsonify({"ok": True, "msg": f"{len(recs)} faixa(s) copiada(s) para a verba {para:04d}."})
 
 
 def _categoria_tem_ferias(codcateg):
@@ -53594,6 +54064,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     insalubridades  = _calc_etapa6_insalubridade(id_empresa, anomes, id_cliente=id_cliente)
     periculosidades = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
     mov_fixo_lista  = _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=id_cliente)
+    # Plano de saude por faixa de idade (ETAPA 1085): so a folha normal, como
+    # o Desktop. None = empresa sem tabela no mes.
+    _plano_idade_ctx = (_plano_idade_carregar(id_empresa, anomes)
+                        if anomes_tipo == "N" else None)
     # folha_tipo em tab_mov: N=Normal; 1/A (13°) também usam "N"; F e R são fluxos distintos
     _folha_tipo_mov = _folha_tipo_mov_de(anomes_tipo)
     tab_mov_dict    = _calc_etapa9_tab_mov(id_empresa, anomes,
@@ -54827,6 +55301,51 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
             ]))
             elems.append(e8_tbl)
+
+            # ── ETAPA 1085 — PLANO DE SAÚDE POR FAIXA DE IDADE ──────────
+            # Desktop: SR_Calculo Calculo_Plano_Saude. A idade e' a do ultimo
+            # dia da folha; o valor da faixa e' o desconto inteiro. Verba que
+            # ja veio do Movimento Fixo fica com ele (o Desktop pula a verba
+            # que ja esta no movimento); lancamento do mes substitui na
+            # ETAPA 1090, como qualquer verba calculada.
+            if _plano_idade_ctx:
+                _pi_itens, _pi_avisos = _plano_idade_do_func(_plano_idade_ctx, matr)
+                if not intermitente_tem_horas:
+                    _pi_itens = []
+                _manuais_mes = {int(r.get("cod_verba") or 0) for r in tab_mov_dict.get(matr, [])}
+                pi_rows  = [[Paragraph("ETAPA 1085 - PLANO DE SAUDE POR FAIXA DE IDADE", st_etapa)]]
+                for it in _pi_itens:
+                    cod_v = it["verba"]
+                    dsc_s = (rubricas_info.get(cod_v) or {}).get("dsc") or f"Verba {cod_v:04d}"
+                    _idade_s = "idade não informada" if it["idade"] is None else f"{it['idade']} anos"
+                    if cod_v in cod_verbas_fixas:
+                        _obs = "fica o valor do Movimento Fixo (ETAPA 1080)"
+                    else:
+                        mmVmm[cod_v] = mmVmm.get(cod_v, 0.0) + it["valor"]
+                        _obs = ("o lançamento do mês substitui (ETAPA 1090)"
+                                if cod_v in _manuais_mes else "")
+                    pi_rows.append([Paragraph(
+                        f"{cod_v:04d} — {dsc_s}   [Desconto]   {it['quem']} — {_idade_s} em "
+                        f"{_plano_idade_ctx['dref'].strftime('%d/%m/%Y')} — faixa {it['faixa']}: "
+                        f"<b>{_fmt_brl(it['valor'])}</b>" + (f"   — {_obs}" if _obs else ""),
+                        st_detalhe)])
+                for _av in _pi_avisos:
+                    pi_rows.append([Paragraph(f"<font color='#b91c1c'>Atenção: {_av}</font>", st_detalhe)])
+                    _aviso(f"Mat {matr}: plano de saúde — {_av}")
+                if len(pi_rows) == 1:
+                    pi_rows[0] = [Paragraph("ETAPA 1085 - PLANO DE SAUDE POR FAIXA DE IDADE   "
+                                            "Não se aplica — sem dependente em verba com tabela por idade",
+                                            st_etapa_na)]
+                pi_tbl = Table(pi_rows, colWidths=[17*cm])
+                pi_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0), 10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                    ("TOPPADDING",    (0, 1), (-1, -1), 1.5),
+                    ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
+                ]))
+                elems.append(pi_tbl)
 
             # ── etapa 9 — lançamentos manuais (tab_mov) ────────
             mov_func = tab_mov_dict.get(matr, [])
