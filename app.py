@@ -29706,14 +29706,15 @@ def dissidio_pdf():
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.5 * cm, rightMargin=1.5 * cm,
                             topMargin=1.3 * cm, bottomMargin=1.4 * cm,
                             title="Diferença de Dissídio")
-    st = [Paragraph("CÁLCULO DA DIFERENÇA DE DISSÍDIO", est["tit"]),
+    _sit_cor = "#dc2626" if situacao.startswith("SIMULA") else "#1e293b"
+    st = [Paragraph(f'CÁLCULO DA DIFERENÇA DE DISSÍDIO &nbsp;&nbsp;<font color="{_sit_cor}">{situacao}</font>',
+                    est["tit"]),
           Paragraph(f"{empresa_nm} — CNPJ {cnpj_fmt}", est["sub"]),
           Paragraph(f"Folha que paga: {anomes[4:6]}/{anomes[:4]} — Meses base: {bases_txt}"
                     + (f" — Verba destino: {destino_txt}" if destino_txt else ""), est["sub"]),
           Paragraph((f"Verbas que não entram: {nao_txt} — " if nao_txt else "")
                     + f"Descontos que reduzem a diferença: "
                     + ", ".join(f"{c:04d}" for c in DISSIDIO_DESCONTOS), est["sub"]),
-          Paragraph(situacao, est["sub"]),
           Spacer(1, 8)]
 
     # ── Listagem contínua ──
