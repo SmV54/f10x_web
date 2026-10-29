@@ -519,6 +519,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <div class="card-titulo">
             <span id="lista-titulo">{{ 'Escolha o movimento fixo e clique em ✏️ para alterar' if modo_alterar else 'Movimentos Fixos em Vigência' }}</span>
             <span style="display:flex;align-items:center;gap:14px;">
+                {% if modo_alterar %}
+                <label class="chk-mostrar-todos">
+                    Verba:
+                    <select id="sel-filtro-verba" onchange="renderLista(REGISTROS)">
+                        <option value="">Todas</option>
+                    </select>
+                </label>
+                {% endif %}
                 <label class="chk-mostrar-todos">
                     <input type="checkbox" id="chk-todos" onchange="renderLista(REGISTROS)">
                     Mostrar também os encerrados
@@ -1179,6 +1187,20 @@ function jaEncerrado(r) {
               && ANOMES_ATUAL && r.folha_final < ANOMES_ATUAL);
 }
 
+// Opcoes do filtro: cada verba que aparece na lista, com quantos registros tem.
+// A verba escolhida continua na lista mesmo que suma (ex.: desmarcar encerrados).
+function montarFiltroVerba(sel, regs) {
+    const atual = sel.value;
+    const cont = {};
+    regs.forEach(r => { cont[r.cod_verba] = (cont[r.cod_verba] || 0) + 1; });
+    if (atual && !cont[atual]) cont[atual] = 0;
+    const cods = Object.keys(cont).map(Number).sort((a, b) => a - b);
+    sel.innerHTML = '<option value="">Todas</option>' + cods.map(c =>
+        `<option value="${c}">${String(c).padStart(4,'0')} — ${nomeVerba(c)} (${cont[c]})</option>`
+    ).join('');
+    sel.value = atual;
+}
+
 function renderLista(regs) {
     const el   = document.getElementById('lista-container');
     const tudo = document.getElementById('chk-todos').checked;
@@ -1190,9 +1212,21 @@ function renderLista(regs) {
     const ocultos = tudo ? 0 : regs.filter(jaEncerrado).length;
     if (!tudo) regs = regs.filter(r => !jaEncerrado(r));
 
-    document.getElementById('lista-titulo').textContent =
-        tudo ? 'Movimentos Fixos Cadastrados' : 'Movimentos Fixos em Vigência';
+    // Card Alterar: filtro por verba, com as verbas que tem movimento na lista.
+    const selVerba = document.getElementById('sel-filtro-verba');
+    if (selVerba) {
+        montarFiltroVerba(selVerba, regs);
+        if (selVerba.value) regs = regs.filter(r => String(r.cod_verba) === selVerba.value);
+    }
 
+    document.getElementById('lista-titulo').textContent =
+        MODO_ALTERAR ? 'Escolha o movimento fixo e clique em ✏️ para alterar'
+        : tudo ? 'Movimentos Fixos Cadastrados' : 'Movimentos Fixos em Vigência';
+
+    if (!regs.length && selVerba && selVerba.value) {
+        el.innerHTML = '<div class="vazio">Nenhum movimento fixo nesta verba.</div>';
+        return;
+    }
     if (!regs.length) {
         el.innerHTML = '<div class="vazio">'
             + (ocultos ? `Nenhum movimento fixo em vigência. `
