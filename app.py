@@ -18542,10 +18542,12 @@ def api_limpeza_executar():
         # Nome de tabela nao entra no log (o usuario nao tem como entender).
         # A excecao e uma falha: ai a limpeza ficou pela metade e alguem
         # precisa saber exatamente onde, para poder consertar.
-        erros = [f"{t} ({r})" for t, r in resultados.items() if r != "ok"]
+        # A observacao do tab_log guarda ~300 caracteres e o que passa disso
+        # perde a linha inteira: o erro vai encurtado, para caber a lista toda.
+        erros = [f"{t} ({r[6:46]})" for t, r in resultados.items() if r != "ok"]
         if erros:
             obs_log += " ATENCAO — falhou em: " + "; ".join(erros)
-        gravar_log("LIMPEZA", obs_log[:500], matricula=0)
+        gravar_log("LIMPEZA", obs_log[:300], matricula=0)
     except Exception:
         pass  # o log nunca pode derrubar a resposta de uma limpeza ja feita
 
