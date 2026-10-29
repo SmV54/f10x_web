@@ -12726,6 +12726,7 @@ SUPORTE_TELAS = {
     # card 5 — Movimento Fixo
     "/mov_fixo":                   "Movimento Fixo",
     "/mov_fixo_encerrar":          "Movimento Fixo",
+    "/mov_fixo_alterar":           "Movimento Fixo",
     "/rel_mov_fixo":               "Movimento Fixo",
     # card 6 — Cálculo
     "/calcular_adiantamento":      "Adiantamento Quinzenal",
@@ -34599,7 +34600,11 @@ def _obs_mov_fixo(cod_verba, valor, payload):
 # MOVIMENTO FIXO — Tela de manutenção
 # =========================================================
 @app.route("/mov_fixo")
+@app.route("/mov_fixo_alterar")
 def mov_fixo():
+    # /mov_fixo_alterar e o card "Alterar Mov. Fixo": a mesma tela, so com a
+    # lista e o lapis; o formulario so aparece depois de escolher o registro.
+    modo_alterar = request.path == "/mov_fixo_alterar"
     if not session.get("logado"):
         return redirect("/")
     id_empresa  = _get_id_empresa()
@@ -34700,6 +34705,7 @@ def mov_fixo():
     return render_template(
         "F10_Mov_Fixo.html",
         **_ctx_relatorio(),
+        modo_alterar=modo_alterar,
         funcionarios=funcionarios,
         verbas=verbas,
         sindicatos=sindicatos,

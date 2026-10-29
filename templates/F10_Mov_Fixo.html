@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Folha10 Simples — Movimento Fixo</title>
+<title>Folha10 Simples — {{ 'Alterar Movimento Fixo' if modo_alterar else 'Movimento Fixo' }}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
@@ -248,7 +248,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
-    <div class="topo-titulo">Manutenção — Movimento Fixo<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+    <div class="topo-titulo">{{ 'Alterar — Movimento Fixo' if modo_alterar else 'Manutenção — Movimento Fixo' }}<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
@@ -261,7 +261,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <div class="conteudo">
 
     <!-- CARD: FORMULÁRIO -->
-    <div class="card" id="card-form">
+    <div class="card" id="card-form"{% if modo_alterar %} style="display:none;"{% endif %}>
         <div class="card-titulo">
             <span id="form-titulo">📌 Novo Movimento Fixo</span>
         </div>
@@ -517,7 +517,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <!-- CARD: LISTA -->
     <div class="card" id="card-lista">
         <div class="card-titulo">
-            <span id="lista-titulo">Movimentos Fixos em Vigência</span>
+            <span id="lista-titulo">{{ 'Escolha o movimento fixo e clique em ✏️ para alterar' if modo_alterar else 'Movimentos Fixos em Vigência' }}</span>
             <span style="display:flex;align-items:center;gap:14px;">
                 <label class="chk-mostrar-todos">
                     <input type="checkbox" id="chk-todos" onchange="renderLista(REGISTROS)">
@@ -526,6 +526,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
             </span>
         </div>
+        <div id="msg-lista" class="msg-form" style="margin:0 16px;"></div>
         <div id="lista-container"><div class="vazio">Carregando…</div></div>
     </div>
 
@@ -539,6 +540,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 <script>
 const FOLHA_INI_DEFAULT = '{{ folha_ini_default }}';
+// Card "Alterar Mov. Fixo": so a lista com o lapis; o formulario abre ao escolher.
+const MODO_ALTERAR = {{ 'true' if modo_alterar else 'false' }};
 const FUNCIONARIOS = {{ funcionarios | tojson | safe }};
 const VERBAS       = {{ verbas       | tojson | safe }};
 const SINDICATOS   = {{ sindicatos   | tojson | safe }};
@@ -828,7 +831,8 @@ function ymdToDate(s) { return (s && s.length === 8) ? `${s.slice(0,4)}-${s.slic
 
 // ── MENSAGEM ──
 function mostrarMsg(msg, tipo) {
-    const el = document.getElementById('msg-form');
+    // Com o formulario fechado (card Alterar), a mensagem vai para cima da lista.
+    const el = document.getElementById(MODO_ALTERAR && !modoEdicao ? 'msg-lista' : 'msg-form');
     el.textContent = msg;
     el.className = 'msg-form ' + (tipo === 'ok' ? 'msg-ok' : 'msg-err');
     setTimeout(() => { el.className = 'msg-form'; }, 5000);
@@ -946,7 +950,7 @@ async function gravar() {
     try {
         const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
         const d   = await res.json();
-        if (d.ok) { mostrarMsg(d.msg, 'ok'); cancelarEdicao(); carregarLista(); }
+        if (d.ok) { cancelarEdicao(); mostrarMsg(d.msg, 'ok'); carregarLista(); }
         else       mostrarMsg(d.msg || 'Erro ao gravar.', 'err');
     } catch { mostrarMsg('Erro de comunicação.', 'err'); }
     finally  { btn.disabled = false; }
@@ -995,6 +999,7 @@ function cancelarEdicao() {
     document.getElementById('btn-principal').textContent   = '✓ Incluir';
     document.getElementById('btn-cancelar').style.display  = 'none';
     resetarForm();
+    if (MODO_ALTERAR) document.getElementById('card-form').style.display = 'none';
 }
 
 // ── EDITAR ──
@@ -1007,6 +1012,7 @@ function editarRegistro(id) {
     const r = LISTA_MAP[id];
     if (!r) return;
     modoEdicao = true; idEdicao = id;
+    if (MODO_ALTERAR) document.getElementById('card-form').style.display = '';
 
     document.getElementById('form-titulo').textContent    = '✏️ Alterar Movimento Fixo';
     document.getElementById('edit-id').textContent        = id;
@@ -1209,7 +1215,9 @@ function renderLista(regs) {
             </td>
             <td><span class="sit-badge sit-${r.situacao}">${r.situacao === 'A' ? 'Ativo' : 'Inativo'}</span></td>
             <td style="white-space:nowrap;">
-                ${r.situacao === 'A'
+                ${r.situacao === 'A' && MODO_ALTERAR
+                    ? `<button class="btn-acao" title="Alterar" onclick="editarRegistro(${r.id})">✏️ Alterar</button>`
+                : r.situacao === 'A'
                     ? `<button class="btn-acao" title="Editar" onclick="editarRegistro(${r.id})">✏️</button>
                        <button class="btn-acao" title="Parar (encerra a vigência, mantém o histórico)" onclick="pararRegistro(${r.id})">⏹️</button>`
                       + (r.pode_excluir
