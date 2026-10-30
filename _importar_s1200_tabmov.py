@@ -185,7 +185,8 @@ def ler_rubricas_s1010(origem, zips=None):
     for _, t, _ in _eventos(origem, "S-1010", zips):
         cod, ini, dsc = _g("codRubr", t), _g("iniValid", t), _g("dscRubr", t)
         if cod and dsc and (cod not in rub or ini >= rub[cod]["ini"]):
-            rub[cod] = {"tp": _g("tpRubr", t), "nat": _g("natRubr", t), "dsc": dsc, "ini": ini}
+            rub[cod] = {"tp": _g("tpRubr", t), "nat": _g("natRubr", t), "dsc": dsc, "ini": ini,
+                        "cp": _g("codIncCP", t), "irrf": _g("codIncIRRF", t)}
     return rub
 
 
@@ -326,9 +327,16 @@ def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010, mat_por_e
                       f"No eSocial esta rubrica é {es_txt.upper()}, mas a verba {verba:04d} "
                       f"({ri['dsc'].strip()}) é {f10_txt.upper()}. Informe uma verba de {es_txt}.", ev, it, mat)
                 continue
+            # Rubrica com incidência de 13º no eSocial (INSS 12/32, IRRF 12/32/42)
+            # que veio na folha do MÊS — o 13º complementar de dezembro e o INSS
+            # dele (5103) — vai para a '1' junto com o 13º. Sem isso o INSS do
+            # complemento caía na 'N' (a 0104 não é verba só de 13º) e os
+            # proventos na '1': o líquido de dezembro não fechava com o eSocial.
+            r10 = r1010.get(cod) or {}
+            e13 = r10.get("cp") in ("12", "32") or r10.get("irrf") in ("12", "32", "42")
             if resc:
                 folha, tipo = int(ano + mes), "R"
-            elif anual or ri["uso"] == "1":
+            elif anual or ri["uso"] == "1" or e13:
                 folha, tipo = int(ano + "12"), "1"
             elif ri["uso"] == "F":
                 folha, tipo = int(ano + mes), "F"
