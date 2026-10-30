@@ -31,9 +31,9 @@ tab_mov (lote 1200, origem 'I'), com a NOSSA verba:
 tab_total (controle 1200), uma linha por matrícula/folha/tipo:
   - proventos, descontos e líquido: soma do tab_mov importado pelo tipo da verba;
   - base e valor do INSS: S-5001 (o que o eSocial apurou); base e valor do FGTS:
-    S-5003. Férias ('F') ficam com a parte das verbas de férias (base pelas
-    incidências da verba, INSS = verba 0103) e a 'N' com o resto do mês, para
-    N + F fechar com o eSocial. Mês com rescisão: tudo na 'R';
+    S-5003, inteiros na 'N'. Férias ('F') ficam só com as verbas de férias e o
+    INSS da verba 0103, sem base; a 'N' leva o INSS do mês menos o 0103.
+    Mês com rescisão: tudo na 'R';
   - base do IRRF: rubricas informativas de natureza 9903 do próprio S-1200
     (o S-5002 é por data de pagamento, não por competência);
   - salário: vrSalFx do S-2200/S-2206 vigente no fim do mês.
@@ -318,18 +318,10 @@ def montar_total(id_cliente, id_empresa, soma, irrf, tot, cpf_por_mat, sal, rinf
         ri, vc = rinfo[verba], _cent(v)
         d = g[(mat, folha, tipo)]
         d["prov" if ri["tp"] == "1" else "desc"] += vc
-        if tipo == "F":
-            sinal = 1 if ri["tp"] == "1" else -1
-            if ri["f_cp"] in ("11", "12"):
-                d["inss_base"] += sinal * vc
-            if ri["f_fgts"] in ("11", "12"):
-                d["fgts_base"] += sinal * vc
-            if verba == VERBA_INSS_FERIAS:
-                d["inss_desc"] += vc
+        if tipo == "F" and verba == VERBA_INSS_FERIAS:
+            d["inss_desc"] += vc
     for k, v in irrf.items():
         g[k]["irrf"] += v
-    for k in [k for k in g if k[2] == "F"]:
-        g[k]["fgts"] = g[k]["fgts_base"] * 8 // 100
 
     tipos = defaultdict(set)
     for mat, folha, tipo in list(g):
@@ -352,12 +344,16 @@ def montar_total(id_cliente, id_empresa, soma, irrf, tot, cpf_por_mat, sal, rinf
                 d["fgts_base"] += t["fgts_base"] + t["fgts_base13"]
                 d["fgts"] += t["fgts_dep"] + t["fgts_dep13"]
                 continue
+            # Base do mês inteira na 'N' (o seguro-desemprego só lê a N). A 'F'
+            # fica só com as verbas de férias e o INSS 0103, sem base: o sistema
+            # antigo pagava férias adiantadas e descontava na folha (verba 0051),
+            # então as verbas de férias passavam da base do mês e a N zerava.
             f = g.get((mat, folha, "F"), {})
             d = g[(mat, folha, "N")]
-            d["inss_base"] += t["inss_base0"] - f.get("inss_base", 0)
+            d["inss_base"] += t["inss_base0"]
             d["inss_desc"] += t["inss_desc0"] - f.get("inss_desc", 0)
-            d["fgts_base"] += t["fgts_base"] - f.get("fgts_base", 0)
-            d["fgts"] += t["fgts_dep"] - f.get("fgts", 0)
+            d["fgts_base"] += t["fgts_base"]
+            d["fgts"] += t["fgts_dep"]
             if t["fgts_base13"] or t["fgts_dep13"]:
                 d13 = g[(mat, int(per[:4] + "12"), "1")]
                 d13["fgts_base"] += t["fgts_base13"]
