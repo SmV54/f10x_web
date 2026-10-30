@@ -75722,6 +75722,106 @@ def api_descompactar_xml_importar_progresso():
     return jsonify({'ok': True, **job})
 
 
+# Etapa 4 — ficha financeira (S-1200 + S-2299 → tab_mov, S-5001/S-5003 → tab_total).
+# Separada da Etapa 3 de propósito: depende da planilha de-para do cliente, que
+# costuma chegar depois do cadastro. O núcleo é o _importar_s1200_tabmov.py
+# (o mesmo da linha de comando). Gravar só aceita o job de uma simulação já
+# feita, sem pendência e para a mesma empresa — o que se grava é o que se viu.
+_ficha_jobs = {}
+_ficha_res = {}
+
+
+def _ficha_resumo(res):
+    """O que a tela mostra (sem as linhas, que ficam no servidor)."""
+    return {k: v for k, v in res.items() if k not in ('linhas_mov', 'linhas_tot', 'nome')} | {
+        'n_mov': len(res.get('linhas_mov') or []), 'n_tot': len(res.get('linhas_tot') or [])}
+
+
+def _ficha_rodar(job_id, id_cliente, id_empresa, depara, origem):
+    job = _ficha_jobs[job_id]
+
+    def prog(pct, etapa):
+        job['pct'] = pct
+        job['etapa'] = etapa
+    try:
+        import sys
+        import _importar_s1200_tabmov as IMP
+        res = IMP.simular(sys.modules[__name__], id_cliente, id_empresa, depara, origem, progresso=prog)
+        if res.get('ok'):
+            res['previa'] = IMP.salvar_previa(res)
+            _ficha_res[job_id] = {'res': res, 'id_cliente': id_cliente, 'id_empresa': id_empresa}
+            job['resultado'] = _ficha_resumo(res)
+        else:
+            job['resultado'] = res
+    except Exception as ex:
+        job['resultado'] = {'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'}
+    job['pct'] = 100
+    job['done'] = True
+
+
+@app.route('/api/descompactar_xml/ficha/simular', methods=['POST'])
+def api_descompactar_xml_ficha_simular():
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    alvo = _dxml_destino()
+    if not alvo['id_cliente'] or not alvo['tem_empresa']:
+        return jsonify({'ok': False, 'msg': 'Escolha o cliente e a empresa na Etapa 0 antes.'})
+    depara = (d.get('depara') or '').strip().strip('"')
+    if not depara or not os.path.isfile(depara):
+        return jsonify({'ok': False, 'msg': f'Planilha de-para não encontrada: {depara or "(em branco)"}'})
+    origem = (d.get('origem') or M.ORIGEM).strip()
+    try:
+        cnpjs = {re.sub(r'\D', '', e.get('cnpj') or '')[:8]
+                 for e in (M.identificar_empresa(origem).get('empresas') or [])}
+    except Exception:
+        cnpjs = set()
+    if cnpjs and alvo['cnpj'][:8] not in cnpjs:
+        return jsonify({'ok': False, 'msg': 'Os ZIPs são de outra empresa (o CNPJ do S-1000 não bate '
+                                            'com a empresa da Etapa 0).'})
+    job_id = uuid.uuid4().hex[:12]
+    _ficha_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
+    threading.Thread(target=_ficha_rodar,
+                     args=(job_id, alvo['id_cliente'], alvo['id_empresa'], depara, origem),
+                     daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id})
+
+
+@app.route('/api/descompactar_xml/ficha/progresso')
+def api_descompactar_xml_ficha_progresso():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    job = _ficha_jobs.get(request.args.get('job', '').strip())
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
+
+
+@app.route('/api/descompactar_xml/ficha/gravar', methods=['POST'])
+def api_descompactar_xml_ficha_gravar():
+    erro, _M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    sim = _ficha_res.get(str(d.get('job_id') or '').strip())
+    alvo = _dxml_destino()
+    if not sim:
+        return jsonify({'ok': False, 'msg': 'Simule de novo antes de gravar.'})
+    if (sim['id_cliente'], sim['id_empresa']) != (alvo['id_cliente'], alvo['id_empresa']):
+        return jsonify({'ok': False, 'msg': 'A simulação foi de outra empresa — simule de novo.'})
+    try:
+        import sys
+        import _importar_s1200_tabmov as IMP
+        r = IMP.gravar(sys.modules[__name__], sim['id_cliente'], sim['id_empresa'], sim['res'],
+                       cpf_usuario=str(session.get('cpf') or ''))
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
+    if r.get('ok'):
+        _ficha_res.pop(str(d.get('job_id')), None)
+    return jsonify(r)
+
+
 _pxml_jobs = {}
 
 

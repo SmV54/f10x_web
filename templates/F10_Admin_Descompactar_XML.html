@@ -28,10 +28,10 @@
   /* A coluna da esquerda ocupa as duas linhas da direita (Etapa 1 em cima,
      Etapa 2 embaixo) — sem isso a Etapa 2 desce até o fim da coluna esquerda e
      abre um buraco no meio da tela. */
-  .colunas > div:first-child { grid-row: 1 / span 3; }
+  .colunas > div:first-child { grid-row: 1 / span 4; }
   @media (max-width: 1000px) {
     .colunas { grid-template-columns: 1fr; }
-    #cardEtapa2, #cardEtapa3 { grid-column: 1 !important; }
+    #cardEtapa2, #cardEtapa3, #cardEtapa4 { grid-column: 1 !important; }
   }
 
   .passos { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -277,6 +277,38 @@
             <button class="btn-sec" onclick="window.location.href='/importar_xml_esocial'"
                     title="Caminho antigo: manda os XMLs por upload">Por upload ↗</button>
             <button class="btn" id="btnEtapa3" onclick="importarAgora()">Importar agora</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Etapa 4: separada da 3 porque depende da planilha de-para do cliente,
+           que costuma chegar depois do cadastro. Simular nao grava; Gravar so
+           aceita a ultima simulacao, sem pendencia. -->
+      <div class="card" id="cardEtapa4" style="grid-column:2;">
+        <h3>Etapa 4 — Ficha financeira (S-1200)</h3>
+        <div class="mut" style="line-height:1.5;">
+          Grava no <span class="cam">tab_mov</span> os valores do S-1200 e da rescisão (S-2299) com a
+          <b>verba do Folha10</b> da planilha de-para, e monta o <span class="cam">tab_total</span> de cada
+          mês (INSS do S-5001, FGTS do S-5003). Só entram as folhas anteriores à primeira que a
+          empresa já tem no Folha10.
+        </div>
+        <div class="pastas-linha" style="margin-top:8px;">
+          <label for="depara">Planilha de-para</label>
+          <input type="text" id="depara" placeholder="caminho da planilha .xlsx" style="flex:1;min-width:260px;">
+        </div>
+        <div id="prog4Wrap" style="display:none;">
+          <div class="prog-linha">
+            <span class="etapa" id="prog4Etapa">Iniciando…</span>
+            <span id="prog4Pct">0%</span>
+          </div>
+          <div class="barra"><div class="barra-fill" id="prog4Fill"></div></div>
+        </div>
+        <div id="resultado4" style="display:none;margin-top:10px;"></div>
+        <div class="rodape-sel">
+          <span class="mut" id="resumo4"></span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-sec" id="btnSimular4" onclick="simularFicha()">Simular</button>
+            <button class="btn" id="btnGravar4" onclick="gravarFicha()" disabled>Gravar</button>
           </div>
         </div>
       </div>
@@ -1083,6 +1115,117 @@ function erro3(msg) {
   box.style.display = 'block';
   box.innerHTML = '<div class="erro-box">❌ ' + msg + '</div>';
 }
+
+// ── Etapa 4 — ficha financeira ─────────────────────────────────────────
+let FICHA_JOB = null;
+const brl4 = c => (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc4 = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function setBarra4(pct, etapa) {
+  el('prog4Fill').style.width = pct + '%';
+  el('prog4Pct').textContent = pct + '%';
+  if (etapa != null) el('prog4Etapa').textContent = etapa;
+}
+
+function erro4(msg) {
+  const box = el('resultado4');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="erro-box">❌ ' + esc4(msg) + '</div>';
+}
+
+function simularFicha() {
+  const depara = el('depara').value.trim();
+  if (!depara) { erro4('Informe o caminho da planilha de-para.'); return; }
+  try { localStorage.setItem('f10_depara', depara); } catch (e) {}
+  FICHA_JOB = null;
+  el('btnGravar4').disabled = true;
+  el('btnSimular4').disabled = true; el('btnSimular4').textContent = 'Simulando…';
+  el('resultado4').style.display = 'none'; el('resumo4').textContent = '';
+  el('prog4Wrap').style.display = 'block'; setBarra4(0, 'Iniciando…');
+  fetch('/api/descompactar_xml/ficha/simular', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ depara: depara, origem: el('origem').value.trim() })
+  }).then(r => r.json()).then(function (d) {
+    if (!d.ok) { fim4(); erro4(d.msg || 'Falha ao simular'); return; }
+    poll4(d.job_id);
+  }).catch(function (e) { fim4(); erro4(String(e)); });
+}
+
+function fim4() {
+  el('btnSimular4').disabled = false; el('btnSimular4').textContent = 'Simular';
+  el('prog4Wrap').style.display = 'none';
+}
+
+function poll4(jobId) {
+  fetch('/api/descompactar_xml/ficha/progresso?job=' + jobId).then(r => r.json()).then(function (d) {
+    if (!d.ok) { fim4(); erro4(d.msg || 'Job não encontrado'); return; }
+    setBarra4(d.pct || 0, d.etapa || '');
+    if (!d.done) { setTimeout(function () { poll4(jobId); }, 700); return; }
+    fim4();
+    const r = d.resultado || {};
+    if (!r.ok) { erro4(r.msg || 'Falha ao simular'); return; }
+    mostrarFicha(r, jobId);
+  }).catch(function (e) { fim4(); erro4(String(e)); });
+}
+
+function mostrarFicha(r, jobId) {
+  const bloqueia = (r.pendentes || []).length || (r.cpf_sem_func || []).length;
+  let h = '<div class="mut" style="color:#374151;line-height:1.6;">'
+    + '<b>' + esc4(r.planilha) + '</b> (aba ' + esc4(r.aba) + '): ' + r.depara.com_verba + ' com verba, '
+    + r.depara.nao_importar + ' não importar, ' + r.depara.tab_total + ' só tab_total.<br>'
+    + 'S-1200: ' + r.s1200 + ' (' + r.s1200_fora + ' anulados/retificados) · S-2299: ' + r.s2299
+    + ' · tab_mov <b>' + r.n_mov + '</b> linhas · tab_total <b>' + r.n_tot + '</b> linhas'
+    + (r.corte ? ' · a partir de ' + r.corte + ' já é do Folha10 (fica de fora)' : '')
+    + '<br>Prévia em <span class="cam">' + esc4(r.previa || '') + '</span></div>';
+  if ((r.cpf_sem_func || []).length) {
+    h += '<div class="erro-box" style="margin-top:8px;">' + r.cpf_sem_func.length
+      + ' CPF(s) do eSocial sem funcionário nesta empresa — importe o cadastro (Etapa 3) antes.</div>';
+  }
+  if ((r.pendentes || []).length) {
+    h += '<div class="erro-box" style="margin-top:8px;">Códigos que impedem a gravação — corrija a planilha e simule de novo:</div>'
+      + '<table style="margin-top:4px;"><thead><tr><th>Código</th><th>Descrição</th><th>Vezes</th><th>Motivo</th></tr></thead><tbody>'
+      + r.pendentes.map(p => '<tr><td>' + esc4(p.cod) + '</td><td>' + esc4(p.dsc) + '</td><td>' + p.vezes
+        + '</td><td>' + esc4(p.motivo) + '</td></tr>').join('') + '</tbody></table>';
+  }
+  h += '<div style="max-height:320px;overflow:auto;margin-top:8px;"><table><thead><tr><th>Folha</th><th>Tipo</th>'
+    + '<th>Func.</th><th>Linhas</th><th style="text-align:right;">Proventos</th><th style="text-align:right;">Descontos</th>'
+    + '<th style="text-align:right;">INSS</th><th style="text-align:right;">FGTS</th></tr></thead><tbody>'
+    + (r.folhas || []).map(f => '<tr><td>' + String(f.folha).slice(4) + '/' + String(f.folha).slice(0, 4) + '</td><td>'
+      + f.tipo + '</td><td>' + f.func + '</td><td>' + f.linhas + '</td><td style="text-align:right;">' + brl4(f.prov)
+      + '</td><td style="text-align:right;">' + brl4(f.desc) + '</td><td style="text-align:right;">' + brl4(f.inss)
+      + '</td><td style="text-align:right;">' + brl4(f.fgts) + '</td></tr>').join('') + '</tbody></table></div>';
+  el('resultado4').innerHTML = h;
+  el('resultado4').style.display = 'block';
+  FICHA_JOB = bloqueia ? null : jobId;
+  el('btnGravar4').disabled = !FICHA_JOB;
+  el('resumo4').textContent = bloqueia ? 'Simulação com pendências — nada pode ser gravado.'
+                                       : 'Simulação OK — confira a prévia e grave.';
+}
+
+function gravarFicha() {
+  if (!FICHA_JOB) return;
+  const a = ((typeof EMPRESA !== 'undefined' && EMPRESA && EMPRESA.destino) || ALVO || {});
+  f10Confirm('Gravar a ficha financeira simulada?\n\n' + (a.empresa || '') + ' — CNPJ ' + (a.cnpj_fmt || '') + '\n\n'
+    + 'Apaga o que uma importação anterior gravou (lote 1200) e grava de novo no tab_mov e no tab_total.',
+    { titulo: 'Etapa 4 — gravar', tipo: 'perigo', okText: 'Gravar', cancelText: 'Cancelar' })
+    .then(function (sim) {
+      if (!sim) return;
+      el('btnGravar4').disabled = true; el('btnGravar4').textContent = 'Gravando…';
+      fetch('/api/descompactar_xml/ficha/gravar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: FICHA_JOB })
+      }).then(r => r.json()).then(function (d) {
+        el('btnGravar4').textContent = 'Gravar';
+        if (!d.ok) { el('btnGravar4').disabled = false; erro4(d.msg || 'Falha ao gravar'); return; }
+        FICHA_JOB = null;
+        el('resumo4').textContent = 'Gravado: tab_mov ' + d.mov + ' linhas, tab_total ' + d.tot + ' linhas.';
+      }).catch(function (e) { el('btnGravar4').textContent = 'Gravar'; el('btnGravar4').disabled = false; erro4(String(e)); });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  try { el('depara').value = localStorage.getItem('f10_depara') || ''; } catch (e) {}
+});
 
 function mostrarErro(msg) {
   const box = el('resultado');

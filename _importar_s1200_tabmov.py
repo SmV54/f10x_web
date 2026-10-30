@@ -1,36 +1,48 @@
 # -*- coding: utf-8 -*-
 """
-Importa os valores do S-1200 (ZIPs baixados do portal do eSocial) para o
-tab_mov de uma empresa, usando a planilha de-para de rubricas.
+Importa a ficha financeira do eSocial (ZIPs baixados do portal) para o
+tab_mov e o tab_total de uma empresa, usando a planilha de-para de rubricas.
 
 Serve para empresa que veio de outro sistema: o histórico da ficha financeira
-é o que dá as médias de férias, 13º e rescisão.
+é o que dá as médias de férias, 13º e rescisão; o tab_total dá as bases do
+seguro-desemprego, do dissídio e da ficha.
 
 Uso:
-    python _importar_s1200_tabmov.py --cliente 73 --empresa 79 --depara "C:\\...\\analise F10.xlsx"
+    python _importar_s1200_tabmov.py --cliente 73 --empresa 79 --depara "C:\\...\\De-para ... - F10.xlsx"
     python _importar_s1200_tabmov.py ... --gravar
 
 Sem --gravar é SIMULAÇÃO: não grava nada, mostra o resumo por folha e salva a
-prévia em C:\\XMLeSocial\\Planilhas\\Previa_S1200_tabmov.xlsx.
+prévia em C:\\XMLeSocial\\Planilhas\\Previa_S1200_tabmov.xlsx. A tela
+(Descompactar XML, Etapa 4) usa as mesmas funções: simular() e gravar().
 
-A planilha: coluna A = código da rubrica no eSocial, coluna O = verba do
-Folha10 (4 dígitos) ou NÃO IMPORTAR / CRIAR / DECIDIR. Código sem verba fica
-de fora e aparece no resumo; com --gravar ele só segue se vier também
---ignorar-pendentes.
+A planilha: aba com "de-para" no nome (a "(todas)" primeiro); coluna A = código
+da rubrica no eSocial; a coluna de título "Folha10" (sem ela, a O) = verba do
+Folha10 (4 dígitos), NÃO IMPORTAR ou TAB_TOTAL (informativa: base/FGTS, que
+não vira verba — o Folha10 só tem provento e desconto).
 
-O que entra:
-  - S-1200 anulado por S-3000 não entra;
-  - S-1200 retificado (indRetif=2) substitui o original — o original sai;
-  - folha_tipo: 0011 (13º) e indApuracao=2 → '1', folha AAAA12;
-    férias (0041/0042/0045/0046) → 'F'; o resto → 'N';
-  - valores somados por matrícula/folha/tipo/verba; qtd em horas × 100
-    (037FOLH e 404FOLH vêm em horas.minutos e são convertidas).
+tab_mov (lote 1200, origem 'I'), com a NOSSA verba:
+  - S-1200: anulado por S-3000 não entra; retificado substitui o original;
+    apuração anual (13º) e verba de uso só no 13º → '1', folha AAAA12;
+    verba de uso só em férias (0041/0042/0045/0046/0103) → 'F'; o resto → 'N';
+  - S-2299 (a rescisão não tem S-1200): as verbasResc do período → 'R', folha
+    = mês do desligamento;
+  - qtd em horas × 100 (037FOLH e 404FOLH vêm em horas.minutos).
 
-Tudo vai com lote = LOTE e origem 'I'. Rodar de novo apaga o que esse lote
-gravou na empresa e grava outra vez. Se a empresa já tiver tab_mov de outra
-origem, não grava nada.
+tab_total (controle 1200), uma linha por matrícula/folha/tipo:
+  - proventos, descontos e líquido: soma do tab_mov importado pelo tipo da verba;
+  - base e valor do INSS: S-5001 (o que o eSocial apurou); base e valor do FGTS:
+    S-5003. Férias ('F') ficam com a parte das verbas de férias (base pelas
+    incidências da verba, INSS = verba 0103) e a 'N' com o resto do mês, para
+    N + F fechar com o eSocial. Mês com rescisão: tudo na 'R';
+  - base do IRRF: rubricas informativas de natureza 9903 do próprio S-1200
+    (o S-5002 é por data de pagamento, não por competência);
+  - salário: vrSalFx do S-2200/S-2206 vigente no fim do mês.
+
+Só entram folhas ANTES da primeira folha que a empresa já tem no Folha10 (tab_mov
+de outra origem ou tab_total de outro controle). Rodar de novo apaga o que o
+lote 1200 / controle 1200 gravou na empresa e grava outra vez.
 """
-import os, re, sys, ssl, argparse, tempfile
+import os, re, sys, ssl, argparse, tempfile, unicodedata
 from collections import defaultdict, Counter
 
 for _s in (sys.stdout, sys.stderr):
@@ -42,68 +54,187 @@ for _s in (sys.stdout, sys.stderr):
 import _descompactar_xml_esocial as DX
 
 LOTE = 1200
+CONTROLE_TOT = 1200
 ORIGEM = "I"
 QTD_HORAS_MIN = {"037FOLH", "404FOLH"}       # quantidade em horas.minutos
-VERBAS_FERIAS = {41, 42, 45, 46}
-VERBA_13 = 11
+VERBA_INSS_FERIAS = 103
 PREVIA = r"C:\XMLeSocial\Planilhas\Previa_S1200_tabmov.xlsx"
 
 RE_TAG = lambda t: re.compile(rf"<{t}>([^<]*)</{t}>")
 R_PER, R_CPF, R_IND, R_RETIF = RE_TAG("perApur"), RE_TAG("cpfTrab"), RE_TAG("indApuracao"), RE_TAG("indRetif")
+R_REC = RE_TAG("nrRecibo")
 
 
 def _g(rx, txt, padrao=""):
+    if isinstance(rx, str):
+        rx = RE_TAG(rx)
     m = rx.search(txt)
     return m.group(1).strip() if m else padrao
 
 
+def _sem_acento(s):
+    return "".join(c for c in unicodedata.normalize("NFD", str(s or "")) if unicodedata.category(c) != "Mn")
+
+
+def _cent(v):
+    return int(round(float(v or 0) * 100))
+
+
+# ── planilha ─────────────────────────────────────────────────────────────
 def ler_depara(caminho):
+    """(mapa {cod: verba}, fora {cod}, info {cod}, pend {cod: motivo}, aba)."""
     import openpyxl
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
-    ws = wb["De-para (usadas)"]
-    mapa, fora, pend = {}, set(), {}
+    abas = [w for w in wb.worksheets if "de-para" in w.title.lower()]
+    ws = (next((w for w in abas if "todas" in w.title.lower()), None)
+          or (abas[0] if abas else wb.worksheets[0]))
+    mapa, fora, info, pend = {}, set(), set(), {}
+    col = 14
     for i, r in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0 or not r or not r[0]:
+        if i == 0:
+            cab = [_sem_acento(x).strip().lower() for x in (r or [])]
+            if "folha10" in cab:
+                col = cab.index("folha10")
+            continue
+        if not r or not r[0] or not str(r[0]).strip():
             continue
         cod = str(r[0]).strip()
-        v = str(r[14] or "").strip() if len(r) > 14 else ""
-        if re.fullmatch(r"\d{1,4}", v):
+        v = str(r[col] or "").strip() if len(r) > col else ""
+        vu = _sem_acento(v).upper()
+        if re.fullmatch(r"\d{1,4}", v) and v != "9999":
             mapa[cod] = int(v)
-        elif v.upper().startswith("N") and "IMPORTAR" in v.upper():
+        elif "IMPORTAR" in vu and vu.startswith("N"):
             fora.add(cod)
+        elif vu.replace(" ", "_") == "TAB_TOTAL":
+            info.add(cod)
         else:
             pend[cod] = v or "sem verba"
-    return mapa, fora, pend
+    return mapa, fora, info, pend, ws.title
 
 
-def ler_s1200(origem):
-    """[(ev, itens)] dos S-1200 válidos: sem os anulados e sem os retificados."""
-    zips = DX.listar_zips(origem)
-    anulados = DX.recibos_excluidos(origem, zips)
-    eventos, vistos = [], set()
-    for z in zips:
+# ── XMLs ─────────────────────────────────────────────────────────────────
+def _eventos(origem, layout, zips=None):
+    """[(nome, texto, recibo)] de um layout, sem repetir arquivo."""
+    vistos, out = set(), []
+    for z in (zips or DX.listar_zips(origem)):
         for nome, dados in DX.iter_xmls(os.path.join(origem, z)):
-            if not nome or not nome.endswith(".S-1200.xml") or nome in vistos:
+            if not nome or not nome.endswith(f".{layout}.xml") or nome in vistos:
                 continue
             vistos.add(nome)
-            t = dados.decode("utf-8", "ignore")
-            ide = re.search(r"<ideEvento>(.*?)</ideEvento>", t, re.S)
-            ide = ide.group(1) if ide else ""
-            ev = {"arquivo": nome, "recibo": DX.recibo_proprio(dados),
-                  "retif": _g(R_RETIF, ide) == "2", "substitui": _g(RE_TAG("nrRecibo"), ide),
-                  "per": _g(R_PER, ide), "ind": _g(R_IND, ide, "1"), "cpf": _g(R_CPF, t)}
-            itens = []
-            for dm in re.findall(r"<dmDev>(.*?)</dmDev>", t, re.S):
-                ide_dm = _g(RE_TAG("ideDmDev"), dm)
-                for it in re.findall(r"<itensRemun>(.*?)</itensRemun>", dm, re.S):
-                    itens.append({"dm": ide_dm, "cod": _g(RE_TAG("codRubr"), it),
-                                  "qtd": float(_g(RE_TAG("qtdRubr"), it, "0") or 0),
-                                  "vr": float(_g(RE_TAG("vrRubr"), it, "0") or 0)})
-            eventos.append((ev, itens))
-    substituidos = {ev["substitui"] for ev, _ in eventos if ev["retif"] and ev["substitui"]}
-    validos = [(ev, it) for ev, it in eventos
-               if ev["recibo"] not in anulados and ev["recibo"] not in substituidos]
+            out.append((nome, dados.decode("utf-8", "ignore"), DX.recibo_proprio(dados)))
+    return out
+
+
+def _so_validos(eventos, anulados):
+    """Tira o anulado por S-3000 e o original que uma retificação substituiu."""
+    subst = {e["substitui"] for e, _ in eventos if e["retif"] and e["substitui"]}
+    return [(e, it) for e, it in eventos if e["recibo"] not in anulados and e["recibo"] not in subst]
+
+
+def ler_s1200(origem, anulados=None, zips=None):
+    """[(ev, itens)] dos S-1200 válidos: sem os anulados e sem os retificados."""
+    zips = zips or DX.listar_zips(origem)
+    if anulados is None:
+        anulados = DX.recibos_excluidos(origem, zips)
+    eventos = []
+    for nome, t, rec in _eventos(origem, "S-1200", zips):
+        ide = re.search(r"<ideEvento>(.*?)</ideEvento>", t, re.S)
+        ide = ide.group(1) if ide else ""
+        ev = {"arquivo": nome, "recibo": rec, "retif": _g(R_RETIF, ide) == "2",
+              "substitui": _g(R_REC, ide), "per": _g(R_PER, ide), "ind": _g(R_IND, ide, "1"),
+              "cpf": _g(R_CPF, t), "layout": "S-1200"}
+        itens = []
+        for dm in re.findall(r"<dmDev>(.*?)</dmDev>", t, re.S):
+            ide_dm = _g("ideDmDev", dm)
+            for it in re.findall(r"<itensRemun>(.*?)</itensRemun>", dm, re.S):
+                itens.append({"dm": ide_dm, "cod": _g("codRubr", it),
+                              "qtd": float(_g("qtdRubr", it, "0") or 0),
+                              "vr": float(_g("vrRubr", it, "0") or 0)})
+        eventos.append((ev, itens))
+    validos = _so_validos(eventos, anulados)
     return validos, len(eventos), len(eventos) - len(validos)
+
+
+def ler_s2299(origem, anulados, zips=None):
+    """[(ev, itens)] dos S-2299 válidos, só as verbas do período (infoPerApur)."""
+    eventos = []
+    for nome, t, rec in _eventos(origem, "S-2299", zips):
+        ide = re.search(r"<ideEvento>(.*?)</ideEvento>", t, re.S)
+        ide = ide.group(1) if ide else ""
+        dt = _g("dtDeslig", t)
+        ev = {"arquivo": nome, "recibo": rec, "retif": _g(R_RETIF, ide) == "2",
+              "substitui": _g(R_REC, ide), "per": dt[:7], "ind": "1", "dt": dt,
+              "cpf": _g(R_CPF, t), "layout": "S-2299"}
+        itens = []
+        for dm in re.findall(r"<dmDev>(.*?)</dmDev>", t, re.S):
+            ap = re.search(r"<infoPerApur>(.*?)</infoPerApur>", dm, re.S)
+            for it in re.findall(r"<detVerbas>(.*?)</detVerbas>", ap.group(1) if ap else "", re.S):
+                itens.append({"dm": _g("ideDmDev", dm), "cod": _g("codRubr", it),
+                              "qtd": float(_g("qtdRubr", it, "0") or 0),
+                              "vr": float(_g("vrRubr", it, "0") or 0)})
+        eventos.append((ev, itens))
+    return _so_validos(eventos, anulados)
+
+
+def ler_rubricas_s1010(origem, zips=None):
+    """{codRubr: {'tp', 'nat', 'dsc'}} da definição mais recente."""
+    rub = {}
+    for _, t, _ in _eventos(origem, "S-1010", zips):
+        cod, ini, dsc = _g("codRubr", t), _g("iniValid", t), _g("dscRubr", t)
+        if cod and dsc and (cod not in rub or ini >= rub[cod]["ini"]):
+            rub[cod] = {"tp": _g("tpRubr", t), "nat": _g("natRubr", t), "dsc": dsc, "ini": ini}
+    return rub
+
+
+def ler_totalizadores(origem, recibos_validos, zips=None):
+    """S-5001 e S-5003 dos eventos válidos.
+
+    {(cpf, perApur, indApuracao): {'inss_base0','inss_base13','inss_desc0','inss_desc13',
+                                   'fgts_base','fgts_dep','fgts_base13','fgts_dep13'}}
+    O totalizador aponta o evento de origem no nrRecArqBase; o que vem de
+    S-1200 retificado ou anulado fica de fora por aí.
+    """
+    tot = defaultdict(lambda: defaultdict(int))
+    for _, t, _ in _eventos(origem, "S-5001", zips):
+        if _g("nrRecArqBase", t) not in recibos_validos:
+            continue
+        k = (_g(R_CPF, t), _g(R_PER, t), _g(R_IND, t, "1"))
+        for b in re.findall(r"<infoBaseCS>(.*?)</infoBaseCS>", t, re.S):
+            i13, tpv, v = _g("ind13", b), _g("tpValor", b), _cent(_g("valor", b, "0"))
+            sufixo = "13" if i13 == "1" else "0"
+            if tpv == "11":
+                tot[k]["inss_base" + sufixo] += v
+            elif tpv == "21":
+                tot[k]["inss_desc" + sufixo] += v
+    for _, t, _ in _eventos(origem, "S-5003", zips):
+        if _g("nrRecArqBase", t) not in recibos_validos:
+            continue
+        k = (_g(R_CPF, t), _g(R_PER, t), _g(R_IND, t, "1"))
+        for b in re.findall(r"<basePerApur>(.*?)</basePerApur>", t, re.S):
+            tpv = _g("tpValor", b)
+            sufixo = "13" if tpv in ("12", "22") else ""
+            tot[k]["fgts_base" + sufixo] += _cent(_g("remFGTS", b, "0"))
+            tot[k]["fgts_dep" + sufixo] += _cent(_g("dpsFGTS", b, "0"))
+    return tot
+
+
+def ler_salarios(origem, anulados, zips=None):
+    """{cpf: [(AAAA-MM-DD, centavos)]} do S-2200 (admissão) e S-2206 (alteração)."""
+    sal = defaultdict(list)
+    for lay, tag_dt in (("S-2200", "dtAdm"), ("S-2206", "dtAlteracao")):
+        for _, t, rec in _eventos(origem, lay, zips):
+            if rec in anulados:
+                continue
+            v, dt = _g("vrSalFx", t), _g(tag_dt, t)
+            if v and dt:
+                sal[_g(R_CPF, t)].append((dt, _cent(v)))
+    return {c: sorted(l) for c, l in sal.items()}
+
+
+def _sal_no_mes(lista, folha):
+    fim = f"{str(folha)[:4]}-{str(folha)[4:6]}-31"
+    ok = [v for d, v in (lista or []) if d <= fim]
+    return ok[-1] if ok else 0
 
 
 def _horas(cod, q):
@@ -113,9 +244,18 @@ def _horas(cod, q):
     return q
 
 
-def montar(validos, mapa, fora, pend, mat_por_cpf):
-    soma = defaultdict(lambda: [0.0, 0.0])          # (mat, folha, tipo, verba) -> [qtd, valor]
-    faltou_cpf, pend_uso, fora_uso = Counter(), Counter(), Counter()
+# ── montagem ─────────────────────────────────────────────────────────────
+def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010):
+    """Soma por (mat, folha, tipo, verba) e separa o que ficou de fora.
+
+    Devolve (soma, irrf, faltou_cpf, pend_uso, fora_uso, info_uso, tipo_mes):
+      irrf      {(mat, folha, tipo): centavos} — base do IRRF (natureza 9903);
+      tipo_mes  {(mat, AAAAMM): {'N','F','R','1'}} — para o tab_total.
+    """
+    soma = defaultdict(lambda: [0.0, 0.0])
+    irrf = defaultdict(int)
+    faltou_cpf, pend_uso, fora_uso, info_uso = Counter(), Counter(), Counter(), Counter()
+    tipo_mes = defaultdict(set)
     for ev, itens in validos:
         mat = mat_por_cpf.get(ev["cpf"])
         if not mat:
@@ -123,26 +263,135 @@ def montar(validos, mapa, fora, pend, mat_por_cpf):
             continue
         anual = ev["ind"] == "2" or len(ev["per"]) == 4
         ano, mes = ev["per"][:4], (ev["per"][5:7] if len(ev["per"]) >= 7 else "12")
+        resc = ev["layout"] == "S-2299"
         for it in itens:
             cod = it["cod"]
             if cod in fora:
                 fora_uso[cod] += 1
                 continue
+            if cod in info:
+                info_uso[cod] += 1
+                if (r1010.get(cod) or {}).get("nat") == "9903":
+                    dsc = _sem_acento((r1010.get(cod) or {}).get("dsc", "")).upper()
+                    if resc:
+                        k = (mat, int(ano + mes), "R")
+                    elif anual or "13" in dsc:
+                        k = (mat, int(ano + "12"), "1")
+                    elif "FERIAS" in dsc:
+                        k = (mat, int(ano + mes), "F")
+                    else:
+                        k = (mat, int(ano + mes), "N")
+                    irrf[k] += _cent(it["vr"])
+                continue
             verba = mapa.get(cod)
             if verba is None:
                 pend_uso[(cod, pend.get(cod, "não está na planilha"))] += 1
                 continue
-            if anual or verba == VERBA_13:
+            ri = rinfo.get(verba)
+            if not ri:
+                pend_uso[(cod, f"verba {verba:04d} não existe no Folha10")] += 1
+                continue
+            tp_es = {"1": "1", "2": "2"}.get((r1010.get(cod) or {}).get("tp", ""))
+            if tp_es and tp_es != ri["tp"]:
+                pend_uso[(cod, f"no eSocial é {'provento' if tp_es == '1' else 'desconto'}; "
+                               f"a verba {verba:04d} é {'provento' if ri['tp'] == '1' else 'desconto'}")] += 1
+                continue
+            if resc:
+                folha, tipo = int(ano + mes), "R"
+            elif anual or ri["uso"] == "1":
                 folha, tipo = int(ano + "12"), "1"
+            elif ri["uso"] == "F":
+                folha, tipo = int(ano + mes), "F"
             else:
-                folha = int(ano + mes)
-                tipo = "F" if verba in VERBAS_FERIAS else "N"
+                folha, tipo = int(ano + mes), "N"
             k = (mat, folha, tipo, verba)
             soma[k][0] += _horas(cod, it["qtd"])
             soma[k][1] += it["vr"]
-    return soma, faltou_cpf, pend_uso, fora_uso
+            tipo_mes[(mat, folha)].add(tipo)
+    return soma, irrf, faltou_cpf, pend_uso, fora_uso, info_uso, tipo_mes
 
 
+def montar_total(id_cliente, id_empresa, soma, irrf, tot, cpf_por_mat, sal, rinfo, teto, filial):
+    """Linhas do tab_total (ver a docstring do módulo)."""
+    g = defaultdict(lambda: defaultdict(int))     # (mat, folha, tipo) -> campos
+    for (mat, folha, tipo, verba), (_, v) in soma.items():
+        ri, vc = rinfo[verba], _cent(v)
+        d = g[(mat, folha, tipo)]
+        d["prov" if ri["tp"] == "1" else "desc"] += vc
+        if tipo == "F":
+            sinal = 1 if ri["tp"] == "1" else -1
+            if ri["f_cp"] in ("11", "12"):
+                d["inss_base"] += sinal * vc
+            if ri["f_fgts"] in ("11", "12"):
+                d["fgts_base"] += sinal * vc
+            if verba == VERBA_INSS_FERIAS:
+                d["inss_desc"] += vc
+    for k, v in irrf.items():
+        g[k]["irrf"] += v
+    for k in [k for k in g if k[2] == "F"]:
+        g[k]["fgts"] = g[k]["fgts_base"] * 8 // 100
+
+    tipos = defaultdict(set)
+    for mat, folha, tipo in list(g):
+        tipos[(mat, folha)].add(tipo)
+    for mat, cpf in cpf_por_mat.items():
+        for (c, per, ind), t in tot.items():
+            if c != cpf:
+                continue
+            if ind == "2" or len(per) == 4:
+                d = g[(mat, int(per[:4] + "12"), "1")]
+                d["inss_base"] += t["inss_base13"]
+                d["inss_desc"] += t["inss_desc13"]
+                continue
+            folha = int(per[:4] + per[5:7])
+            ts = tipos.get((mat, folha), set())
+            if "R" in ts:
+                d = g[(mat, folha, "R")]
+                d["inss_base"] += t["inss_base0"]
+                d["inss_desc"] += t["inss_desc0"] + t["inss_desc13"]
+                d["fgts_base"] += t["fgts_base"] + t["fgts_base13"]
+                d["fgts"] += t["fgts_dep"] + t["fgts_dep13"]
+                continue
+            f = g.get((mat, folha, "F"), {})
+            d = g[(mat, folha, "N")]
+            d["inss_base"] += t["inss_base0"] - f.get("inss_base", 0)
+            d["inss_desc"] += t["inss_desc0"] - f.get("inss_desc", 0)
+            d["fgts_base"] += t["fgts_base"] - f.get("fgts_base", 0)
+            d["fgts"] += t["fgts_dep"] - f.get("fgts", 0)
+            if t["fgts_base13"] or t["fgts_dep13"]:
+                d13 = g[(mat, int(per[:4] + "12"), "1")]
+                d13["fgts_base"] += t["fgts_base13"]
+                d13["fgts"] += t["fgts_dep13"]
+            if t["inss_base13"] or t["inss_desc13"]:
+                # 13º dentro da folha do mês (sem ser rescisão): vai para a '1'
+                d13 = g[(mat, int(per[:4] + "12"), "1")]
+                d13["inss_base"] += t["inss_base13"]
+                d13["inss_desc"] += t["inss_desc13"]
+
+    linhas = []
+    for (mat, folha, tipo), d in sorted(g.items()):
+        if not any(d.get(c) for c in ("prov", "desc", "inss_base", "fgts_base", "irrf")):
+            continue
+        base = max(0, d["inss_base"])
+        tt = teto(folha)
+        linhas.append({
+            "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+            "matricula": mat, "folha": folha, "folha_tipo": tipo, "filial": filial.get(mat, ""),
+            "valor_base_inss_semlimite": base,
+            "valor_base_inss_comlimite": min(base, tt) if tt else base,
+            "valor_inss_retido": max(0, d["inss_desc"]),
+            "valor_base_fgts": max(0, d["fgts_base"]), "valor_fgts": max(0, d["fgts"]),
+            "valor_irrf_basetotal": d["irrf"], "valor_irrf_basetabela": d["irrf"],
+            "valor_irrf_dependentes": 0, "qtd_irrf_dependentes": 0,
+            "valor_salario": _sal_no_mes(sal.get(cpf_por_mat.get(mat)), folha),
+            "valor_total_proventos": d["prov"], "valor_total_descontos": d["desc"],
+            "valor_liquido": d["prov"] - d["desc"],
+            "os": 0, "controle": CONTROLE_TOT,
+        })
+    return linhas
+
+
+# ── banco ────────────────────────────────────────────────────────────────
 def _supabase():
     caminho = os.path.join(tempfile.gettempdir(), "folha10_ca.pem")
     with open(caminho, "w", encoding="utf-8") as f:
@@ -158,6 +407,177 @@ def _supabase():
     return app
 
 
+def _rubricas(app, id_cliente):
+    """{verba: {'tp', 'uso', 'f_cp', 'f_fgts', 'dsc'}} — sistema + cliente."""
+    out = {}
+    for cli in (0, id_cliente):
+        for r in app._diss_todos(app.supabase.table("tab_rubrica")
+                                 .select("cod_rubr, dsc_rubr, tp_rubr, tipo_uso, tpf_inc_cp, tpf_inc_fgts")
+                                 .eq("id_cliente", cli)):
+            out[int(r["cod_rubr"])] = {"tp": str(r.get("tp_rubr") or "1"),
+                                       "uso": str(r.get("tipo_uso") or "").strip(),
+                                       "f_cp": str(r.get("tpf_inc_cp") or ""),
+                                       "f_fgts": str(r.get("tpf_inc_fgts") or ""),
+                                       "dsc": r.get("dsc_rubr") or ""}
+    return out
+
+
+def _primeira_folha_f10(app, id_empresa):
+    """Primeira folha que a empresa já tem no Folha10 (fora desta importação)."""
+    sb, ini = app.supabase, []
+    r = (sb.table("tab_mov").select("folha").eq("id_empresa", id_empresa).neq("lote", LOTE)
+         .order("folha").limit(1).execute().data)
+    if r:
+        ini.append(int(r[0]["folha"]))
+    r = (sb.table("tab_total").select("folha").eq("id_empresa", id_empresa).neq("controle", CONTROLE_TOT)
+         .order("folha").limit(1).execute().data)
+    if r:
+        ini.append(int(r[0]["folha"]))
+    return min(ini) if ini else 0
+
+
+def simular(app, id_cliente, id_empresa, depara, origem=DX.ORIGEM, progresso=None):
+    """Monta tudo sem gravar. Devolve um dicionário com o resumo e as linhas."""
+    prog = progresso or (lambda p, e: None)
+    sb = app.supabase
+    emp = (sb.table("tab_empresa").select("id_empresa, razaosocial")
+           .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute().data)
+    if not emp:
+        return {"ok": False, "msg": f"Empresa {id_empresa} não é do cliente {id_cliente}."}
+    if not os.path.isfile(depara):
+        return {"ok": False, "msg": f"Planilha de-para não encontrada: {depara}"}
+    cad = app._diss_todos(sb.table("tab_cad").select("matricula, cpf, nome, filial")
+                          .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente))
+    mat_por_cpf = {str(c["cpf"]).zfill(11): int(c["matricula"]) for c in cad}
+    cpf_por_mat = {m: c for c, m in mat_por_cpf.items()}
+    nome = {int(c["matricula"]): c["nome"] for c in cad}
+    filial = {int(c["matricula"]): str(c.get("filial") or "") for c in cad}
+
+    prog(5, "lendo a planilha de-para…")
+    mapa, fora, info, pend, aba = ler_depara(depara)
+    rinfo = _rubricas(app, id_cliente)
+    zips = DX.listar_zips(origem)
+    prog(10, "lendo os S-3000 (exclusões)…")
+    anulados = DX.recibos_excluidos(origem, zips)
+    prog(25, "lendo os S-1010…")
+    r1010 = ler_rubricas_s1010(origem, zips)
+    prog(35, "lendo os S-1200…")
+    v1200, n_ev, n_tirados = ler_s1200(origem, anulados, zips)
+    prog(55, "lendo os S-2299…")
+    v2299 = ler_s2299(origem, anulados, zips)
+    prog(65, "lendo os totalizadores S-5001/S-5003…")
+    recibos = {e["recibo"] for e, _ in v1200 + v2299}
+    tot = ler_totalizadores(origem, recibos, zips)
+    prog(85, "lendo os salários (S-2200/S-2206)…")
+    sal = ler_salarios(origem, anulados, zips)
+
+    prog(90, "montando…")
+    soma, irrf, faltou_cpf, pend_uso, fora_uso, info_uso, _ = montar(
+        v1200 + v2299, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010)
+
+    corte = _primeira_folha_f10(app, id_empresa)
+    def teto(folha, _c={}):
+        if folha not in _c:
+            tb = app._get_tabela_legais(folha) or {}
+            lims = [int(tb.get(f"inss{i}_limite") or 0) for i in range(1, 7)]
+            lims = [x for x in lims if x]
+            _c[folha] = lims[-1] if lims else 0
+        return _c[folha]
+    linhas_tot = montar_total(id_cliente, id_empresa, soma, irrf, tot, cpf_por_mat, sal, rinfo, teto, filial)
+
+    linhas_mov = [{"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                   "matricula": mat, "folha": folha, "folha_tipo": tipo, "complemento": 0,
+                   "cod_verba": verba, "qtd": int(round(q * 100)), "valor": int(round(v * 100)),
+                   "lote": LOTE, "origem": ORIGEM, "controle": 0, "os": 0}
+                  for (mat, folha, tipo, verba), (q, v) in sorted(soma.items())]
+    pulou = sorted({l["folha"] for l in linhas_mov + linhas_tot if corte and l["folha"] >= corte})
+    if corte:
+        linhas_mov = [l for l in linhas_mov if l["folha"] < corte]
+        linhas_tot = [l for l in linhas_tot if l["folha"] < corte]
+
+    por_folha = defaultdict(lambda: {"linhas": 0, "prov": 0, "desc": 0, "func": set(),
+                                     "inss": 0, "fgts": 0})
+    for l in linhas_mov:
+        pf = por_folha[(l["folha"], l["folha_tipo"])]
+        pf["linhas"] += 1
+        pf["func"].add(l["matricula"])
+        pf["prov" if rinfo[l["cod_verba"]]["tp"] == "1" else "desc"] += l["valor"]
+    for l in linhas_tot:
+        pf = por_folha[(l["folha"], l["folha_tipo"])]
+        pf["inss"] += l["valor_inss_retido"]
+        pf["fgts"] += l["valor_fgts"]
+    folhas = [{"folha": f, "tipo": t, "linhas": d["linhas"], "func": len(d["func"]),
+               "prov": d["prov"], "desc": d["desc"], "inss": d["inss"], "fgts": d["fgts"]}
+              for (f, t), d in sorted(por_folha.items())]
+    pendentes = [{"cod": c, "motivo": m, "vezes": n, "dsc": (r1010.get(c) or {}).get("dsc", "")}
+                 for (c, m), n in sorted(pend_uso.items(), key=lambda x: -x[1])]
+    return {"ok": True, "empresa": emp[0]["razaosocial"], "funcionarios": len(cad),
+            "planilha": os.path.basename(depara), "aba": aba,
+            "depara": {"com_verba": len(mapa), "nao_importar": len(fora), "tab_total": len(info),
+                       "pendentes": len(pend)},
+            "s1200": n_ev, "s1200_fora": n_tirados, "s1200_validos": len(v1200), "s2299": len(v2299),
+            "cpf_sem_func": sorted(faltou_cpf), "pendentes": pendentes, "folhas": folhas,
+            "corte": corte, "folhas_puladas": pulou,
+            "linhas_mov": linhas_mov, "linhas_tot": linhas_tot, "nome": nome,
+            "total_prov": sum(f["prov"] for f in folhas), "total_desc": sum(f["desc"] for f in folhas)}
+
+
+def salvar_previa(res, caminho=PREVIA):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Resumo por folha"
+    ws.append(["Folha", "Tipo", "Funcionários", "Linhas tab_mov", "Proventos", "Descontos",
+               "INSS (tab_total)", "FGTS (tab_total)"])
+    for f in res["folhas"]:
+        ws.append([f["folha"], f["tipo"], f["func"], f["linhas"], f["prov"] / 100, f["desc"] / 100,
+                   f["inss"] / 100, f["fgts"] / 100])
+    ws = wb.create_sheet("tab_mov")
+    ws.append(["Matrícula", "Nome", "Folha", "Tipo", "Verba", "Qtd", "Valor (R$)"])
+    for l in res["linhas_mov"]:
+        ws.append([l["matricula"], res["nome"].get(l["matricula"], ""), l["folha"], l["folha_tipo"],
+                   l["cod_verba"], l["qtd"] / 100, l["valor"] / 100])
+    ws = wb.create_sheet("tab_total")
+    cols = ["valor_salario", "valor_total_proventos", "valor_total_descontos", "valor_liquido",
+            "valor_base_inss_semlimite", "valor_base_inss_comlimite", "valor_inss_retido",
+            "valor_base_fgts", "valor_fgts", "valor_irrf_basetabela"]
+    ws.append(["Matrícula", "Nome", "Folha", "Tipo"] + cols)
+    for l in res["linhas_tot"]:
+        ws.append([l["matricula"], res["nome"].get(l["matricula"], ""), l["folha"], l["folha_tipo"]]
+                  + [l[c] / 100 for c in cols])
+    ws = wb.create_sheet("Pendentes")
+    ws.append(["Código eSocial", "Descrição", "Vezes", "Motivo"])
+    for p in res["pendentes"]:
+        ws.append([p["cod"], p["dsc"], p["vezes"], p["motivo"]])
+    wb.save(caminho)
+    return caminho
+
+
+def gravar(app, id_cliente, id_empresa, res, cpf_usuario=""):
+    """Grava o que simular() montou. Recusa se houver pendência."""
+    if res.get("pendentes") or res.get("cpf_sem_func"):
+        return {"ok": False, "msg": "Há códigos pendentes ou CPF sem funcionário — corrija a planilha antes."}
+    sb = app.supabase
+    sb.table("tab_mov").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).eq("lote", LOTE).execute()
+    sb.table("tab_total").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente) \
+        .eq("controle", CONTROLE_TOT).execute()
+    for tab, linhas in (("tab_mov", res["linhas_mov"]), ("tab_total", res["linhas_tot"])):
+        for i in range(0, len(linhas), 500):
+            sb.table(tab).insert(linhas[i:i + 500]).execute()
+    obs = (f"eSocial S-1200/S-2299 -> lote {LOTE}: tab_mov {len(res['linhas_mov'])}, "
+           f"tab_total {len(res['linhas_tot'])}, {len(res['folhas'])} folhas, "
+           f"planilha {res['planilha']}")[:300]
+    try:
+        sb.table("tab_log").insert({
+            "id_cliente": id_cliente, "id_empresa": id_empresa, "cpf_usuario": cpf_usuario,
+            "menu": "IMP-S1200", "matricula": 0, "observacao": obs,
+            "data_hora_grava": app._agora_brasilia().strftime("%Y%m%d %H%M"),
+        }).execute()
+    except Exception as e:
+        print(f"(log não gravado: {e})")
+    return {"ok": True, "mov": len(res["linhas_mov"]), "tot": len(res["linhas_tot"])}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cliente", type=int, required=True)
@@ -165,91 +585,39 @@ def main():
     ap.add_argument("--depara", required=True)
     ap.add_argument("--origem", default=DX.ORIGEM)
     ap.add_argument("--gravar", action="store_true")
-    ap.add_argument("--ignorar-pendentes", action="store_true")
     a = ap.parse_args()
 
     app = _supabase()
-    sb = app.supabase
-    emp = (sb.table("tab_empresa").select("id_empresa, razaosocial")
-           .eq("id_empresa", a.empresa).eq("id_cliente", a.cliente).execute().data)
-    if not emp:
-        sys.exit(f"Empresa {a.empresa} não é do cliente {a.cliente}.")
-    cad = app._diss_todos(sb.table("tab_cad").select("matricula, cpf, nome")
-                          .eq("id_empresa", a.empresa).eq("id_cliente", a.cliente))
-    mat_por_cpf = {str(c["cpf"]).zfill(11): int(c["matricula"]) for c in cad}
-    nome = {int(c["matricula"]): c["nome"] for c in cad}
-
-    mapa, fora, pend = ler_depara(a.depara)
-    validos, n_ev, n_tirados = ler_s1200(a.origem)
-    soma, faltou_cpf, pend_uso, fora_uso = montar(validos, mapa, fora, pend, mat_por_cpf)
-
-    print(f"Empresa {a.empresa} - {emp[0]['razaosocial']}  ({len(cad)} funcionários)")
-    print(f"S-1200 nos ZIPs: {n_ev}  | anulados/retificados fora: {n_tirados}  | válidos: {len(validos)}")
-    print(f"De-para: {len(mapa)} com verba, {len(fora)} não importar, {len(pend)} pendentes")
-    if faltou_cpf:
-        print(f"\nCPF sem funcionário na empresa ({len(faltou_cpf)}): " + ", ".join(sorted(faltou_cpf)))
-    if pend_uso:
-        print("\nPENDENTES (ficaram de fora):")
-        for (cod, motivo), n in sorted(pend_uso.items(), key=lambda x: -x[1]):
-            print(f"  {cod:<16} {n:>4}x  {motivo}")
-
-    por_folha = defaultdict(lambda: [0, 0.0])
-    for (mat, folha, tipo, verba), (q, v) in soma.items():
-        por_folha[(folha, tipo)][0] += 1
-        por_folha[(folha, tipo)][1] += v
-    print("\nFolha   Tipo  Linhas     Valor (R$)")
-    for (folha, tipo), (n, v) in sorted(por_folha.items()):
-        print(f"{folha}  {tipo:^4}  {n:>6}  {v:>14,.2f}")
-    print(f"Total de linhas: {len(soma)}")
-
-    linhas = [{"id_cliente": a.cliente, "id_empresa": a.empresa, "situacao": "A",
-               "matricula": mat, "folha": folha, "folha_tipo": tipo, "complemento": 0,
-               "cod_verba": verba, "qtd": int(round(q * 100)), "valor": int(round(v * 100)),
-               "lote": LOTE, "origem": ORIGEM, "controle": 0, "os": 0}
-              for (mat, folha, tipo, verba), (q, v) in sorted(soma.items())]
-
+    res = simular(app, a.cliente, a.empresa, a.depara, a.origem,
+                  progresso=lambda p, e: print(f"  {p:>3}% {e}"))
+    if not res["ok"]:
+        sys.exit(res["msg"])
+    brl = lambda c: f"{c / 100:>14,.2f}"
+    print(f"\nEmpresa {a.empresa} - {res['empresa']}  ({res['funcionarios']} funcionários)")
+    print(f"Planilha {res['planilha']} (aba {res['aba']}): {res['depara']}")
+    print(f"S-1200: {res['s1200']} | fora (anulado/retificado): {res['s1200_fora']} | "
+          f"válidos: {res['s1200_validos']} | S-2299 válidos: {res['s2299']}")
+    if res["cpf_sem_func"]:
+        print(f"CPF sem funcionário: {len(res['cpf_sem_func'])}")
+    if res["pendentes"]:
+        print("\nPENDENTES (bloqueiam a gravação):")
+        for p in res["pendentes"]:
+            print(f"  {p['cod']:<16} {p['vezes']:>4}x  {p['dsc'][:35]:<35}  {p['motivo']}")
+    print("\nFolha   Tipo Func Linhas      Proventos      Descontos           INSS           FGTS")
+    for f in res["folhas"]:
+        print(f"{f['folha']}  {f['tipo']:^4} {f['func']:>4} {f['linhas']:>6} {brl(f['prov'])} {brl(f['desc'])} "
+              f"{brl(f['inss'])} {brl(f['fgts'])}")
+    print(f"tab_mov: {len(res['linhas_mov'])} linhas | tab_total: {len(res['linhas_tot'])} linhas"
+          + (f" | folhas a partir de {res['corte']} ficam de fora (já são do Folha10)" if res["corte"] else ""))
     try:
-        import openpyxl
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Previa tab_mov"
-        ws.append(["Matrícula", "Nome", "Folha", "Tipo", "Verba", "Qtd", "Valor (R$)"])
-        for l in linhas:
-            ws.append([l["matricula"], nome.get(l["matricula"], ""), l["folha"], l["folha_tipo"],
-                       l["cod_verba"], l["qtd"] / 100, l["valor"] / 100])
-        ws2 = wb.create_sheet("Pendentes")
-        ws2.append(["Código eSocial", "Vezes", "Situação na planilha"])
-        for (cod, motivo), n in sorted(pend_uso.items(), key=lambda x: -x[1]):
-            ws2.append([cod, n, motivo])
-        wb.save(PREVIA)
-        print(f"\nPrévia: {PREVIA}")
+        print(f"Prévia: {salvar_previa(res)}")
     except Exception as e:
         print(f"(não deu para salvar a prévia: {e})")
-
     if not a.gravar:
         print("\nSIMULAÇÃO - nada foi gravado. Use --gravar para gravar.")
         return
-    if pend_uso and not a.ignorar_pendentes:
-        sys.exit("\nHá códigos pendentes: complete a planilha ou use --ignorar-pendentes.")
-    outros = (sb.table("tab_mov").select("id", count="exact")
-              .eq("id_empresa", a.empresa).neq("lote", LOTE).limit(1).execute().count)
-    if outros:
-        sys.exit(f"\nA empresa já tem {outros} linha(s) no tab_mov de outra origem - nada gravado.")
-    sb.table("tab_mov").delete().eq("id_empresa", a.empresa).eq("lote", LOTE).execute()
-    for i in range(0, len(linhas), 500):
-        sb.table("tab_mov").insert(linhas[i:i + 500]).execute()
-    total = sum(l["valor"] for l in linhas) / 100
-    try:
-        sb.table("tab_log").insert({
-            "id_cliente": a.cliente, "id_empresa": a.empresa, "cpf_usuario": "",
-            "menu": "IMP-S1200", "matricula": 0,
-            "observacao": (f"S-1200 -> tab_mov lote {LOTE}: {len(linhas)} linhas, "
-                           f"{len(por_folha)} folhas, R$ {total:,.2f}")[:300],
-            "data_hora_grava": app._agora_brasilia().strftime("%Y%m%d %H%M"),
-        }).execute()
-    except Exception as e:
-        print(f"(log não gravado: {e})")
-    print(f"\nGRAVADO: {len(linhas)} linhas no tab_mov (lote {LOTE}).")
+    r = gravar(app, a.cliente, a.empresa, res)
+    print(r)
 
 
 if __name__ == "__main__":
