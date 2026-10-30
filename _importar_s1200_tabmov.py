@@ -20,7 +20,7 @@ da rubrica no eSocial; a coluna de título "Folha10" (sem ela, a O) = verba do
 Folha10 (4 dígitos), NÃO IMPORTAR ou TAB_TOTAL (informativa: base/FGTS, que
 não vira verba — o Folha10 só tem provento e desconto).
 
-tab_mov (lote 1200, origem 'I'), com a NOSSA verba:
+tab_mov (lote 1200, origem 'M'), com a NOSSA verba:
   - S-1200: anulado por S-3000 não entra; retificado substitui o original;
     apuração anual (13º) e verba de uso só no 13º → '1', folha AAAA12;
     verba de uso só em férias (0041/0042/0045/0046/0103) → 'F'; o resto → 'N';
@@ -55,7 +55,10 @@ import _descompactar_xml_esocial as DX
 
 LOTE = 1200
 CONTROLE_TOT = 1200
-ORIGEM = "I"
+# A tab_mov só aceita C/M/F/A (check constraint tab_mov_origem_check; o "I"
+# quebrou a gravação em 30/10/2026). M = lançamento: o recálculo só apaga as
+# verbas C. O que identifica esta importação é o LOTE.
+ORIGEM = "M"
 QTD_HORAS_MIN = {"037FOLH", "404FOLH"}       # quantidade em horas.minutos
 VERBA_INSS_FERIAS = 103
 PREVIA = r"C:\XMLeSocial\Planilhas\Previa_S1200_tabmov.xlsx"
@@ -657,12 +660,27 @@ def gravar(app, id_cliente, id_empresa, res, cpf_usuario=""):
     if res.get("pendentes") or res.get("cpf_sem_func"):
         return {"ok": False, "msg": "Há códigos pendentes ou CPF sem funcionário — corrija a planilha antes."}
     sb = app.supabase
-    sb.table("tab_mov").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).eq("lote", LOTE).execute()
-    sb.table("tab_total").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente) \
-        .eq("controle", CONTROLE_TOT).execute()
-    for tab, linhas in (("tab_mov", res["linhas_mov"]), ("tab_total", res["linhas_tot"])):
-        for i in range(0, len(linhas), 500):
-            sb.table(tab).insert(linhas[i:i + 500]).execute()
+
+    def _limpar():
+        sb.table("tab_mov").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).eq("lote", LOTE).execute()
+        sb.table("tab_total").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente) \
+            .eq("controle", CONTROLE_TOT).execute()
+
+    _limpar()
+    # Cada insert de 500 é tudo-ou-nada, mas a gravação inteira não: se um lote
+    # falhar no meio (constraint do banco, rede), desfaz o que já entrou para não
+    # ficar ficha pela metade — quem olha a empresa não teria como saber.
+    try:
+        for tab, linhas in (("tab_mov", res["linhas_mov"]), ("tab_total", res["linhas_tot"])):
+            for i in range(0, len(linhas), 500):
+                sb.table(tab).insert(linhas[i:i + 500]).execute()
+    except Exception as e:
+        try:
+            _limpar()
+            desfeito = "nada ficou gravado"
+        except Exception as e2:
+            desfeito = f"ATENÇÃO: não deu para desfazer ({str(e2)[:80]}) — rode a gravação de novo"
+        return {"ok": False, "msg": f"Erro ao gravar ({desfeito}): {str(e)[:300]}"}
     obs = (f"eSocial S-1200/S-2299 -> lote {LOTE}: tab_mov {len(res['linhas_mov'])}, "
            f"tab_total {len(res['linhas_tot'])}, {len(res['folhas'])} folhas, "
            f"planilha {res['planilha']}")[:300]
