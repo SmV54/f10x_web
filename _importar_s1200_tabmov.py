@@ -142,7 +142,7 @@ def ler_s1200(origem, anulados=None, zips=None):
         ide = ide.group(1) if ide else ""
         ev = {"arquivo": nome, "recibo": rec, "retif": _g(R_RETIF, ide) == "2",
               "substitui": _g(R_REC, ide), "per": _g(R_PER, ide), "ind": _g(R_IND, ide, "1"),
-              "cpf": _g(R_CPF, t), "layout": "S-1200"}
+              "cpf": _g(R_CPF, t), "matr_es": _g("matricula", t), "layout": "S-1200"}
         itens = []
         for dm in re.findall(r"<dmDev>(.*?)</dmDev>", t, re.S):
             ide_dm = _g("ideDmDev", dm)
@@ -164,7 +164,7 @@ def ler_s2299(origem, anulados, zips=None):
         dt = _g("dtDeslig", t)
         ev = {"arquivo": nome, "recibo": rec, "retif": _g(R_RETIF, ide) == "2",
               "substitui": _g(R_REC, ide), "per": dt[:7], "ind": "1", "dt": dt,
-              "cpf": _g(R_CPF, t), "layout": "S-2299"}
+              "cpf": _g(R_CPF, t), "matr_es": _g("matricula", t), "layout": "S-2299"}
         itens = []
         for dm in re.findall(r"<dmDev>(.*?)</dmDev>", t, re.S):
             ap = re.search(r"<infoPerApur>(.*?)</infoPerApur>", dm, re.S)
@@ -245,7 +245,12 @@ def _horas(cod, q):
 
 
 # ── montagem ─────────────────────────────────────────────────────────────
-def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010):
+def _norm_matr(m):
+    """Matrícula do eSocial sem zeros à esquerda ('00020000036' = '20000036')."""
+    return str(m or "").strip().lstrip("0")
+
+
+def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010, mat_por_es=None):
     """Soma por (mat, folha, tipo, verba) e separa o que ficou de fora.
 
     Devolve (soma, irrf, faltou_cpf, pend_uso, fora_uso, info_uso, tipo_mes):
@@ -268,7 +273,10 @@ def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010):
         d["cliente"] = cliente
     tipo_mes = defaultdict(set)
     for ev, itens in validos:
-        mat = mat_por_cpf.get(ev["cpf"])
+        # A matrícula do eSocial não é a nossa: liga pela tab_cad.matricula_es
+        # (com o mesmo CPF — readmitido tem duas), e só sem ela pelo CPF.
+        par = (mat_por_es or {}).get(_norm_matr(ev.get("matr_es")))
+        mat = par[0] if par and par[1] == ev["cpf"] else mat_por_cpf.get(ev["cpf"])
         if not mat:
             faltou_cpf[ev["cpf"]] += 1
             continue
@@ -461,9 +469,11 @@ def simular(app, id_cliente, id_empresa, depara, origem=DX.ORIGEM, progresso=Non
         return {"ok": False, "msg": f"Empresa {id_empresa} não é do cliente {id_cliente}."}
     if not os.path.isfile(depara):
         return {"ok": False, "msg": f"Planilha de-para não encontrada: {depara}"}
-    cad = app._diss_todos(sb.table("tab_cad").select("matricula, cpf, nome, filial")
+    cad = app._diss_todos(sb.table("tab_cad").select("matricula, cpf, nome, filial, matricula_es")
                           .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente))
     mat_por_cpf = {str(c["cpf"]).zfill(11): int(c["matricula"]) for c in cad}
+    mat_por_es = {_norm_matr(c.get("matricula_es")): (int(c["matricula"]), str(c["cpf"]).zfill(11))
+                  for c in cad if _norm_matr(c.get("matricula_es"))}
     cpf_por_mat = {m: c for c, m in mat_por_cpf.items()}
     nome = {int(c["matricula"]): c["nome"] for c in cad}
     filial = {int(c["matricula"]): str(c.get("filial") or "") for c in cad}
@@ -488,7 +498,7 @@ def simular(app, id_cliente, id_empresa, depara, origem=DX.ORIGEM, progresso=Non
 
     prog(90, "montando…")
     soma, irrf, faltou_cpf, pend_uso, fora_uso, info_uso, _ = montar(
-        v1200 + v2299, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010)
+        v1200 + v2299, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010, mat_por_es)
 
     corte = _primeira_folha_f10(app, id_empresa)
     def teto(folha, _c={}):
