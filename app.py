@@ -75830,6 +75830,31 @@ def api_descompactar_xml_escolher_arquivo():
     return jsonify({'ok': True, 'caminho': caminho})
 
 
+@app.route('/api/descompactar_xml/ficha/pdf')
+def api_descompactar_xml_ficha_pdf():
+    """PDF das pendências da última simulação, para mandar ao cliente.
+    Fica também uma cópia na pasta das planilhas."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    sim = _ficha_res.get(request.args.get('job', '').strip())
+    if not sim:
+        return jsonify({'ok': False, 'msg': 'Simule de novo antes de gerar o PDF.'})
+    import _importar_s1200_tabmov as IMP
+    res = sim['res']
+    nome = ('Pendencias planilha de-para - '
+            + re.sub(r'[^\w\- ]+', '', str(res.get('empresa') or 'empresa')).strip()[:60] + '.pdf')
+    buf = io.BytesIO()
+    IMP.pdf_criticas(res, buf)
+    try:
+        with open(os.path.join(M.PLANILHAS, nome), 'wb') as f:
+            f.write(buf.getvalue())
+    except Exception as ex:
+        print(f'[ficha pdf] copia nao gravada: {ex}')
+    buf.seek(0)
+    return send_file(buf, mimetype='application/pdf', as_attachment=False, download_name=nome)
+
+
 @app.route('/api/descompactar_xml/ficha/progresso')
 def api_descompactar_xml_ficha_progresso():
     if not session.get('logado'):

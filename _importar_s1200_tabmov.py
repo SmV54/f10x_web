@@ -254,7 +254,18 @@ def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010):
     """
     soma = defaultdict(lambda: [0.0, 0.0])
     irrf = defaultdict(int)
-    faltou_cpf, pend_uso, fora_uso, info_uso = Counter(), Counter(), Counter(), Counter()
+    faltou_cpf, fora_uso, info_uso = Counter(), Counter(), Counter()
+    # pend_uso[(cod, motivo da tela)] = {'n', 'vr', 'pers', 'func', 'cliente'}; 'cliente' é o
+    # texto do PDF que vai para o cliente (sem o jeito interno de falar)
+    pend_uso = defaultdict(lambda: {"n": 0, "vr": 0.0, "pers": set(), "func": set(), "cliente": ""})
+
+    def _pend(cod, motivo, cliente, ev, it, mat):
+        d = pend_uso[(cod, motivo)]
+        d["n"] += 1
+        d["vr"] += it["vr"]
+        d["pers"].add(ev["per"])
+        d["func"].add(mat)
+        d["cliente"] = cliente
     tipo_mes = defaultdict(set)
     for ev, itens in validos:
         mat = mat_por_cpf.get(ev["cpf"])
@@ -285,16 +296,24 @@ def montar(validos, mapa, fora, info, pend, mat_por_cpf, rinfo, r1010):
                 continue
             verba = mapa.get(cod)
             if verba is None:
-                pend_uso[(cod, pend.get(cod, "não está na planilha"))] += 1
+                if cod in pend:
+                    _pend(cod, pend[cod], "Falta informar a verba do Folha10 (ou “NÃO IMPORTAR”).", ev, it, mat)
+                else:
+                    _pend(cod, "não está na planilha", "A rubrica não está na planilha. Inclua a linha com a "
+                          "verba do Folha10 (ou “NÃO IMPORTAR”).", ev, it, mat)
                 continue
             ri = rinfo.get(verba)
             if not ri:
-                pend_uso[(cod, f"verba {verba:04d} não existe no Folha10")] += 1
+                _pend(cod, f"verba {verba:04d} não existe no Folha10",
+                      f"A verba {verba:04d} informada não existe no Folha10. Confira o código.", ev, it, mat)
                 continue
             tp_es = {"1": "1", "2": "2"}.get((r1010.get(cod) or {}).get("tp", ""))
             if tp_es and tp_es != ri["tp"]:
-                pend_uso[(cod, f"no eSocial é {'provento' if tp_es == '1' else 'desconto'}; "
-                               f"a verba {verba:04d} é {'provento' if ri['tp'] == '1' else 'desconto'}")] += 1
+                es_txt = "provento" if tp_es == "1" else "desconto"
+                f10_txt = "provento" if ri["tp"] == "1" else "desconto"
+                _pend(cod, f"no eSocial é {es_txt}; a verba {verba:04d} é {f10_txt}",
+                      f"No eSocial esta rubrica é {es_txt.upper()}, mas a verba {verba:04d} "
+                      f"({ri['dsc'].strip()}) é {f10_txt.upper()}. Informe uma verba de {es_txt}.", ev, it, mat)
                 continue
             if resc:
                 folha, tipo = int(ano + mes), "R"
@@ -436,7 +455,7 @@ def simular(app, id_cliente, id_empresa, depara, origem=DX.ORIGEM, progresso=Non
     """Monta tudo sem gravar. Devolve um dicionário com o resumo e as linhas."""
     prog = progresso or (lambda p, e: None)
     sb = app.supabase
-    emp = (sb.table("tab_empresa").select("id_empresa, razaosocial")
+    emp = (sb.table("tab_empresa").select("id_empresa, razaosocial, cnpj")
            .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute().data)
     if not emp:
         return {"ok": False, "msg": f"Empresa {id_empresa} não é do cliente {id_cliente}."}
@@ -505,9 +524,16 @@ def simular(app, id_cliente, id_empresa, depara, origem=DX.ORIGEM, progresso=Non
     folhas = [{"folha": f, "tipo": t, "linhas": d["linhas"], "func": len(d["func"]),
                "prov": d["prov"], "desc": d["desc"], "inss": d["inss"], "fgts": d["fgts"]}
               for (f, t), d in sorted(por_folha.items())]
-    pendentes = [{"cod": c, "motivo": m, "vezes": n, "dsc": (r1010.get(c) or {}).get("dsc", "")}
-                 for (c, m), n in sorted(pend_uso.items(), key=lambda x: -x[1])]
-    return {"ok": True, "empresa": emp[0]["razaosocial"], "funcionarios": len(cad),
+    def _periodo(pers):
+        f = lambda p: f"{p[5:7]}/{p[:4]}" if len(p) >= 7 else f"13º/{p[:4]}"
+        ps = sorted(pers, key=lambda p: p if len(p) >= 7 else p + "-12")
+        return "" if not ps else (f(ps[0]) if len(ps) == 1 else f"{f(ps[0])} a {f(ps[-1])}")
+    pendentes = [{"cod": c, "motivo": m, "vezes": d["n"], "dsc": (r1010.get(c) or {}).get("dsc", ""),
+                  "tipo": (r1010.get(c) or {}).get("tp", ""), "valor": _cent(d["vr"]),
+                  "periodo": _periodo(d["pers"]), "func": len(d["func"]), "cliente": d["cliente"]}
+                 for (c, m), d in sorted(pend_uso.items(), key=lambda x: -x[1]["n"])]
+    return {"ok": True, "empresa": emp[0]["razaosocial"], "cnpj": emp[0].get("cnpj") or "",
+            "funcionarios": len(cad),
             "planilha": os.path.basename(depara), "aba": aba,
             "depara": {"com_verba": len(mapa), "nao_importar": len(fora), "tab_total": len(info),
                        "pendentes": len(pend)},
@@ -547,6 +573,73 @@ def salvar_previa(res, caminho=PREVIA):
         ws.append([p["cod"], p["dsc"], p["vezes"], p["motivo"]])
     wb.save(caminho)
     return caminho
+
+
+def pdf_criticas(res, destino):
+    """PDF para mandar ao cliente: o que impede a importação, rubrica por rubrica.
+
+    Escrito para o cliente — sem caminho local, sem nome de tabela nem de
+    sistema interno. destino: caminho do arquivo ou um BytesIO.
+    """
+    from datetime import datetime
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+    AZ = colors.HexColor("#1E3A5F")
+    s_tit = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=13, textColor=AZ, spaceAfter=4)
+    s_sub = ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#475569"))
+    s_txt = ParagraphStyle("x", fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#334155"),
+                           spaceAfter=4)
+    s_res = ParagraphStyle("r", parent=s_sub, fontSize=9.5, leading=12, textColor=colors.black, spaceBefore=4,
+                           spaceAfter=6)
+    s_c = ParagraphStyle("c", fontName="Helvetica", fontSize=7.5, leading=9)
+    s_cb = ParagraphStyle("cb", parent=s_c, fontName="Helvetica-Bold")
+    W = landscape(A4)[0] - 3 * cm
+    cnpj = re.sub(r"\D", "", res.get("cnpj") or "")
+    if len(cnpj) == 14:
+        cnpj = f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
+    brl = lambda c: ("R$ " + f"{c / 100:,.2f}").replace(",", "X").replace(".", ",").replace("X", ".")
+    TP = {"1": "Provento", "2": "Desconto", "3": "Informativa", "4": "Informativa dedutora"}
+    esc = lambda t: str(t if t is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    pend = res.get("pendentes") or []
+
+    el = [Paragraph("IMPORTAÇÃO DA FICHA FINANCEIRA — PENDÊNCIAS DA PLANILHA DE-PARA", s_tit),
+          Paragraph(f"Empresa: <b>{esc(res.get('empresa') or '—')}</b>" + (f" — CNPJ {cnpj}" if cnpj else "") + "<br/>"
+                    f"Planilha: <b>{esc(res.get('planilha'))}</b> (aba “{esc(res.get('aba'))}”)<br/>"
+                    f"Conferência de {datetime.now().strftime('%d/%m/%Y')}.", s_sub),
+          Spacer(1, 6),
+          Paragraph("Para trazer o histórico das folhas do eSocial para o Folha10, cada rubrica usada nas folhas "
+                    "e nas rescisões precisa estar na planilha de-para, dizendo para qual verba do Folha10 ela vai "
+                    "(ou “NÃO IMPORTAR”). Enquanto houver pendência, a importação não é feita.", s_txt)]
+    if not pend:
+        el.append(Paragraph("<font color='#166534'><b>Nenhuma pendência.</b></font> A planilha está pronta "
+                            "para a importação.", s_res))
+    else:
+        el.append(Paragraph(f"<font color='#B91C1C'><b>{len(pend)} rubrica(s) com pendência.</b></font> "
+                            "Corrija na planilha e devolva para importarmos.", s_res))
+        rows = [[Paragraph(h, s_cb) for h in ("Rubrica", "Descrição no eSocial", "Tipo", "Período", "Func.",
+                                              "Valor total", "O que fazer")]]
+        for p in pend:
+            rows.append([Paragraph(esc(x), s_cb if j == 0 else s_c) for j, x in enumerate(
+                [p["cod"], p["dsc"], TP.get(p.get("tipo"), p.get("tipo") or ""), p.get("periodo", ""),
+                 p.get("func", ""), brl(p.get("valor") or 0), p.get("cliente") or p["motivo"]])])
+        t = Table(rows, colWidths=[x * W for x in (.1, .22, .08, .12, .05, .1, .33)], repeatRows=1, hAlign="LEFT")
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF1FB")),
+                               ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                               ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        el.append(t)
+
+    def rodape(c, d):
+        c.saveState(); c.setFont("Helvetica", 7); c.setFillColor(colors.HexColor("#64748B"))
+        c.drawString(1.5 * cm, 0.8 * cm, "Folha10-Simples · Importação da ficha financeira do eSocial")
+        c.drawRightString(landscape(A4)[0] - 1.5 * cm, 0.8 * cm, f"Página {d.page}"); c.restoreState()
+
+    SimpleDocTemplate(destino, pagesize=landscape(A4), leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+                      topMargin=1.3 * cm, bottomMargin=1.3 * cm,
+                      title="Pendências da planilha de-para").build(el, onFirstPage=rodape, onLaterPages=rodape)
+    return destino
 
 
 def gravar(app, id_cliente, id_empresa, res, cpf_usuario=""):

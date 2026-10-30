@@ -1196,7 +1196,9 @@ function mostrarFicha(r, jobId) {
       + ' CPF(s) do eSocial sem funcionário nesta empresa — importe o cadastro (Etapa 3) antes.</div>';
   }
   if ((r.pendentes || []).length) {
-    h += '<div class="erro-box" style="margin-top:8px;">Códigos que impedem a gravação — corrija a planilha e simule de novo:</div>'
+    h += '<div class="erro-box" style="margin-top:8px;">Códigos que impedem a gravação — corrija a planilha e simule de novo:'
+      + ' <button class="btn-sec" style="margin-left:8px;" onclick="window.open(\'/api/descompactar_xml/ficha/pdf?job='
+      + jobId + '\', \'_blank\')">PDF para o cliente</button></div>'
       + '<table style="margin-top:4px;"><thead><tr><th>Código</th><th>Descrição</th><th>Vezes</th><th>Motivo</th></tr></thead><tbody>'
       + r.pendentes.map(p => '<tr><td>' + esc4(p.cod) + '</td><td>' + esc4(p.dsc) + '</td><td>' + p.vezes
         + '</td><td>' + esc4(p.motivo) + '</td></tr>').join('') + '</tbody></table>';
