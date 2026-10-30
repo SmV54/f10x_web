@@ -75877,16 +75877,38 @@ def api_descompactar_xml_ficha_gravar():
         return jsonify({'ok': False, 'msg': 'Simule de novo antes de gravar.'})
     if (sim['id_cliente'], sim['id_empresa']) != (alvo['id_cliente'], alvo['id_empresa']):
         return jsonify({'ok': False, 'msg': 'A simulação foi de outra empresa — simule de novo.'})
-    try:
-        import sys
-        import _importar_s1200_tabmov as IMP
-        r = IMP.gravar(sys.modules[__name__], sim['id_cliente'], sim['id_empresa'], sim['res'],
-                       cpf_usuario=str(session.get('cpf') or ''))
-    except Exception as ex:
-        return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
-    if r.get('ok'):
-        _ficha_res.pop(str(d.get('job_id')), None)
-    return jsonify(r)
+    # Em segundo plano, como a simulação: a tela acompanha pelo /ficha/progresso.
+    sim_id = str(d.get('job_id')).strip()
+    if sim.get('gravando'):
+        return jsonify({'ok': False, 'msg': 'Esta simulação já está sendo gravada.'})
+    sim['gravando'] = True
+    job_id = uuid.uuid4().hex[:12]
+    _ficha_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
+    cpf = str(session.get('cpf') or '')
+
+    def _rodar():
+        job = _ficha_jobs[job_id]
+
+        def prog(pct, etapa):
+            job['pct'] = pct
+            job['etapa'] = etapa
+        try:
+            import sys
+            import _importar_s1200_tabmov as IMP
+            r = IMP.gravar(sys.modules[__name__], sim['id_cliente'], sim['id_empresa'], sim['res'],
+                           cpf_usuario=cpf, progresso=prog)
+        except Exception as ex:
+            r = {'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'}
+        if r.get('ok'):
+            _ficha_res.pop(sim_id, None)
+        else:
+            sim['gravando'] = False
+        job['resultado'] = r
+        job['pct'] = 100
+        job['done'] = True
+
+    threading.Thread(target=_rodar, daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id})
 
 
 _pxml_jobs = {}

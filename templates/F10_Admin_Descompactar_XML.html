@@ -1227,16 +1227,40 @@ function gravarFicha() {
     .then(function (sim) {
       if (!sim) return;
       el('btnGravar4').disabled = true; el('btnGravar4').textContent = 'Gravando…';
+      el('btnSimular4').disabled = true;
+      el('prog4Wrap').style.display = 'block'; setBarra4(0, 'Iniciando a gravação…');
+      el('resumo4').textContent = '';
       fetch('/api/descompactar_xml/ficha/gravar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ job_id: FICHA_JOB })
       }).then(r => r.json()).then(function (d) {
-        el('btnGravar4').textContent = 'Gravar';
-        if (!d.ok) { el('btnGravar4').disabled = false; erro4(d.msg || 'Falha ao gravar'); return; }
-        FICHA_JOB = null;
-        el('resumo4').textContent = 'Gravado: tab_mov ' + d.mov + ' linhas, tab_total ' + d.tot + ' linhas.';
-      }).catch(function (e) { el('btnGravar4').textContent = 'Gravar'; el('btnGravar4').disabled = false; erro4(String(e)); });
+        if (!d.ok) { fimGravar4(false); erro4(d.msg || 'Falha ao gravar'); return; }
+        pollGravar4(d.job_id);
+      }).catch(function (e) { fimGravar4(false); erro4(String(e)); });
     });
+}
+
+function fimGravar4(gravou) {
+  el('btnGravar4').textContent = 'Gravar';
+  el('btnGravar4').disabled = gravou || !FICHA_JOB;
+  el('btnSimular4').disabled = false;
+  el('prog4Wrap').style.display = 'none';
+}
+
+function pollGravar4(jobId) {
+  fetch('/api/descompactar_xml/ficha/progresso?job=' + jobId).then(r => r.json()).then(function (d) {
+    if (!d.ok) { fimGravar4(false); erro4(d.msg || 'Job não encontrado'); return; }
+    setBarra4(d.pct || 0, d.etapa || '');
+    if (!d.done) { setTimeout(function () { pollGravar4(jobId); }, 700); return; }
+    const r = d.resultado || {};
+    if (!r.ok) { fimGravar4(false); erro4(r.msg || 'Falha ao gravar'); return; }
+    FICHA_JOB = null;
+    fimGravar4(true);
+    const txt = 'tab_mov: ' + r.mov.toLocaleString('pt-BR') + ' linhas · tab_total: '
+              + r.tot.toLocaleString('pt-BR') + ' linhas.';
+    el('resumo4').textContent = 'Gravado — ' + txt;
+    f10Alert('Ficha financeira importada.\n\n' + txt, { titulo: 'Etapa 4 — concluída', tipo: 'sucesso' });
+  }).catch(function (e) { fimGravar4(false); erro4(String(e)); });
 }
 
 document.addEventListener('DOMContentLoaded', function () {

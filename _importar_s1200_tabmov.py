@@ -655,8 +655,10 @@ def pdf_criticas(res, destino):
     return destino
 
 
-def gravar(app, id_cliente, id_empresa, res, cpf_usuario=""):
-    """Grava o que simular() montou. Recusa se houver pendência."""
+def gravar(app, id_cliente, id_empresa, res, cpf_usuario="", progresso=None):
+    """Grava o que simular() montou. Recusa se houver pendência.
+    progresso(pct, etapa) é chamado a cada lote de 500 linhas (a barra da tela)."""
+    prog = progresso or (lambda p, e: None)
     if res.get("pendentes") or res.get("cpf_sem_func"):
         return {"ok": False, "msg": "Há códigos pendentes ou CPF sem funcionário — corrija a planilha antes."}
     sb = app.supabase
@@ -666,21 +668,29 @@ def gravar(app, id_cliente, id_empresa, res, cpf_usuario=""):
         sb.table("tab_total").delete().eq("id_empresa", id_empresa).eq("id_cliente", id_cliente) \
             .eq("controle", CONTROLE_TOT).execute()
 
+    prog(2, "apagando a importação anterior…")
     _limpar()
     # Cada insert de 500 é tudo-ou-nada, mas a gravação inteira não: se um lote
     # falhar no meio (constraint do banco, rede), desfaz o que já entrou para não
     # ficar ficha pela metade — quem olha a empresa não teria como saber.
+    total = len(res["linhas_mov"]) + len(res["linhas_tot"]) or 1
+    feitas = 0
     try:
         for tab, linhas in (("tab_mov", res["linhas_mov"]), ("tab_total", res["linhas_tot"])):
             for i in range(0, len(linhas), 500):
-                sb.table(tab).insert(linhas[i:i + 500]).execute()
+                lote = linhas[i:i + 500]
+                prog(5 + 90 * feitas // total, f"gravando {tab}: {i + len(lote)} de {len(linhas)} linhas…")
+                sb.table(tab).insert(lote).execute()
+                feitas += len(lote)
     except Exception as e:
+        prog(97, "erro — desfazendo o que entrou…")
         try:
             _limpar()
             desfeito = "nada ficou gravado"
         except Exception as e2:
             desfeito = f"ATENÇÃO: não deu para desfazer ({str(e2)[:80]}) — rode a gravação de novo"
         return {"ok": False, "msg": f"Erro ao gravar ({desfeito}): {str(e)[:300]}"}
+    prog(97, "gravando o log…")
     obs = (f"eSocial S-1200/S-2299 -> lote {LOTE}: tab_mov {len(res['linhas_mov'])}, "
            f"tab_total {len(res['linhas_tot'])}, {len(res['folhas'])} folhas, "
            f"planilha {res['planilha']}")[:300]
