@@ -22,6 +22,8 @@ Sai um PDF (padrão em C:\\XMLeSocial\\Planilhas) com:
   2. rubricas do S-1010 fora da planilha e sem uso em S-1200 (não afetam);
   3. códigos da planilha que não existem em nenhum S-1010 (digitação errada
      ou rubrica de outra empresa).
+Com --so-s1010 sai um PDF curto, sem valores: só as rubricas do S-1010
+que não estão na planilha (os S-1200 não são lidos).
 Não grava nada no banco.
 """
 import os, re, sys, argparse
@@ -118,10 +120,13 @@ def main():
     ap.add_argument("--aba", default="")
     ap.add_argument("--origem", default=DX.ORIGEM)
     ap.add_argument("--saida", default="")
+    ap.add_argument("--so-s1010", action="store_true")
     a = ap.parse_args()
 
     aba, plan = ler_planilha(a.depara, a.aba)
     rub = ler_s1010(a.origem)
+    if a.so_s1010:
+        return so_s1010(a, aba, plan, rub)
     uso, n_ev = uso_s1200(a.origem)
     emp = DX.identificar_empresa(a.origem)
     cnpj = (emp.get("empresas") or [{}])[0].get("cnpj_fmt", "")
@@ -241,6 +246,68 @@ def main():
           f"planilha sem S-1010: {len(plan_sem_s1010)}")
     for c in fora_usadas:
         print(f"  {c:<12} {uso[c]['n']:>4}x {brl(uso[c]['vr']):>14}  {(rub.get(c) or {}).get('dsc', '')}")
+    print(saida)
+
+
+def so_s1010(a, aba, plan, rub):
+    """PDF curto: rubricas do S-1010 fora da planilha, sem valores."""
+    emp = DX.identificar_empresa(a.origem)
+    cnpj = (emp.get("empresas") or [{}])[0].get("cnpj_fmt", "")
+    empresa = nome_empresa((emp.get("empresas") or [{}])[0].get("cnpj", ""))
+    fora = sorted(c for c in rub if c not in plan)
+
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+    AZ = colors.HexColor("#1E3A5F")
+    s_tit = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=13, textColor=AZ, spaceAfter=4)
+    s_sub = ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#475569"))
+    s_res = ParagraphStyle("r", parent=s_sub, fontSize=9.5, leading=12, textColor=colors.black, spaceBefore=6)
+    s_c = ParagraphStyle("c", fontName="Helvetica", fontSize=7.5, leading=9)
+    s_cb = ParagraphStyle("cb", parent=s_c, fontName="Helvetica-Bold")
+    W = landscape(A4)[0] - 3 * cm
+
+    hoje = datetime.now().strftime("%d/%m/%Y")
+    el = [Paragraph("CONFERÊNCIA DA PLANILHA DE-PARA x RUBRICAS DO eSOCIAL (S-1010)", s_tit),
+          Paragraph(f"Empresa: <b>{empresa or '—'}</b> — CNPJ {cnpj or '—'}<br/>"
+                    f"Planilha conferida: <b>{os.path.basename(a.depara)}</b> (aba “{aba}”, {len(plan)} rubricas)<br/>"
+                    f"Comparada com as {len(rub)} rubricas cadastradas no eSocial da empresa (S-1010). "
+                    f"Conferência de {hoje}.", s_sub), Spacer(1, 4)]
+    if not fora:
+        el.append(Paragraph("<font color='#166534'><b>Resultado: nenhuma rubrica faltando.</b></font> "
+                            f"Todas as {len(rub)} rubricas do S-1010 estão na planilha.", s_res))
+    else:
+        el.append(Paragraph(f"<font color='#B91C1C'><b>Resultado: {len(fora)} rubrica(s) do S-1010 não estão "
+                            "na planilha.</b></font> Informe na planilha a verba do Folha10 de cada uma "
+                            "(ou “NÃO IMPORTAR”).", s_res))
+        rows = [[Paragraph(h, s_cb) for h in ("Código", "Descrição", "Tipo", "Natureza",
+                                              "INSS/IRRF/FGTS", "Válida desde")]]
+        for c in fora:
+            r = rub[c]
+            dsc = r["dsc"] + (" — excluída no S-1010" if r["excluida"] else "")
+            ini = f"{r['ini'][5:7]}/{r['ini'][:4]}" if r["ini"] else ""
+            rows.append([Paragraph(x, s_cb if j == 0 else s_c) for j, x in enumerate(
+                [c, dsc, r["tipo"], r["nat"], f"{r['inss']} / {r['irrf']} / {r['fgts']}", ini])])
+        t = Table(rows, colWidths=[x * W for x in (.1, .42, .12, .1, .14, .12)], repeatRows=1, hAlign="LEFT")
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF1FB")),
+                               ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+                               ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        el += [Spacer(1, 6), t]
+
+    def rodape(c, d):
+        c.saveState(); c.setFont("Helvetica", 7); c.setFillColor(colors.HexColor("#64748B"))
+        c.drawString(1.5 * cm, 0.8 * cm, "Folha10-Simples · Conferência da planilha de-para x S-1010")
+        c.drawRightString(landscape(A4)[0] - 1.5 * cm, 0.8 * cm, f"Página {d.page}"); c.restoreState()
+
+    saida = a.saida or os.path.join(DX.PLANILHAS, "Conferencia_S1010_"
+                                    + re.sub(r"\W+", "_", os.path.splitext(os.path.basename(a.depara))[0]).strip("_") + ".pdf")
+    SimpleDocTemplate(saida, pagesize=landscape(A4), leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+                      topMargin=1.3 * cm, bottomMargin=1.3 * cm).build(el, onFirstPage=rodape, onLaterPages=rodape)
+    print(f"Planilha: {len(plan)} códigos (aba {aba}) | S-1010: {len(rub)} | fora da planilha: {len(fora)}")
+    for c in fora:
+        print(f"  {c:<12} {rub[c]['dsc']}")
     print(saida)
 
 
