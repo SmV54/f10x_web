@@ -295,6 +295,7 @@
         <div class="pastas-linha" style="margin-top:8px;">
           <label for="depara">Planilha de-para</label>
           <input type="text" id="depara" placeholder="caminho da planilha .xlsx" style="flex:1;min-width:260px;">
+          <button class="btn-sec" id="btnProcurar4" onclick="procurarDepara()">Procurar…</button>
         </div>
         <div id="prog4Wrap" style="display:none;">
           <div class="prog-linha">
@@ -1131,6 +1132,19 @@ function erro4(msg) {
   const box = el('resultado4');
   box.style.display = 'block';
   box.innerHTML = '<div class="erro-box">❌ ' + esc4(msg) + '</div>';
+}
+
+function procurarDepara() {
+  const btn = el('btnProcurar4');
+  btn.disabled = true; btn.textContent = 'Abrindo…';
+  fetch('/api/descompactar_xml/escolher_arquivo', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inicial: el('depara').value.trim() })
+  }).then(r => r.json()).then(function (d) {
+    btn.disabled = false; btn.textContent = 'Procurar…';
+    if (!d.ok) { erro4(d.msg || 'Não deu para abrir a janela'); return; }
+    if (d.caminho) el('depara').value = d.caminho;
+  }).catch(function (e) { btn.disabled = false; btn.textContent = 'Procurar…'; erro4(String(e)); });
 }
 
 function simularFicha() {

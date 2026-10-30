@@ -75788,6 +75788,48 @@ def api_descompactar_xml_ficha_simular():
     return jsonify({'ok': True, 'job_id': job_id})
 
 
+@app.route('/api/descompactar_xml/escolher_arquivo', methods=['POST'])
+def api_descompactar_xml_escolher_arquivo():
+    """Abre o "Abrir arquivo" do Windows e devolve o caminho escolhido.
+
+    O navegador não entrega o caminho de um <input type=file> (só o nome), e a
+    Etapa 4 precisa do caminho no disco. Como a esteira do XML só roda na
+    máquina local (_dxml_gate barra o Render), a janela abre aqui mesmo. O
+    TopMost é para ela não nascer escondida atrás do navegador.
+    """
+    erro, _M = _dxml_gate()
+    if erro:
+        return erro
+    import subprocess
+    d = request.get_json(silent=True) or {}
+    ini = str(d.get('inicial') or '').strip().strip('"')
+    if ini and not os.path.isdir(ini):
+        ini = os.path.dirname(ini)
+    if not ini or not os.path.isdir(ini):
+        ini = r'C:\Dropbox\Hoje' if os.path.isdir(r'C:\Dropbox\Hoje') else os.path.expanduser('~')
+    # Caminho entra e sai em base64: com acento ("Prática") o PowerShell
+    # devolvia lixo tanto pela variável de ambiente quanto pelo stdout.
+    ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+          "$f=New-Object System.Windows.Forms.Form -Property @{TopMost=$true;ShowInTaskbar=$false};"
+          "$d=New-Object System.Windows.Forms.OpenFileDialog;"
+          "$d.Title='Planilha de-para';"
+          "$d.Filter='Planilhas Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Todos os arquivos (*.*)|*.*';"
+          "$d.InitialDirectory=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:F10_INI));"
+          "if($d.ShowDialog($f) -eq 'OK'){"
+          "Write-Output ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($d.FileName)))}")
+    try:
+        r = subprocess.run(['powershell', '-NoProfile', '-STA', '-Command', ps],
+                           capture_output=True, text=True, encoding='utf-8', timeout=600,
+                           env={**os.environ, 'F10_INI': base64.b64encode(ini.encode('utf-8')).decode()})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Não abriu a janela: {ex}'})
+    try:
+        caminho = base64.b64decode((r.stdout or '').strip()).decode('utf-8') if (r.stdout or '').strip() else ''
+    except Exception:
+        caminho = ''
+    return jsonify({'ok': True, 'caminho': caminho})
+
+
 @app.route('/api/descompactar_xml/ficha/progresso')
 def api_descompactar_xml_ficha_progresso():
     if not session.get('logado'):
