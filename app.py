@@ -81697,7 +81697,6 @@ RECIBO_MANUAL_LAYOUTS = [
     ("2300", "S-2300 Início TSVE"),
     ("2306", "S-2306 Alteração TSVE"),
     ("2399", "S-2399 Término TSVE"),
-    ("3000", "S-3000 Exclusão"),
 ]
 
 
