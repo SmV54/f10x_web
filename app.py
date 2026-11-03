@@ -56819,6 +56819,31 @@ def calcular_folha_stream():
 
     q = queue.Queue()
 
+    def _marcar_calculada():
+        """Folha -> C e +1 em qtd_calculos. Devolve o numero deste calculo."""
+        try:
+            _r_an = (supabase.table("tab_anomes")
+                     .select("qtd_calculos")
+                     .eq("id_cliente", id_cliente)
+                     .eq("id_empresa", id_empresa)
+                     .eq("ano_mes",    int(anomes))
+                     .eq("tipo",       anomes_tipo)
+                     .execute().data or [])
+            _qtd_atual = int((_r_an[0].get("qtd_calculos") or 0) if _r_an else 0)
+            supabase.table("tab_anomes").update({
+                "situacao":          "C",
+                "data_hora_calculo": _agora_brasilia().strftime("%Y%m%d %H%M%S"),
+                "qtd_calculos":      _qtd_atual + 1,
+            }).eq("id_cliente", id_cliente) \
+              .eq("id_empresa", id_empresa) \
+              .eq("ano_mes",    anomes) \
+              .eq("tipo",       anomes_tipo) \
+              .execute()
+            return _qtd_atual + 1
+        except Exception as e_sit:
+            q.put(json.dumps({"tipo": "aviso", "msg": f"Erro ao marcar calculada: {e_sit}"}, ensure_ascii=False))
+            return 0
+
     def run():
         try:
             # A competencia so' vai na folha NORMAL. Ferias e rescisao tem
@@ -56837,8 +56862,36 @@ def calcular_folha_stream():
                     q.put(None)
                     return
             if not linhas or not anomes:
-                q.put(json.dumps({"tipo": "fim", "resumo":
-                    {"total_funcs": 0, "funcs_com_afast": 0, "total_afast": 0, "ferias_futuras": 0}}))
+                # Ninguem a calcular (ex.: o unico funcionario foi desligado neste
+                # mes: a rescisao e' o movimento dele). A folha do mes existe do
+                # mesmo jeito e precisa ser concluida, senao ficava em "P" e nao
+                # chegava a Calculada. A limpeza e' a mesma do calculo normal: tira
+                # o que um calculo anterior deixou na folha N; a rescisao (R) fica.
+                _n_calc = 0
+                if anomes and not eh_individual:
+                    if anomes_tipo == "N":
+                        _limpar_folha_calculada(id_cliente, id_empresa, anomes, "N")
+                    try:
+                        supabase.table("tab_log").insert({
+                            "id_cliente":      id_cliente,
+                            "id_empresa":      id_empresa,
+                            "cpf_usuario":     cpf_usuario,
+                            "menu":            "CALC-FOLHA",
+                            "observacao":      (f"Calc folha {anomes} tipo:{_folha_tipo_label(anomes_tipo, curto=True)} "
+                                                "Qtd Funcionarios = 0")[:200],
+                            "ano_mes":         int(anomes),
+                            "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
+                        }).execute()
+                    except Exception as e_log:
+                        q.put(json.dumps({"tipo": "aviso", "msg": f"tab_log erro: {e_log}"}, ensure_ascii=False))
+                    _n_calc = _marcar_calculada()
+                    q.put(json.dumps({"tipo": "aviso", "msg": "Nenhum funcionário a calcular nesta "
+                                      "competência. A folha foi marcada como Calculada."}, ensure_ascii=False))
+                q.put(json.dumps({"tipo": "fim", "pct": 100, "resumo":
+                    {"total_funcs": 0, "funcs_com_afast": 0, "total_afast": 0, "ferias_futuras": 0,
+                     "pasta": "", "n_calculo": _n_calc,
+                     "data_calculo": _agora_brasilia().strftime("%d/%m/%Y %H:%M") if _n_calc else ""}},
+                    ensure_ascii=False))
                 return
             afastamentos = _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=id_cliente)
             for f in linhas:
@@ -56885,27 +56938,7 @@ def calcular_folha_stream():
             # No modo individual, NAO muda a situacao da folha nem incrementa
             # qtd_calculos — a folha continua como estava (A/X/C).
             if not eh_individual:
-                try:
-                    _r_an = (supabase.table("tab_anomes")
-                             .select("qtd_calculos")
-                             .eq("id_cliente", id_cliente)
-                             .eq("id_empresa", id_empresa)
-                             .eq("ano_mes",    int(anomes))
-                             .eq("tipo",       anomes_tipo)
-                             .execute().data or [])
-                    _qtd_atual = int((_r_an[0].get("qtd_calculos") or 0) if _r_an else 0)
-                    _n_calc    = _qtd_atual + 1
-                    supabase.table("tab_anomes").update({
-                        "situacao":          "C",
-                        "data_hora_calculo": _agora_brasilia().strftime("%Y%m%d %H%M%S"),
-                        "qtd_calculos":      _n_calc,
-                    }).eq("id_cliente", id_cliente) \
-                      .eq("id_empresa", id_empresa) \
-                      .eq("ano_mes",    anomes) \
-                      .eq("tipo",       anomes_tipo) \
-                      .execute()
-                except Exception as e_sit:
-                    q.put(json.dumps({"tipo": "aviso", "msg": f"Erro ao marcar calculada: {e_sit}"}, ensure_ascii=False))
+                _n_calc = _marcar_calculada()
 
             resumo = {
                 "total_funcs":     total,
