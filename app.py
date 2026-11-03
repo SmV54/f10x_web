@@ -36987,6 +36987,26 @@ def _extrair_resultado_consulta(xml_resp):
 
 
 # =========================================================
+# eSocial S-2200 / S-2205 — campo infoCota
+# =========================================================
+def _esocial_infocota_xml(func, *datas):
+    """Linha <infoCota> do grupo infoDeficiencia, ou vazio.
+
+    Leiaute S-1.3 (NT 07/2026, producao em 26/10/2026): obrigatorio se a data de
+    referencia for anterior a 2026-10-26; a partir dela, nao pode ser informado.
+    S-2200: maior data entre dtAdm e dtTransf. S-2205: dtAlteracao.
+    So' pode ser [S] se algum dos campos de deficiencia estiver [S].
+    """
+    ref = max(str(d or '').replace('-', '')[:8] for d in datas)
+    if not ref or ref >= '20261026':
+        return ''
+    tem_def = any((func.get(c) or '') == 'S' for c in
+                  ('deffisica', 'defvisual', 'defauditiva', 'defmental', 'defintelectual'))
+    cota = 'S' if tem_def and (func.get('infocota') or 'N') == 'S' else 'N'
+    return f'        <infoCota>{cota}</infoCota>' + chr(10)
+
+
+# =========================================================
 # eSocial S-2200 — GERADOR DE XML
 # =========================================================
 def _gerar_xml_s2200(func, empresa, tpAmb="1"):
@@ -37119,6 +37139,8 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
 
     tem_def = any(func.get(c) == 'S' for c in
                   ['deffisica', 'defvisual', 'defauditiva', 'defmental', 'defintelectual'])
+    _cota_xml = _esocial_infocota_xml(
+        func, dtadm, fmt_d8(func.get('dttransf')) if sucessao_xml else '')
     bloco_def = ''
     if tem_def:
         bloco_def = f"""
@@ -37129,8 +37151,7 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
         <defMental>{x(func.get('defmental','N'))}</defMental>
         <defIntelectual>{x(func.get('defintelectual','N'))}</defIntelectual>
         <reabReadap>N</reabReadap>
-        <infoCota>{x(func.get('infocota','N'))}</infoCota>
-      </infoDeficiencia>"""
+{_cota_xml}      </infoDeficiencia>"""
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtAdmissao/v_S_01_03_00"
@@ -37325,7 +37346,6 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
         <defMental>{x(func.get('defmental','N'))}</defMental>
         <defIntelectual>{x(func.get('defintelectual','N'))}</defIntelectual>
         <reabReadap>N</reabReadap>
-        <infoCota>{x(func.get('infocota','N'))}</infoCota>
       </infoDeficiencia>"""
 
     # ── infoComplementares ──────────────────────────────────
@@ -42709,7 +42729,7 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
         f"        <defMental>{x(func.get('defmental') or 'N')}</defMental>\n"
         f"        <defIntelectual>{x(func.get('defintelectual') or 'N')}</defIntelectual>\n"
         "        <reabReadap>N</reabReadap>\n"
-        f"        <infoCota>{x(func.get('infocota') or 'N')}</infoCota>\n"
+        + _esocial_infocota_xml(func, dt_alteracao) +
         "      </infoDeficiencia>"
     )
 
