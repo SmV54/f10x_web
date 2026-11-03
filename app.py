@@ -11819,7 +11819,14 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
     _sig = ParagraphStyle("sig", fontName="Helvetica", fontSize=8, alignment=1, leading=10)
     def _sigcell(txt):
         return Paragraph("_______________________________________<br/>" + _esc(txt), _sig)
-    t_sig = Table([[_sigcell("Assinatura do Empregador"), _sigcell("Assinatura do Empregado")],
+    _prep = _preposto_empresa(emp.get("id_empresa") or _get_id_empresa())
+    if _prep["nome"]:
+        _sig_emp = Paragraph("_______________________________________<br/>"
+                             "Assinatura do Empregador ou Preposto<br/>"
+                             + _esc(f"Preposto: {_prep['nome']} - CPF {_cpf_br(_prep['cpf'])}"), _sig)
+    else:
+        _sig_emp = _sigcell("Assinatura do Empregador")
+    t_sig = Table([[_sig_emp, _sigcell("Assinatura do Empregado")],
                    [Spacer(1, 14), Spacer(1, 14)],
                    [_sigcell("Assistência (Sindicato / SRTE), quando exigível"), Paragraph("", _sig)]],
                   colWidths=[W/2, W/2])
@@ -13785,6 +13792,9 @@ def alterar_empresa():
         emp["cnpj_fmt"] = f"{cnpj_raw[:2]}.{cnpj_raw[2:5]}.{cnpj_raw[5:8]}/{cnpj_raw[8:12]}-{cnpj_raw[12:]}"
     else:
         emp["cnpj_fmt"] = cnpj_raw
+    _prep = _preposto_empresa(emp.get("id_empresa"))
+    emp["preposto_nome"] = _prep["nome"]
+    emp["preposto_cpf"]  = _cpf_br(_prep["cpf"])
     return render_template(
         "F10_Cad_Empresa.html",
         titulo_sistema="Folha10-Simples",
@@ -13795,6 +13805,50 @@ def alterar_empresa():
         modo="alterar",
         empresa_dados=emp,
     )
+
+
+# Preposto: quem assina a Rescisao pelo empregador. Fica por empresa, em tab_tabela_cli
+# 1001 (id_empresa da empresa, ao contrario das Preferencias, que sao da conta).
+PREPOSTO_PREF = "prep_resc"
+
+
+def _cpf_valido(cpf):
+    d = re.sub(r"\D", "", str(cpf or ""))
+    if len(d) != 11 or d == d[0] * 11:
+        return False
+    for n in (9, 10):
+        s = sum(int(d[i]) * (n + 1 - i) for i in range(n))
+        if (s * 10) % 11 % 10 != int(d[n]):
+            return False
+    return True
+
+
+def _preposto_empresa(id_empresa):
+    """{"nome", "cpf"} do preposto da empresa; vazios quando nao ha."""
+    try:
+        d = json.loads(_get_pref(PREPOSTO_PREF, "", id_empresa=int(id_empresa or 0)) or "{}")
+        return {"nome": str(d.get("nome") or ""), "cpf": str(d.get("cpf") or "")}
+    except Exception:
+        return {"nome": "", "cpf": ""}
+
+
+def _preposto_do_form(dados):
+    """Tira os campos do preposto de `dados` (nao sao colunas da tab_empresa).
+    Devolve (preposto ou None se o form nao os trouxe, mensagem de erro)."""
+    if "preposto_nome" not in dados and "preposto_cpf" not in dados:
+        return None, ""
+    nome = " ".join(str(dados.pop("preposto_nome", "") or "").split()).upper()[:100]
+    cpf = re.sub(r"\D", "", str(dados.pop("preposto_cpf", "") or ""))
+    if bool(nome) != bool(cpf):
+        return None, "Preposto da Rescisão: informe o nome e o CPF, ou deixe os dois em branco."
+    if cpf and not _cpf_valido(cpf):
+        return None, "Preposto da Rescisão: CPF inválido."
+    return {"nome": nome, "cpf": cpf}, ""
+
+
+def _preposto_gravar(id_empresa, prep):
+    texto = json.dumps(prep, ensure_ascii=False) if prep.get("nome") else ""
+    return _set_pref(PREPOSTO_PREF, texto, id_empresa=int(id_empresa))
 
 
 _GPS_TERCEIROS_COLS = ("gps_fpas_perc", "gps_saleduc", "gps_incra", "gps_senai", "gps_sesi",
@@ -13885,6 +13939,9 @@ def api_alterar_empresa():
         _erro_ar = _validar_arredondamento(dados)
         if _erro_ar:
             return jsonify({"ok": False, "msg": _erro_ar})
+        _prep, _erro_prep = _preposto_do_form(dados)
+        if _erro_prep:
+            return jsonify({"ok": False, "msg": _erro_prep})
         dados.pop("cnpj",       None)
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
@@ -13906,6 +13963,11 @@ def api_alterar_empresa():
                     .execute())
         if not resposta.data:
             return jsonify({"ok": False, "msg": "Sem retorno do banco"})
+        if _prep is not None:
+            _ok_prep, _msg_prep = _preposto_gravar(id_empresa, _prep)
+            if not _ok_prep:
+                return jsonify({"ok": False, "msg": "A empresa foi gravada, mas o preposto "
+                                                    f"da Rescisão não: {_msg_prep}"[:300]})
         return jsonify({"ok": True})
     except Exception as e:
         print("Erro /api/alterar_empresa:", str(e))
@@ -14000,6 +14062,9 @@ def api_gravar_empresa():
         _erro_ar = _validar_arredondamento(dados)
         if _erro_ar:
             return jsonify({"ok": False, "msg": _erro_ar})
+        _prep, _erro_prep = _preposto_do_form(dados)
+        if _erro_prep:
+            return jsonify({"ok": False, "msg": _erro_prep})
 
         id_cliente_sess = session.get("id_cliente", 1)
         dados["id_cliente"] = id_cliente_sess
@@ -14080,6 +14145,10 @@ def api_gravar_empresa():
 
         id_empresa = resposta.data[0].get("id_empresa")
         print(f"=== Empresa gravada id={id_empresa} cnpj={dados.get('cnpj')} ===")
+        if _prep and _prep.get("nome"):
+            _ok_prep, _msg_prep = _preposto_gravar(id_empresa, _prep)
+            if not _ok_prep:
+                print(f"[preposto] empresa {id_empresa}: {_msg_prep}")
 
         # Condução do cliente novo: já deixa a empresa pronta para uso — cria
         # o CC 001, abre a primeira folha (o mês escolhido em /mes_inicial, ou

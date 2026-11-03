@@ -134,6 +134,8 @@ body {
     margin-bottom: 8px;
 }
 
+.grid-preposto { display: grid; grid-template-columns: 2.4fr 1fr; gap: 8px 14px; max-width: 760px; }
+.preposto-obs { font-size: 12px; color: #64748b; margin-top: 8px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 14px; }
 .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px 14px; }
 .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 14px; }
@@ -858,6 +860,21 @@ body {
         </div>
     </div>
 
+    <!-- ── PREPOSTO DA RESCISÃO ────── -->
+    <div class="secao" id="secao-preposto">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#64748b"></div>
+            <span class="secao-titulo">Preposto: Assinatura da Rescisão</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-preposto">
+                <div class="campo"><label>Nome do Preposto</label><input type="text" id="preposto_nome" maxlength="100"></div>
+                <div class="campo"><label>CPF do Preposto</label><input type="text" id="preposto_cpf" maxlength="14" placeholder="000.000.000-00" oninput="mascaraCpfPreposto(this)"></div>
+            </div>
+            <div class="preposto-obs">O nome e o CPF saem na assinatura do empregador da <b>Rescisão (TRCT)</b>. Deixando em branco, não sai ninguém.</div>
+        </div>
+    </div>
+
     <!-- ── CONTRIBUIÇÕES DESTINADAS A TERCEIROS ────── -->
     <div class="secao" id="secao-terceiros">
         <div class="secao-header">
@@ -1513,9 +1530,23 @@ async function salvarEmpresa() {
     painel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+function mascaraCpfPreposto(c) {
+    const d = c.value.replace(/\D/g, '').slice(0, 11);
+    c.value = d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+               .replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+}
+
 async function gravarEmpresa(painel) {
     const v = (id) => (document.getElementById(id)?.value || '').trim();
     const n = (id) => { const x = v(id).replace(',','.'); return x === '' ? null : parseFloat(x); };
+
+    // Preposto da Rescisao: os dois ou nenhum. O CPF e' conferido no servidor.
+    if (!!v('preposto_nome') !== !!v('preposto_cpf')) {
+        const el = document.getElementById(v('preposto_nome') ? 'preposto_cpf' : 'preposto_nome');
+        if (el) { el.focus(); el.style.borderColor = '#ef4444'; }
+        alert('Preposto da Rescisão: informe o nome e o CPF, ou deixe os dois em branco.');
+        return;
+    }
 
     // Simples Nacional e campo obrigatorio.
     const _indSimples = v('ind_simples');
@@ -1577,6 +1608,8 @@ async function gravarEmpresa(painel) {
         per_adiantamento:       _perAdQz,
         valor_arredondar_fol:   _arred.valor_arredondar_fol,
         valor_arredondar_fer:   _arred.valor_arredondar_fer,
+        preposto_nome:          v('preposto_nome'),
+        preposto_cpf:           v('preposto_cpf'),
         cnpj:                  v('cnpj').replace(/\D/g,''),
         razaosocial:            document.getElementById('razaosocial')?.value.trim() || null,
         nome_fantasia:          v('nome_fantasia') || null,
@@ -1937,6 +1970,8 @@ function preencherFormulario(d) {
     const _arredR = (c) => c ? (Number(c) / 100).toFixed(2).replace('.', ',') : '';
     set('valor_arredondar_fol', _arredR(d.valor_arredondar_fol));
     set('valor_arredondar_fer', _arredR(d.valor_arredondar_fer));
+    set('preposto_nome', d.preposto_nome || '');
+    set('preposto_cpf',  d.preposto_cpf  || '');
     atualizarSimplesUI();
     // eSocial
     set('ind_coop',      d.es_ind_coop      || '');
