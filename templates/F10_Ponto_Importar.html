@@ -216,10 +216,22 @@ tbody tr:last-child td { border-bottom: none; }
             </div>
         </div>
     </div>
+
+    <div class="card">
+        <div class="card-titulo"><span>Desfazer a importação</span></div>
+        <div class="card-body">
+            <div class="linha-op">
+                <button class="btn btn-ghost" id="btn-desfazer" onclick="desfazer()" disabled>Desfazer Importação</button>
+                <span id="txt-importacao">Carregando...</span>
+            </div>
+            <div class="hint">Apaga as verbas e as faltas que vieram do ponto nesta folha, inclusive se tiverem sido alteradas à mão. O que foi digitado à mão fica.</div>
+            <div id="msg-desfazer" style="margin-top:12px"></div>
+        </div>
+    </div>
 </div>
 
 <script>
-let arquivoSel = null, ultima = null;
+let arquivoSel = null, ultima = null, IMPORTADO = {verbas: 0, faltas: 0};
 
 function esc(s) {
     return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c =>
@@ -234,6 +246,42 @@ function novoArquivo() {
     ultima = null; arquivoSel = null; erroTopo('');
     document.getElementById('resultado').classList.add('oculto');
     document.getElementById('btn-gravar').disabled = true;
+}
+async function carregarImportacao() {
+    const txt = document.getElementById('txt-importacao'), btn = document.getElementById('btn-desfazer');
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/ponto/importacao');
+        const d = await r.json();
+        if (!d.ok) { txt.textContent = 'Não foi possível consultar a importação.'; return; }
+        IMPORTADO = d;
+        if (d.verbas || d.faltas) {
+            txt.textContent = 'Esta folha tem ' + d.verbas + ' verba(s) e ' + d.faltas + ' falta(s) importadas do ponto.';
+            btn.disabled = false;
+        } else {
+            txt.textContent = 'Esta folha não tem importação do ponto.';
+        }
+    } catch (e) { txt.textContent = 'Não foi possível consultar a importação.'; }
+}
+async function desfazer() {
+    if (!confirm('Apagar ' + IMPORTADO.verbas + ' verba(s) e ' + IMPORTADO.faltas
+                 + ' falta(s) importadas do ponto nesta folha?')) return;
+    const btn = document.getElementById('btn-desfazer'), alvo = document.getElementById('msg-desfazer');
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/ponto/desfazer', {method:'POST'});
+        const d = await r.json();
+        alvo.innerHTML = '<div class="alerta alerta-' + (d.ok ? 'info' : 'erro') + '">' + esc(d.msg) + '</div>';
+        if (d.ok) {
+            // A verificação em tela contava com a importação que acabou de sair.
+            ultima = null;
+            document.getElementById('resultado').classList.add('oculto');
+            document.getElementById('btn-gravar').disabled = true;
+        }
+    } catch (e) {
+        alvo.innerHTML = '<div class="alerta alerta-erro">Erro de comunicação: ' + esc(e.message) + '</div>';
+    }
+    carregarImportacao();
 }
 async function relatorio() {
     if (!arquivoSel) return;
@@ -330,6 +378,8 @@ async function gravar() {
         document.getElementById('alertas').innerHTML =
             '<div class="alerta alerta-' + (d.ok ? 'info' : 'erro') + '">' + esc(d.msg) + '</div>';
         if (!d.ok) btn.disabled = false;
+        document.getElementById('msg-desfazer').innerHTML = '';
+        carregarImportacao();
     } catch (e) {
         spin.classList.add('oculto');
         document.getElementById('alertas').innerHTML =
@@ -337,6 +387,7 @@ async function gravar() {
         btn.disabled = false;
     }
 }
+carregarImportacao();
 </script>
 </body>
 </html>

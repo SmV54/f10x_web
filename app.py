@@ -81262,6 +81262,27 @@ def _ponto_guarda():
     return id_cliente, id_empresa, anomes, ""
 
 
+def _ponto_q_mov(acao, id_cliente, id_empresa, folha_int):
+    """O que veio do ponto nesta folha, no tab_mov."""
+    return (acao.eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+            .eq("folha", folha_int).eq("folha_tipo", "N").eq("lote", PONTO_LOTE))
+
+
+def _ponto_q_falta(acao, id_cliente, id_empresa, folha_int):
+    """As faltas que vieram do ponto nesta folha, no tab_eventos (não têm lote)."""
+    return (acao.eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+            .eq("folha", folha_int).eq("op1", 21).eq("campotxt4", PONTO_MARCA_FALTA))
+
+
+def _ponto_inserir(tabela, regs):
+    for i in range(0, len(regs), 500):
+        supabase.table(tabela).insert(regs[i:i + 500]).execute()
+
+
+def _ponto_sem_id(regs):
+    return [{k: v for k, v in r.items() if k != "id"} for r in regs]
+
+
 def _ponto_arquivo():
     f = request.files.get("arquivo")
     if not f or not f.filename.lower().endswith((".xlsx", ".csv", ".txt")):
@@ -81509,6 +81530,65 @@ def api_ponto_relatorio():
     return resp
 
 
+@app.route("/api/ponto/importacao")
+def api_ponto_importacao():
+    """Quantas verbas e faltas da folha ativa vieram do ponto."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    id_cliente, id_empresa = session.get("id_cliente"), _get_id_empresa()
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6 or str(session.get("anomes_tipo") or "N") not in ("N", ""):
+        return jsonify({"ok": True, "verbas": 0, "faltas": 0})
+    folha_int = int(anomes)
+    try:
+        mov = _ponto_todas(lambda: _ponto_q_mov(supabase.table("tab_mov").select("id"),
+                                                id_cliente, id_empresa, folha_int).order("id"))
+        fal = _ponto_todas(lambda: _ponto_q_falta(supabase.table("tab_eventos").select("id"),
+                                                  id_cliente, id_empresa, folha_int).order("id"))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    return jsonify({"ok": True, "verbas": len(mov), "faltas": len(fal)})
+
+
+@app.route("/api/ponto/desfazer", methods=["POST"])
+def api_ponto_desfazer():
+    """Apaga o que veio do ponto na folha ativa. O digitado à mão fica. Tudo ou nada."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    try:
+        id_cliente, id_empresa, anomes, erro = _ponto_guarda()
+        if erro:
+            return jsonify({"ok": False, "msg": erro})
+        folha_int = int(anomes)
+        ant_mov = _ponto_todas(lambda: _ponto_q_mov(supabase.table("tab_mov").select("*"),
+                                                    id_cliente, id_empresa, folha_int).order("id"))
+        ant_falta = _ponto_todas(lambda: _ponto_q_falta(supabase.table("tab_eventos").select("*"),
+                                                        id_cliente, id_empresa, folha_int).order("id"))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a importação: {str(e)[:200]}"})
+    if not ant_mov and not ant_falta:
+        return jsonify({"ok": False, "msg": "Esta folha não tem importação do ponto."})
+    try:
+        _ponto_q_mov(supabase.table("tab_mov").delete(), id_cliente, id_empresa, folha_int).execute()
+        _ponto_q_falta(supabase.table("tab_eventos").delete(), id_cliente, id_empresa, folha_int).execute()
+    except Exception as e:
+        msg = f"Erro ao desfazer: {str(e)[:200]}. A importação continua como estava."
+        try:
+            # Só volta o que foi apagado: apaga o resto antes, para não duplicar.
+            _ponto_q_mov(supabase.table("tab_mov").delete(), id_cliente, id_empresa, folha_int).execute()
+            _ponto_q_falta(supabase.table("tab_eventos").delete(), id_cliente, id_empresa, folha_int).execute()
+            _ponto_inserir("tab_mov", _ponto_sem_id(ant_mov))
+            _ponto_inserir("tab_eventos", _ponto_sem_id(ant_falta))
+        except Exception as e2:
+            msg = (f"Erro ao desfazer: {str(e)[:120]}. ATENÇÃO: a importação pode ter ficado pela "
+                   f"metade ({str(e2)[:80]}). Clique em Desfazer de novo ou importe o arquivo.")
+        return jsonify({"ok": False, "msg": msg})
+    gravar_log("PONTO-DESF", f"folha={folha_int} verbas={len(ant_mov)} faltas={len(ant_falta)}")
+    return jsonify({"ok": True, "msg": f"Importação desfeita: {len(ant_mov)} verba(s) e "
+                                       f"{len(ant_falta)} falta(s) apagadas.",
+                    "verbas": len(ant_mov), "faltas": len(ant_falta)})
+
+
 @app.route("/api/ponto/gravar", methods=["POST"])
 def api_ponto_gravar():
     """Grava o arquivo, tudo ou nada: se um insert falhar, volta como estava."""
@@ -81535,19 +81615,12 @@ def api_ponto_gravar():
     folha_int = int(anomes)
 
     def q_mov(acao):
-        return (acao.eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
-                .eq("folha", folha_int).eq("folha_tipo", "N").eq("lote", PONTO_LOTE))
+        return _ponto_q_mov(acao, id_cliente, id_empresa, folha_int)
 
     def q_falta(acao):
-        return (acao.eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
-                .eq("folha", folha_int).eq("op1", 21).eq("campotxt4", PONTO_MARCA_FALTA))
+        return _ponto_q_falta(acao, id_cliente, id_empresa, folha_int)
 
-    def inserir(tabela, regs):
-        for i in range(0, len(regs), 500):
-            supabase.table(tabela).insert(regs[i:i + 500]).execute()
-
-    def sem_id(regs):
-        return [{k: v for k, v in r.items() if k != "id"} for r in regs]
+    inserir, sem_id = _ponto_inserir, _ponto_sem_id
 
     try:
         ant_mov = _ponto_todas(lambda: q_mov(supabase.table("tab_mov").select("*")).order("id"))
