@@ -81011,6 +81011,22 @@ def _ponto_fmt_data(d):
     return f"{d[6:8]}/{d[4:6]}/{d[:4]}" if len(d) == 8 else d
 
 
+# Empresa cujo arquivo de ponto casa so' pelo FIM da matricula do eSocial, e nao por
+# ela inteira: {id_empresa: quantos caracteres do fim}. Vale nos dois lados, arquivo
+# e cadastro, e aceita letras. 79 = CNPJ 52.149.755/0001-56 (pedido de 03/11/2026).
+PONTO_MAT_ULTIMOS = {79: 6}
+
+
+def _ponto_chaves_mat(valor, id_empresa):
+    """(forma cheia, forma sem zeros) da matricula, para casar arquivo x cadastro."""
+    cheia, curta = _consig_norm_mat(valor)
+    n = PONTO_MAT_ULTIMOS.get(int(id_empresa or 0))
+    if n and cheia:
+        cheia = cheia[-n:]
+        curta = cheia.lstrip("0") or cheia
+    return cheia, curta
+
+
 def _ponto_processar(file_bytes, lay, id_cliente, id_empresa, anomes):
     """Valida o arquivo inteiro (sem gravar) e monta o que seria gravado."""
     linhas_arq = _ponto_ler_linhas(file_bytes, lay)
@@ -81025,7 +81041,7 @@ def _ponto_processar(file_bytes, lay, id_cliente, id_empresa, anomes):
     # Mesma regra do eSocial: quem não tem matricula_es usa a nossa com 6 dígitos.
     por_mat_es = {}
     for f in cadastro:
-        for chave in set(_consig_norm_mat(_mat_es(f))):
+        for chave in set(_ponto_chaves_mat(_mat_es(f), id_empresa)):
             if chave:
                 por_mat_es.setdefault(chave, []).append(f)
 
@@ -81091,7 +81107,7 @@ def _ponto_processar(file_bytes, lay, id_cliente, id_empresa, anomes):
         elif comp != anomes:
             erros.append(f"Mês/ano {comp[4:]}/{comp[:4]} não é o da folha ativa")
 
-        cheia, curta = _consig_norm_mat(mat_arq)
+        cheia, curta = _ponto_chaves_mat(mat_arq, id_empresa)
         achados = {f["matricula"]: f
                    for ch in {cheia, curta} if ch for f in por_mat_es.get(ch, [])}
         func = None
