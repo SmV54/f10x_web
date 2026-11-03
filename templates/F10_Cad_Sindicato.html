@@ -363,6 +363,14 @@
                 </div>
               </div>
               <div class="form-secao">
+                <label class="form-label-opt">Vale Transporte (%)</label>
+                <div class="input-sufixo">
+                  <input class="form-input-opt" type="number" id="inpPerVT"
+                    min="0" max="6" step="0.01" placeholder="—">
+                  <span>%</span>
+                </div>
+              </div>
+              <div class="form-secao">
                 <label class="form-label-opt">Dias Aviso Prévio</label>
                 <input class="form-input-opt" type="number" id="inpDiasAviso"
                   min="0" max="999" step="1" placeholder="—" style="text-align:right;">
@@ -460,7 +468,7 @@
     });
     document.getElementById('inpMesDissidio').value = '';
     ['inpPerAdianta','inpPerAdNoturno','inpPerFerias',
-     'inpPerInsal','inpPerPeric','inpDiasAviso','inpMesesCarencia'].forEach(id => {
+     'inpPerInsal','inpPerPeric','inpPerVT','inpDiasAviso','inpMesesCarencia'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
   }
@@ -496,6 +504,7 @@
     document.getElementById('inpPerFerias').value     = bancoParaTela(s.per_ferias_1_3);
     document.getElementById('inpPerInsal').value      = bancoParaTela(s.per_insalubridade);
     document.getElementById('inpPerPeric').value      = bancoParaTela(s.per_periculosidade);
+    document.getElementById('inpPerVT').value         = String(s.per_vt || '').replace(',', '.');
     document.getElementById('inpDiasAviso').value     = s.dias_aviso_previo           ?? '';
     document.getElementById('inpMesesCarencia').value = s.meses_carencia_aviso_previo ?? '';
 
@@ -580,6 +589,7 @@
       per_ferias_1_3:              telaParaBanco(document.getElementById('inpPerFerias').value),
       per_insalubridade:           telaParaBanco(document.getElementById('inpPerInsal').value),
       per_periculosidade:          telaParaBanco(document.getElementById('inpPerPeric').value),
+      per_vt:                      document.getElementById('inpPerVT').value.trim(),
       dias_aviso_previo:           intOuNull('inpDiasAviso'),
       meses_carencia_aviso_previo: intOuNull('inpMesesCarencia'),
     };

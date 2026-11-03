@@ -379,7 +379,7 @@
               maxlength="3" placeholder="Ex: A1"
               style="text-transform:uppercase; letter-spacing:2px; font-weight:700;"
               oninput="this.value=this.value.toUpperCase()">
-            <span class="form-hint" id="hintTipo">Até 3 caracteres — será usado no cadastro do funcionário</span>
+            <span class="form-hint" id="hintTipo">Até 3 caracteres — será usado em Vale Transporte do Funcionário</span>
           </div>
 
           <hr class="separador">
@@ -396,6 +396,13 @@
               maxlength="10" placeholder="Ex: 450 ou 4,50"
               style="text-align:right;">
             <span class="form-hint">Digite 450 <strong>ou</strong> 4,50 — ambos gravam 450 centavos.</span>
+          </div>
+
+          <div class="form-secao" id="secDesde" style="display:none;">
+            <label class="form-label">Vale a partir de</label>
+            <input class="form-input" type="month" id="inpDesde" value="{{ folha_am }}">
+            <span class="form-hint">Só usado se o valor mudar. O valor anterior continua valendo para os meses anteriores.</span>
+            <div class="form-hint" id="histValores" style="margin-top:6px;"></div>
           </div>
 
           <div class="rodape-acoes">
@@ -423,6 +430,8 @@
 </div>
 
 <script>
+  const VT_HIST = {{ vt_hist|tojson }};
+
   // ── Filtro ────────────────────────────────────────────────
   function filtrar() {
     const txt = document.getElementById('txtFiltro').value.toLowerCase();
@@ -470,6 +479,7 @@
     document.getElementById('inpTipo').value      = '';
     document.getElementById('inpDescricao').value = '';
     document.getElementById('inpValor').value     = '';
+    document.getElementById('secDesde').style.display = 'none';
     document.getElementById('inpTipo').removeAttribute('readonly');
     document.getElementById('inpTipo').style.background = '';
     document.getElementById('formTitulo').textContent    = '➕ Novo Tipo de VT';
@@ -489,6 +499,9 @@
     document.getElementById('inpTipo').value      = codigo;
     document.getElementById('inpDescricao').value = texto;
     document.getElementById('inpValor').value     = valor;
+    document.getElementById('secDesde').style.display = '';
+    document.getElementById('histValores').textContent = (VT_HIST[codigo] || [])
+      .map((h) => h.mes + ': ' + h.valor).join('  |  ');
     document.getElementById('inpTipo').setAttribute('readonly', true);
     document.getElementById('inpTipo').style.background = '#f1f5f9';
     document.getElementById('formTitulo').textContent    = '✏️ Editando: ' + codigo;
@@ -536,7 +549,7 @@
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, tipo, descricao: desc, valor })
+        body: JSON.stringify({ id, tipo, descricao: desc, valor, a_partir: document.getElementById('inpDesde').value })
       });
       const d = await r.json();
       if (d.ok) {

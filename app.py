@@ -10102,6 +10102,8 @@ def _calc_rescisao_nucleo(body, sim=None):
     _extras = {"aviso": "", "movs": {}, "tot": {}, "cad": {}}
     # Plano de saude por faixa de idade (ETAPA 3075). None = sem tabela no mes.
     _plano_idade_ctx = _plano_idade_carregar(id_empresa, anomes)
+    # Vale Transporte (ETAPA 3076). None = sem %.
+    _vt_ctx = _vt_carregar(id_cliente, id_empresa, anomes)
     for cad in demitidos:
         mat = int(cad.get("matricula") or 0)
         nome = (cad.get("nome") or cad.get("nomer") or "").strip()
@@ -10615,6 +10617,17 @@ def _calc_rescisao_nucleo(body, sim=None):
                 plano_det.append(_txt + f" × {dt_resc.day}/{_pi_dmes} dias = <b>{_fmt_brl(val_p)}</b>")
             plano_det += [f"<font color='#b91c1c'>Atenção: {_av}</font>" for _av in _pi_avisos]
 
+        # ── Vale Transporte (ETAPA 3076) ──
+        # Desktop: % sobre o saldo de salario, sem o limite das passagens. A verba
+        # digitada na rescisao prevalece. Sem incidencia: so abate o liquido.
+        vt_desc, vt_det = 0, []
+        if _vt_ctx and _vt_ctx["vales"].get(mat) and saldo:
+            _vt_val, vt_det = _vt_calcular_rescisao(_vt_ctx, mat, saldo)
+            if any(int(r.get("cod_verba") or 0) == VT_VERBA for r in manual_mov.get(mat, [])):
+                vt_det.append("Fica o valor digitado na rescisão (ETAPA 3070).")
+            else:
+                vt_desc = _vt_val
+
         # ── Bases e impostos ──
         # As médias são REFLEXO (entram no 13º e nas férias), não são pagas como
         # linha própria. Saldo de salário incide INSS sobre o salário do período.
@@ -10709,7 +10722,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # A verba 60 não tem incidência de INSS/IRRF/FGTS (tab_rubrica: R=N/N/N/N),
         # por isso entra só no total de descontos, depois das bases já fechadas.
         total_desc = (g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
-                      + art480 + aviso_desc + falta_val + dsr_val + plano_desc)
+                      + art480 + aviso_desc + falta_val + dsr_val + plano_desc + vt_desc)
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -10754,6 +10767,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         if g_irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,       "qtd": 0, "valor": g_irrf_saldo})
         if g_irrf_13: recs.append({**base_mov, "cod_verba": VR_IRRF_13,      "qtd": 0, "valor": g_irrf_13})
         recs += [{**base_mov, **_p} for _p in plano_recs if _p["valor"]]
+        if vt_desc:
+            recs.append({**base_mov, "cod_verba": VT_VERBA, "qtd": 0, "valor": vt_desc})
         if recs and not sim:
             try:
                 supabase.table("tab_mov").insert(recs).execute()
@@ -10875,6 +10890,7 @@ def _calc_rescisao_nucleo(body, sim=None):
             "enc0": _enc0, "enc0_cli": int(id_cliente or 0),
             "man_prov": man_prov, "man_desc": man_desc, "manuais_det": manuais_det,
             "plano_desc": plano_desc, "plano_det": plano_det,
+            "vt_desc": vt_desc, "vt_det": vt_det,
             "add_inss": add_inss, "add_irrf": add_irrf, "add_fgts": add_fgts,
             "total_prov": total_prov, "total_desc": total_desc, "liquido": liquido,
             # formatados p/ a tela
@@ -10928,7 +10944,7 @@ def _calc_rescisao_nucleo(body, sim=None):
 # não vão no JSON da tela.
 _CAMPOS_SO_PDF = {"medias_info", "inss_saldo_det", "inss_13_det",
                   "irrf_saldo_info", "irrf_13_info", "manuais_det", "faltas_resc",
-                  "avos13_det", "plano_det"}
+                  "avos13_det", "plano_det", "vt_det"}
 
 
 @app.route("/api/calc_rescisao_calcular", methods=["POST"])
@@ -11434,6 +11450,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 if r.get("plano_desc"):
                     _lin_pl.append(f"<b>Total descontado: {_B(r['plano_desc'])}</b>")
                 e.append(_etapa("ETAPA 3075 - PLANO DE SAUDE POR FAIXA DE IDADE", _lin_pl))
+            if r.get("vt_det"):
+                e.append(_etapa("ETAPA 3076 - VALE TRANSPORTE", list(r["vt_det"])))
             # 0007 — INSS
             _base_lbl = ("saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
                          + (" - faltas/DSR" if r.get("desc_inss") else ""))
@@ -13795,6 +13813,7 @@ def alterar_empresa():
     _prep = _preposto_empresa(emp.get("id_empresa"))
     emp["preposto_nome"] = _prep["nome"]
     emp["preposto_cpf"]  = _cpf_br(_prep["cpf"])
+    emp["per_vt"] = _vt_perc_fmt(_vt_perc_int(_get_pref(VT_PREF_EMP, "", id_empresa=int(emp.get("id_empresa") or 0))))
     return render_template(
         "F10_Cad_Empresa.html",
         titulo_sistema="Folha10-Simples",
@@ -13942,6 +13961,9 @@ def api_alterar_empresa():
         _prep, _erro_prep = _preposto_do_form(dados)
         if _erro_prep:
             return jsonify({"ok": False, "msg": _erro_prep})
+        _per_vt, _erro_vt = _vt_perc_do_form(dados)
+        if _erro_vt:
+            return jsonify({"ok": False, "msg": _erro_vt})
         dados.pop("cnpj",       None)
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
@@ -13963,6 +13985,11 @@ def api_alterar_empresa():
                     .execute())
         if not resposta.data:
             return jsonify({"ok": False, "msg": "Sem retorno do banco"})
+        if _per_vt is not None:
+            _ok_vt, _msg_vt = _vt_perc_gravar(id_empresa, _per_vt)
+            if not _ok_vt:
+                return jsonify({"ok": False, "msg": "A empresa foi gravada, mas o % do "
+                                                    f"Vale Transporte não: {_msg_vt}"[:300]})
         if _prep is not None:
             _ok_prep, _msg_prep = _preposto_gravar(id_empresa, _prep)
             if not _ok_prep:
@@ -14065,6 +14092,9 @@ def api_gravar_empresa():
         _prep, _erro_prep = _preposto_do_form(dados)
         if _erro_prep:
             return jsonify({"ok": False, "msg": _erro_prep})
+        _per_vt, _erro_vt = _vt_perc_do_form(dados)
+        if _erro_vt:
+            return jsonify({"ok": False, "msg": _erro_vt})
 
         id_cliente_sess = session.get("id_cliente", 1)
         dados["id_cliente"] = id_cliente_sess
@@ -14145,6 +14175,10 @@ def api_gravar_empresa():
 
         id_empresa = resposta.data[0].get("id_empresa")
         print(f"=== Empresa gravada id={id_empresa} cnpj={dados.get('cnpj')} ===")
+        if _per_vt:
+            _ok_vt, _msg_vt = _vt_perc_gravar(id_empresa, _per_vt)
+            if not _ok_vt:
+                print(f"[vt] empresa {id_empresa}: {_msg_vt}")
         if _prep and _prep.get("nome"):
             _ok_prep, _msg_prep = _preposto_gravar(id_empresa, _prep)
             if not _ok_prep:
@@ -14377,6 +14411,321 @@ def api_feriado_excluir():
         return jsonify({"ok": False, "msg": str(e)})
 
 # =========================================================
+# VALE TRANSPORTE — REGRA E DADOS
+# =========================================================
+# Copia do Desktop (SR_Calculo Calculo_Vale_Transporte), no padrao deste sistema:
+#   tipos            tab_tabela_cli 11, um valor por tipo para a conta inteira
+#   valor por mes    tab_tabela_cli 1003, codigo "A1_202611" (texto = AAAAMM); 000000 e'
+#                    o valor de antes da primeira troca. Desktop: tabreg op1=1 op2=134
+#   % da empresa     tab_tabela_cli 1001 codigo vt_perc, id_empresa da empresa
+#   % do sindicato   tab_tabela_cli 1001 codigo vt_s_<id do sindicato>, id_empresa 0
+#   vale do func.    tab_eventos op1=1 op2=145, ref1 = qtd/dia, campotxt1 = tipo
+# As linhas 145 migradas do Desktop vieram sem o tipo: ficam de fora do calculo.
+VT_TAB       = "11"
+VT_TAB_HIST  = "1003"
+VT_PREF_EMP  = "vt_perc"
+VT_OP1       = 1
+VT_OP2       = 145
+VT_VERBA     = 111
+VT_MAX_TIPOS = 5
+VT_PERC_MAX  = 600    # 6,00% (Lei 7.418/85): a convencao pode reduzir, nao aumentar
+VT_QTD_MAX   = 9
+
+
+def _vt_perc_parse(txt):
+    """'6,00' -> (600, ''). Em branco e' 0 (nao usa)."""
+    s = str(txt if txt is not None else "").strip().replace(",", ".")
+    if not s:
+        return 0, ""
+    try:
+        v = int(round(float(s) * 100))
+    except ValueError:
+        return 0, "O % do Vale Transporte é inválido."
+    if v < 0 or v > VT_PERC_MAX:
+        return 0, "O % do Vale Transporte deve ficar entre 0,00 e 6,00."
+    return v, ""
+
+
+def _vt_perc_fmt(v):
+    v = int(v or 0)
+    return f"{v // 100},{v % 100:02d}" if v else ""
+
+
+def _vt_perc_int(texto):
+    try:
+        return int(str(texto or "0").strip() or 0)
+    except ValueError:
+        return 0
+
+
+def _vt_perc_do_form(dados):
+    """Tira per_vt de `dados` (nao e' coluna da tab_empresa). (perc ou None, erro)."""
+    if "per_vt" not in dados:
+        return None, ""
+    perc, erro = _vt_perc_parse(dados.pop("per_vt"))
+    return (None, erro) if erro else (perc, "")
+
+
+def _vt_perc_gravar(id_empresa, perc):
+    return _set_pref(VT_PREF_EMP, str(perc) if perc else "", id_empresa=int(id_empresa))
+
+
+def _vt_perc_sindicatos(id_cliente):
+    """{id do sindicato: perc} dos sindicatos com % proprio."""
+    saida = {}
+    try:
+        r = (supabase.table("tab_tabela_cli").select("codigo, texto")
+             .eq("id_cliente", id_cliente).eq("id_empresa", 0)
+             .eq("num_tabela", "1001").eq("situacao", "A")
+             .like("codigo", "vt_s_%").execute())
+        for x in (r.data or []):
+            cod = str(x.get("codigo") or "")[5:]
+            perc = _vt_perc_int(x.get("texto"))
+            if cod.isdigit() and perc > 0:
+                saida[int(cod)] = perc
+    except Exception as e:
+        print(f"[vt] % sindicatos: {e}")
+    return saida
+
+
+def _vt_hist_ler(id_cliente):
+    """{tipo: [(AAAAMM, valor), ...]} em ordem de mes."""
+    saida = {}
+    r = (supabase.table("tab_tabela_cli").select("codigo, texto, valor")
+         .eq("id_cliente", id_cliente).eq("num_tabela", VT_TAB_HIST)
+         .eq("situacao", "A").execute())
+    for x in (r.data or []):
+        tipo = str(x.get("codigo") or "").rsplit("_", 1)[0]
+        am = str(x.get("texto") or "")
+        if tipo and len(am) == 6:
+            saida.setdefault(tipo, []).append((am, int(x.get("valor") or 0)))
+    for lista in saida.values():
+        lista.sort()
+    return saida
+
+
+def _vt_valor_no_mes(hist_tipo, valor_atual, anomes):
+    """Valor do tipo na competencia. Sem historico, o valor do cadastro."""
+    valor = None
+    for am, v in (hist_tipo or []):
+        if am <= str(anomes)[:6]:
+            valor = v
+    return int(valor_atual or 0) if valor is None else valor
+
+
+def _vt_gravar_valor(id_cliente, tipo, valor_antes, valor, a_partir):
+    """Grava o valor a partir do mes. Devolve o valor do ultimo mes do historico."""
+    hist = _vt_hist_ler(id_cliente).get(tipo, [])
+
+    def _linha(am, v):
+        cod = f"{tipo}_{am}"
+        r = (supabase.table("tab_tabela_cli").select("id")
+             .eq("id_cliente", id_cliente).eq("num_tabela", VT_TAB_HIST)
+             .eq("codigo", cod).limit(1).execute())
+        if r.data:
+            (supabase.table("tab_tabela_cli").update({"valor": v, "situacao": "A", "texto": am})
+             .eq("id", r.data[0]["id"]).execute())
+        else:
+            supabase.table("tab_tabela_cli").insert({
+                "id_cliente": id_cliente, "id_empresa": 0, "num_tabela": VT_TAB_HIST,
+                "codigo": cod, "texto": am, "valor": v, "situacao": "A"}).execute()
+
+    if not hist:
+        # O valor de antes continua valendo para recalcular os meses anteriores
+        _linha("000000", int(valor_antes or 0))
+    _linha(a_partir, int(valor))
+    meses = dict(hist)
+    meses[a_partir] = int(valor)
+    return meses[max(meses)]
+
+
+def _vt_periodo_vazio(v):
+    return _plano_dep_vazio(v) or str(v or "").strip() == "00000000"
+
+
+def _vt_vales_empresa(id_cliente, id_empresa):
+    """Linhas 145 da empresa, com o tipo informado. {matricula: [linhas]}."""
+    saida, ini = {}, 0
+    while True:
+        q = (supabase.table("tab_eventos").select("id, matricula, ref1, campotxt1, data1i, data1f")
+             .eq("id_empresa", id_empresa).eq("op1", VT_OP1).eq("op2", VT_OP2))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        lote = q.order("id").range(ini, ini + 999).execute().data or []
+        for x in lote:
+            if str(x.get("campotxt1") or "").strip():
+                saida.setdefault(int(x.get("matricula") or 0), []).append(x)
+        if len(lote) < 1000:
+            return saida
+        ini += 1000
+
+
+def _vt_carregar(id_cliente, id_empresa, anomes):
+    """Tudo o que o calculo do VT le. None = nenhum % informado: a empresa nao usa VT."""
+    try:
+        if not id_cliente:
+            r = (supabase.table("tab_empresa").select("id_cliente")
+                 .eq("id_empresa", id_empresa).limit(1).execute())
+            id_cliente = r.data[0]["id_cliente"] if r.data else None
+        if not id_cliente:
+            return None
+        r = (supabase.table("tab_tabela_cli").select("texto")
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .eq("num_tabela", "1001").eq("codigo", VT_PREF_EMP).eq("situacao", "A")
+             .limit(1).execute())
+        perc_emp = _vt_perc_int(r.data[0].get("texto")) if r.data else 0
+        perc_ids = _vt_perc_sindicatos(id_cliente)
+        if not perc_emp and not perc_ids:
+            return None
+        perc_sind = {}
+        if perc_ids:
+            r = (supabase.table("tab_aux_sindicatos").select("id, cnpj")
+                 .eq("id_cliente", id_cliente).eq("situacao", "A").execute())
+            for x in (r.data or []):
+                cnpj = re.sub(r"\D", "", str(x.get("cnpj") or ""))
+                if cnpj and x.get("id") in perc_ids:
+                    perc_sind[cnpj] = perc_ids[x["id"]]
+        vales = {}
+        for mat, linhas in _vt_vales_empresa(id_cliente, id_empresa).items():
+            ativas = [x for x in linhas if int(x.get("ref1") or 0) > 0 and _plano_dep_ativo(x, anomes)]
+            if ativas:
+                vales[mat] = ativas
+        ctx = {"anomes": str(anomes)[:6], "perc_emp": perc_emp, "perc_sind": perc_sind,
+               "vales": vales, "tipos": {}, "hist": {}, "cad": {}, "horarios": {},
+               "feriados": set()}
+        if not vales:
+            return ctx
+        r = (supabase.table("tab_tabela_cli").select("codigo, texto, valor")
+             .eq("id_cliente", id_cliente).eq("num_tabela", VT_TAB).eq("situacao", "A").execute())
+        ctx["tipos"] = {str(x.get("codigo") or "").strip(): x for x in (r.data or [])}
+        ctx["hist"] = _vt_hist_ler(id_cliente)
+        r = (supabase.table("tab_cad").select("matricula, id_tab_horario, cnpjsindcategprof")
+             .eq("id_empresa", id_empresa).in_("matricula", list(vales)).execute())
+        ctx["cad"] = {int(x["matricula"]): x for x in (r.data or [])}
+        r = (supabase.table("tab_aux_horarios").select(
+             "id_horario, nome_horario, horas_2a, horas_3a, horas_4a, horas_5a, horas_6a, horas_sab, horas_dom")
+             .eq("id_cliente", id_cliente).execute())
+        ctx["horarios"] = {x.get("id_horario"): x for x in (r.data or [])}
+        r = (supabase.table("tab_aux_feriados").select("dat_feriado, id_cliente, tipo")
+             .or_(f"id_cliente.eq.{id_cliente},id_cliente.is.null").execute())
+        for x in (r.data or []):
+            # Estadual e municipal sem dono nao valem para todos: so os do proprio cliente
+            if x.get("id_cliente") or str(x.get("tipo") or "").upper() == "N":
+                ctx["feriados"].add(str(x.get("dat_feriado") or ""))
+        return ctx
+    except Exception as e:
+        print(f"[vt] carregar empresa {id_empresa}: {e}")
+        return None
+
+
+def _vt_perc_func(ctx, mat):
+    """(perc, 'do Sindicato' | 'da Empresa') do funcionario."""
+    cad = ctx["cad"].get(int(mat)) or {}
+    cnpj = re.sub(r"\D", "", str(cad.get("cnpjsindcategprof") or ""))
+    if cnpj and ctx["perc_sind"].get(cnpj):
+        return ctx["perc_sind"][cnpj], "do Sindicato"
+    return ctx["perc_emp"], "da Empresa"
+
+
+def _vt_dias_uteis(ctx, mat, dtadm, afastamentos, ferias):
+    """Dias de trabalho do funcionario na competencia: pelo horario dele, sem feriados
+    (a escala ignora feriado), sem os dias antes da admissao, de ferias e de afastamento.
+    Devolve (dias, observacao). Sem horario com horas, conta de segunda a sabado."""
+    ano, mes = int(ctx["anomes"][:4]), int(ctx["anomes"][4:6])
+    cad = ctx["cad"].get(int(mat)) or {}
+    hor = ctx["horarios"].get(cad.get("id_tab_horario")) or {}
+    dias_sem = [_horas_dia(hor.get(c)) > 0 for c in
+                ("horas_2a", "horas_3a", "horas_4a", "horas_5a", "horas_6a", "horas_sab", "horas_dom")]
+    obs = ""
+    if not any(dias_sem):
+        dias_sem = [True] * 6 + [False]
+        obs = "sem horário com horas: contados os dias de segunda a sábado"
+    escala = str(hor.get("nome_horario") or "").strip().upper().startswith("ESCALA")
+
+    fora = []
+    for ev in list(afastamentos or []) + list(ferias or []):
+        di = str(ev.get("data1i") or "").strip()
+        df = str(ev.get("data1f") or "").strip()
+        fora.append((di, "99999999" if _vt_periodo_vazio(df) else df))
+    adm = str(dtadm or "").strip()
+    dias = 0
+    for dia in range(1, calendar.monthrange(ano, mes)[1] + 1):
+        d = date(ano, mes, dia)
+        s = d.strftime("%Y%m%d")
+        if not dias_sem[d.weekday()] or (len(adm) == 8 and s < adm):
+            continue
+        if not escala and (s in ctx["feriados"] or f"9999{s[4:]}" in ctx["feriados"]):
+            continue
+        if any(di <= s <= df for di, df in fora):
+            continue
+        dias += 1
+    return dias, obs
+
+
+def _vt_passagens(ctx, mat, dias):
+    """(valor das passagens em `dias`, descricao, avisos). Tipo sem valor nao conta."""
+    total, partes, avisos = 0, [], []
+    for x in (ctx["vales"].get(int(mat)) or [])[:VT_MAX_TIPOS]:
+        tipo = str(x.get("campotxt1") or "").strip()
+        qtd = int(x.get("ref1") or 0)
+        cad_t = ctx["tipos"].get(tipo)
+        if not cad_t:
+            avisos.append(f"o tipo de vale {tipo} não está ativo em Tabelas Auxiliares")
+            continue
+        val = _vt_valor_no_mes(ctx["hist"].get(tipo), cad_t.get("valor"), ctx["anomes"])
+        if not val:
+            avisos.append(f"o tipo de vale {tipo} está com valor zero")
+            continue
+        total += dias * val * qtd
+        partes.append(f"{tipo}: {qtd} × {_fmt_brl(val)}")
+    return total, "  +  ".join(partes), avisos
+
+
+def _vt_calcular_folha(ctx, mat, base, dias_mes, dias_antes, dias_ferias, dias_inss,
+                       afastamentos, ferias, dtadm):
+    """Desconto do VT na folha normal. {'valor', 'det': [linhas], 'avisos': [...]}.
+    O atestado nao tira o VT: so ferias e afastamento pelo INSS. Quem foi admitido no
+    mes e tambem teve ferias ou afastamento recebe um fator so, para nao reduzir duas
+    vezes os mesmos dias."""
+    det, perc_txt = [], ""
+    perc, origem = _vt_perc_func(ctx, mat)
+    if not perc:
+        return {"valor": 0, "det": ["Sem % de Vale Transporte: não há desconto."], "avisos": []}
+    perc_txt = _vt_perc_fmt(perc)
+    fora = dias_ferias + dias_inss
+    if dias_mes and fora >= dias_mes:
+        return {"valor": 0, "det": [f"Mês inteiro fora ({dias_ferias} dias de férias, "
+                                    f"{dias_inss} de afastamento): sem desconto."], "avisos": []}
+    base = int(base or 0)
+    valor = int(base * perc / 10000 + 0.5)
+    det.append(f"{_fmt_brl(base)} (salário) × {perc_txt}% {origem} = <b>{_fmt_brl(valor)}</b>")
+    trab = dias_mes - dias_antes - fora
+    if dias_mes and trab < dias_mes:
+        ant = valor
+        valor = int(ant * max(0, trab) / dias_mes + 0.5)
+        det.append(f"Proporcional: {_fmt_brl(ant)} × {max(0, trab)} / {dias_mes} dias = "
+                   f"<b>{_fmt_brl(valor)}</b>")
+    dias, obs = _vt_dias_uteis(ctx, mat, dtadm, afastamentos, ferias)
+    passagens, desc, avisos = _vt_passagens(ctx, mat, dias)
+    det.append(f"Passagens: {dias} dias × ( {desc or 'nenhum vale com valor'} ) = {_fmt_brl(passagens)}"
+               + (f"   ({obs})" if obs else ""))
+    if valor > passagens:
+        valor = passagens
+        det.append(f"O desconto não pode passar do valor das passagens: <b>{_fmt_brl(valor)}</b>")
+    return {"valor": valor, "det": det, "avisos": avisos}
+
+
+def _vt_calcular_rescisao(ctx, mat, saldo):
+    """Desconto do VT na rescisao: % sobre o saldo de salario, sem o limite das passagens."""
+    perc, origem = _vt_perc_func(ctx, mat)
+    if not perc:
+        return 0, []
+    valor = int(int(saldo or 0) * perc / 10000 + 0.5)
+    return valor, [f"{_fmt_brl(int(saldo or 0))} (saldo de salário) × {_vt_perc_fmt(perc)}% {origem} "
+                   f"= <b>{_fmt_brl(valor)}</b>"]
+
+
+# =========================================================
 # VALE TRANSPORTE — TELA
 # =========================================================
 @app.route("/cad_vt")
@@ -14398,18 +14747,31 @@ def cad_vt():
         .execute()
     )
 
-    vts = []
+    anomes = str(session.get("anomes_atual") or "")
+    try:
+        hist = _vt_hist_ler(id_cliente)
+    except Exception as e:
+        print(f"[vt] historico: {e}")
+        hist = {}
+    vts, vt_hist = [], {}
     for row in (r.data or []):
-        v = row.get("valor") or 0
+        h = hist.get(row.get("codigo")) or []
+        # A lista mostra o valor da folha ativa; o valor de um mes futuro fica no historico
+        v = _vt_valor_no_mes(h, row.get("valor"), anomes) if anomes else (row.get("valor") or 0)
         row["valor_fmt"] = f"R$ {v // 100},{v % 100:02d}"
         vts.append(row)
+        vt_hist[row.get("codigo")] = [
+            {"mes": "Antes" if am == "000000" else f"{am[4:]}/{am[:4]}", "valor": _fmt_brl(x)}
+            for am, x in h]
 
     return render_template(
         "F10_Cad_VT.html",
         versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
-        vts=vts
+        vts=vts,
+        vt_hist=vt_hist,
+        folha_am=f"{anomes[:4]}-{anomes[4:]}" if len(anomes) == 6 else ""
     )
 
 # =========================================================
@@ -14481,9 +14843,22 @@ def api_vt_editar():
         return jsonify({"ok": False, "msg": "Valor inválido"})
 
     try:
+        r = (supabase.table("tab_tabela_cli").select("codigo, valor")
+             .eq("id", id_reg).eq("id_cliente", id_cliente).eq("num_tabela", VT_TAB)
+             .limit(1).execute())
+        if not r.data:
+            return jsonify({"ok": False, "msg": "Tipo não encontrado"})
+        tipo, antes = r.data[0].get("codigo"), int(r.data[0].get("valor") or 0)
+        novo = antes
+        if int(valor) != antes:
+            am = re.sub(r"\D", "", str(data.get("a_partir") or ""))[:6]
+            if len(am) != 6 or not 1 <= int(am[4:]) <= 12:
+                return jsonify({"ok": False, "msg": "Informe a partir de qual mês vale o novo valor"})
+            novo = _vt_gravar_valor(id_cliente, tipo, antes, int(valor), am)
+            gravar_log("VT_VALOR", f"Vale {tipo}: {_fmt_brl(int(valor))} a partir de {am[4:]}/{am[:4]}")
         supabase.table("tab_tabela_cli").update({
             "texto": descricao,
-            "valor": int(valor)
+            "valor": novo
         }).eq("id", id_reg).eq("id_cliente", id_cliente).execute()
         return jsonify({"ok": True})
     except Exception as e:
@@ -14511,6 +14886,197 @@ def api_vt_desativar():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
+
+# =========================================================
+# VALE TRANSPORTE DO FUNCIONÁRIO
+# =========================================================
+def _vt_am_inicio(valor):
+    """'2026-11' -> ('202611', erro). Nao aceita mes antes da folha ativa."""
+    am = re.sub(r"\D", "", str(valor or ""))[:6]
+    if len(am) != 6 or not 1 <= int(am[4:]) <= 12:
+        return "", "Informe o mês de início."
+    atual = str(session.get("anomes_atual") or "")
+    if len(atual) == 6 and am < atual:
+        return "", f"O início não pode ser antes da folha ativa ({atual[4:]}/{atual[:4]})."
+    return am, ""
+
+
+def _vt_encerrar(linhas, am):
+    """Encerra os vales que passam de `am`: terminam no mes anterior; o que so comecaria
+    em `am` ou depois e' apagado, porque nunca chegou a valer."""
+    ano, mes = int(am[:4]), int(am[4:])
+    ano_a, mes_a = (ano - 1, 12) if mes == 1 else (ano, mes - 1)
+    fim = f"{ano_a}{mes_a:02d}{calendar.monthrange(ano_a, mes_a)[1]:02d}"
+    for x in linhas:
+        ini = str(x.get("data1i") or "").strip()
+        f = str(x.get("data1f") or "").strip()
+        if not _vt_periodo_vazio(f) and f[:6] < am:
+            continue
+        if not _vt_periodo_vazio(ini) and ini[:6] >= am:
+            supabase.table("tab_eventos").delete().eq("id", x["id"]).execute()
+        else:
+            supabase.table("tab_eventos").update({"data1f": fim}).eq("id", x["id"]).execute()
+
+
+def _vt_linhas_abertas(id_cliente, id_empresa, mats):
+    """Todas as linhas 145 dos funcionarios, inclusive as migradas sem tipo."""
+    r = (supabase.table("tab_eventos").select("id, matricula, data1i, data1f")
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("op1", VT_OP1).eq("op2", VT_OP2).in_("matricula", mats).execute())
+    saida = {}
+    for x in (r.data or []):
+        saida.setdefault(int(x.get("matricula") or 0), []).append(x)
+    return saida
+
+
+def _vt_mats_validas(id_empresa, lista):
+    try:
+        mats = sorted({int(m) for m in (lista or [])})
+    except (TypeError, ValueError):
+        return []
+    if not mats:
+        return []
+    r = (supabase.table("tab_cad").select("matricula")
+         .eq("id_empresa", id_empresa).in_("matricula", mats).execute())
+    return sorted({int(x["matricula"]) for x in (r.data or [])})
+
+
+def _vt_aviso_recalculo():
+    return (" Recalcule a folha para o desconto valer."
+            if str(session.get("anomes_situacao") or "").upper() == "C" else "")
+
+
+@app.route("/vt_funcionario")
+def vt_funcionario():
+    if not session.get("logado"):
+        return redirect("/")
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    if not id_cliente or not id_empresa:
+        return redirect("/menu")
+    anomes = str(session.get("anomes_atual") or "")
+
+    r = (supabase.table("tab_tabela_cli").select("codigo, texto, valor")
+         .eq("id_cliente", id_cliente).eq("num_tabela", VT_TAB).eq("situacao", "A")
+         .neq("codigo", "DOC").order("codigo").execute())
+    hist = _vt_hist_ler(id_cliente)
+    tipos = []
+    for x in (r.data or []):
+        v = _vt_valor_no_mes(hist.get(x.get("codigo")), x.get("valor"), anomes)
+        tipos.append({"codigo": x.get("codigo"), "texto": x.get("texto"), "valor_fmt": _fmt_brl(v)})
+
+    vales = _vt_vales_empresa(id_cliente, id_empresa)
+    r = (supabase.table("tab_cad").select("matricula, nome")
+         .eq("id_empresa", id_empresa).eq("situacao", "A").order("nome").limit(5000).execute())
+    funcs = []
+    for f in (r.data or []):
+        mat = int(f.get("matricula") or 0)
+        txt = []
+        for x in vales.get(mat, []):
+            fim = str(x.get("data1f") or "").strip()
+            if not _vt_periodo_vazio(fim) and fim[:6] < anomes:
+                continue
+            ini = str(x.get("data1i") or "")
+            item = f"{str(x.get('campotxt1')).strip()} × {int(x.get('ref1') or 0)}"
+            if ini[:6] > anomes:
+                item += f" (a partir de {ini[4:6]}/{ini[:4]})"
+            txt.append(item)
+        funcs.append({"matricula": mat, "nome": f.get("nome") or "", "vales": ", ".join(txt)})
+
+    perc_ok = bool(_vt_perc_int(_get_pref(VT_PREF_EMP, "", id_empresa=int(id_empresa)))
+                   or _vt_perc_sindicatos(id_cliente))
+    return render_template(
+        "F10_VT_Funcionario.html",
+        versao=ler_versao(),
+        nome_cliente=session.get("nome", ""),
+        empresa_info=session.get("empresa_info", ""),
+        funcs=funcs, tipos=tipos, perc_ok=perc_ok, vt_max=VT_MAX_TIPOS,
+        folha_am=f"{anomes[:4]}-{anomes[4:]}" if len(anomes) == 6 else "",
+    )
+
+
+@app.route("/api/vt_funcionario/gravar", methods=["POST"])
+def api_vt_funcionario_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    if not id_cliente or not id_empresa:
+        return jsonify({"ok": False, "msg": "Sessão incompleta."})
+    d = request.get_json(force=True) or {}
+    am, erro = _vt_am_inicio(d.get("a_partir"))
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    vales, vistos = [], set()
+    for x in (d.get("vales") or []):
+        tipo = str((x or {}).get("tipo") or "").strip().upper()
+        try:
+            qtd = int((x or {}).get("qtd") or 0)
+        except (TypeError, ValueError):
+            qtd = 0
+        if not tipo or tipo in vistos:
+            return jsonify({"ok": False, "msg": "Cada tipo de vale só pode aparecer uma vez."})
+        if not 1 <= qtd <= VT_QTD_MAX:
+            return jsonify({"ok": False, "msg": f"A quantidade por dia do vale {tipo} deve ficar entre 1 e {VT_QTD_MAX}."})
+        vistos.add(tipo)
+        vales.append((tipo, qtd))
+    if not vales:
+        return jsonify({"ok": False, "msg": "Informe ao menos um vale."})
+    if len(vales) > VT_MAX_TIPOS:
+        return jsonify({"ok": False, "msg": f"No máximo {VT_MAX_TIPOS} tipos de vale por funcionário."})
+    try:
+        r = (supabase.table("tab_tabela_cli").select("codigo")
+             .eq("id_cliente", id_cliente).eq("num_tabela", VT_TAB).eq("situacao", "A").execute())
+        ativos = {str(x.get("codigo") or "").strip() for x in (r.data or [])}
+        fora = [t for t, _ in vales if t not in ativos]
+        if fora:
+            return jsonify({"ok": False, "msg": f"Tipo de vale não cadastrado: {', '.join(fora)}."})
+        mats = _vt_mats_validas(id_empresa, d.get("matriculas"))
+        if not mats:
+            return jsonify({"ok": False, "msg": "Marque ao menos um funcionário."})
+        abertas = _vt_linhas_abertas(id_cliente, id_empresa, mats)
+        novos = []
+        for mat in mats:
+            _vt_encerrar(abertas.get(mat, []), am)
+            for tipo, qtd in vales:
+                novos.append({"id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
+                              "folha": int(am), "op1": VT_OP1, "op2": VT_OP2,
+                              "data1i": am + "01", "data1f": _DATA_VAZIA_LEGADO,
+                              "ref1": qtd, "campotxt1": tipo})
+        supabase.table("tab_eventos").insert(novos).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"[:300]})
+    txt = ", ".join(f"{t} x {q}" for t, q in vales)
+    for mat in mats:
+        gravar_log("VT_FUNC", f"Vale Transporte: {txt} a partir de {am[4:]}/{am[:4]}", matricula=mat)
+    return jsonify({"ok": True, "msg": f"Vales gravados para {len(mats)} funcionário(s)." + _vt_aviso_recalculo()})
+
+
+@app.route("/api/vt_funcionario/parar", methods=["POST"])
+def api_vt_funcionario_parar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    if not id_cliente or not id_empresa:
+        return jsonify({"ok": False, "msg": "Sessão incompleta."})
+    d = request.get_json(force=True) or {}
+    am, erro = _vt_am_inicio(d.get("a_partir"))
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    try:
+        mats = _vt_mats_validas(id_empresa, d.get("matriculas"))
+        if not mats:
+            return jsonify({"ok": False, "msg": "Marque ao menos um funcionário."})
+        abertas = _vt_linhas_abertas(id_cliente, id_empresa, mats)
+        for mat in mats:
+            _vt_encerrar(abertas.get(mat, []), am)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"[:300]})
+    for mat in mats:
+        gravar_log("VT_FUNC", f"Vale Transporte parado a partir de {am[4:]}/{am[:4]}", matricula=mat)
+    return jsonify({"ok": True, "msg": f"Vale Transporte parado para {len(mats)} funcionário(s)." + _vt_aviso_recalculo()})
+
 
 # =========================================================
 # HORÁRIOS — TELA
@@ -14690,6 +15256,9 @@ def cad_sindicato():
     )
 
     import json
+    _perc_vt = _vt_perc_sindicatos(id_cliente)
+    for _s in (r.data or []):
+        _s["per_vt"] = _vt_perc_fmt(_perc_vt.get(_s.get("id")))
     sindicatos_json = json.dumps(r.data or [])
 
     return render_template(
@@ -14743,8 +15312,14 @@ def api_sindicato_incluir():
         if v is not None:
             campos[f] = v
 
+    _per_vt, _erro_vt = _vt_perc_parse(data.get("per_vt"))
+    if _erro_vt:
+        return jsonify({"ok": False, "msg": _erro_vt})
+
     try:
-        supabase.table("tab_aux_sindicatos").insert(campos).execute()
+        _novo = supabase.table("tab_aux_sindicatos").insert(campos).execute()
+        if _per_vt and _novo.data:
+            _set_pref(f"vt_s_{_novo.data[0]['id']}", str(_per_vt))
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
@@ -14774,9 +15349,16 @@ def api_sindicato_editar():
               "meses_carencia_aviso_previo", "per_insalubridade", "per_periculosidade"]:
         campos[f] = data.get(f)  # None limpa o campo no banco
 
+    _per_vt, _erro_vt = _vt_perc_parse(data.get("per_vt"))
+    if _erro_vt:
+        return jsonify({"ok": False, "msg": _erro_vt})
+
     try:
-        supabase.table("tab_aux_sindicatos").update(campos) \
+        _alt = supabase.table("tab_aux_sindicatos").update(campos) \
             .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        # So grava o % de sindicato deste cliente: a pref leva o id que veio da tela
+        if _alt.data and "per_vt" in data:
+            _set_pref(f"vt_s_{int(id_reg)}", str(_per_vt) if _per_vt else "")
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
@@ -54164,6 +54746,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     # o Desktop. None = empresa sem tabela no mes.
     _plano_idade_ctx = (_plano_idade_carregar(id_empresa, anomes)
                         if anomes_tipo == "N" else None)
+    # Vale Transporte (ETAPA 1087): so a folha normal, como o Desktop. None = sem %.
+    _vt_ctx = _vt_carregar(id_cliente, id_empresa, anomes) if anomes_tipo == "N" else None
     # folha_tipo em tab_mov: N=Normal; 1/A (13°) também usam "N"; F e R são fluxos distintos
     _folha_tipo_mov = _folha_tipo_mov_de(anomes_tipo)
     tab_mov_dict    = _calc_etapa9_tab_mov(id_empresa, anomes,
@@ -55442,6 +56026,42 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
                 ]))
                 elems.append(pi_tbl)
+
+            # ── ETAPA 1087 — VALE TRANSPORTE ────────────────────────────
+            # Desktop: SR_Calculo Calculo_Vale_Transporte. A verba que ja veio do
+            # Movimento Fixo fica com ele; lancamento do mes substitui na ETAPA 1090.
+            if _vt_ctx and _vt_ctx["vales"].get(int(matr)) and intermitente_tem_horas:
+                vt_rows = [[Paragraph("ETAPA 1087 - VALE TRANSPORTE", st_etapa)]]
+                _ri_vt = rubricas_info.get(VT_VERBA) or {}
+                _vt_avisos = []
+                if VT_VERBA in cod_verbas_fixas:
+                    vt_rows.append([Paragraph("Fica o valor do Movimento Fixo (ETAPA 1080).", st_detalhe)])
+                elif str(_ri_vt.get("tp") or "") != "2":
+                    _vt_avisos = [f"a verba {VT_VERBA:04d} não está cadastrada como desconto; o VT não foi descontado"]
+                else:
+                    _vt_r = _vt_calcular_folha(
+                        _vt_ctx, matr, l.get("sal_mes"), dias_mes, dias_antes_admissao,
+                        dias_ferias_total, dias_inss_total, afast_func, ferias_func, dtadm_raw)
+                    _vt_avisos = _vt_r["avisos"]
+                    if _vt_r["valor"]:
+                        mmVmm[VT_VERBA] = _vt_r["valor"]
+                    for _lin in _vt_r["det"]:
+                        vt_rows.append([Paragraph(_lin, st_detalhe)])
+                    if any(int(r.get("cod_verba") or 0) == VT_VERBA for r in tab_mov_dict.get(matr, [])):
+                        vt_rows.append([Paragraph("O lançamento do mês substitui este valor (ETAPA 1090).", st_detalhe)])
+                for _av in _vt_avisos:
+                    vt_rows.append([Paragraph(f"<font color='#b91c1c'>Atenção: {_av}</font>", st_detalhe)])
+                    _aviso(f"Mat {matr}: vale transporte — {_av}")
+                vt_tbl = Table(vt_rows, colWidths=[17*cm])
+                vt_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0), 10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                    ("TOPPADDING",    (0, 1), (-1, -1), 1.5),
+                    ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
+                ]))
+                elems.append(vt_tbl)
 
             # ── etapa 9 — lançamentos manuais (tab_mov) ────────
             mov_func = tab_mov_dict.get(matr, [])

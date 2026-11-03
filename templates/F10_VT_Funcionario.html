@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vale Transporte do Funcionário</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f9;
+      color: #1f2937;
+      min-height: 100vh;
+    }
+
+    .pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── TOPO ── */
+    .topo {
+        background: #a0d9be;
+        border-bottom: 1px solid #70c4a0;
+        padding: 0 28px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 0 32px;
+        min-height: 64px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .topo-logo { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; white-space: nowrap; }
+    .topo-versao { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #374151; letter-spacing: 0.03em; margin-top: 2px; }
+    .topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; letter-spacing: 0.01em; }
+    .topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
+    .topo-nome { font-size: 11px; color: #374151; margin-top: 2px; }
+    .btn-voltar-topo {
+        margin-left: 16px; background: transparent;
+        border: 1px solid #70c4a0; color: #374151;
+        font-size: 12px; padding: 5px 12px; border-radius: 6px;
+        cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: 0.15s; white-space: nowrap;
+    }
+    .btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+    /* CONTAINER */
+    .container {
+      max-width: 1100px;
+      width: 100%;
+      margin: 14px auto 0;
+      padding: 0 18px 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* INFO CARDS */
+    .painel-info {
+      display: grid;
+      grid-template-columns: 2fr 1.2fr 0.8fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card-info {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .card-info .rotulo {
+      font-size: 11px; color: #6b7280;
+      text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px;
+    }
+    .card-info .valor-card {
+      font-size: 15px; font-weight: 700; color: #111827;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* LAYOUT */
+    .layout-principal {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 20px;
+      flex: 1;
+    }
+
+    /* BLOCOS */
+    .bloco {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      display: flex;
+      flex-direction: column;
+    }
+    .bloco-header {
+      padding: 12px 16px 10px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e5e7eb;
+      border-radius: 12px 12px 0 0;
+    }
+    .bloco-header h2 { margin: 0; font-size: 16px; color: #0f172a; }
+    .bloco-header p  { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+    .bloco-body {
+      padding: 14px 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* FILTRO */
+    .filtro input {
+      width: 100%;
+      height: 36px;
+      padding: 6px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+    }
+    .filtro input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+    /* LISTA */
+    .lista {
+      border: 1px solid #dbe3ee;
+      border-radius: 10px;
+      overflow: auto;
+      flex: 1;
+      min-height: 300px;
+    }
+    .lista table { width: 100%; border-collapse: collapse; }
+    .lista thead { background: #eaf1fb; }
+    .lista thead th { position: sticky; top: 0; background: #eaf1fb; z-index: 2; }
+    .lista th, .lista td {
+      text-align: left; padding: 7px 12px;
+      font-size: 12px; border-bottom: 1px solid #eef2f7; white-space: nowrap;
+    }
+    .lista th { color: #334155; font-weight: 600; }
+    .lista tbody tr:hover { background: #f8fafc; }
+
+    .valor-cel {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      color: #166534;
+      text-align: right;
+      padding-right: 16px !important;
+    }
+
+    .tipo-tag {
+      display: inline-block;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-weight: 700;
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+
+    .btn-acao {
+      border: none; border-radius: 7px; cursor: pointer;
+      font-size: 11px; font-weight: 700; padding: 3px 8px; height: 26px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .btn-edit   { background: #dbeafe; color: #1d4ed8; }
+    .btn-edit:hover { background: #bfdbfe; }
+    .btn-desativ { background: #fee2e2; color: #991b1b; }
+    .btn-desativ:hover { background: #fecaca; }
+
+    .form-modo {
+      font-size: 11px; font-weight: 700; padding: 5px 10px;
+      border-radius: 8px; text-align: center;
+    }
+    .form-modo-novo   { background: #dcfce7; color: #166534; }
+    .form-modo-editar { background: #fef9c3; color: #92400e; }
+
+    .form-input[readonly] {
+      background: #f1f5f9; color: #64748b; cursor: not-allowed;
+    }
+
+    /* FORM */
+    .form-label {
+      display: block; font-size: 12px;
+      color: #475569; font-weight: 700; margin-bottom: 5px;
+    }
+    .form-input {
+      width: 100%; height: 38px; padding: 6px 10px;
+      border: 1px solid #cbd5e1; border-radius: 8px;
+      font-size: 13px; outline: none; background: white;
+    }
+    .form-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+    .form-secao { display: flex; flex-direction: column; gap: 5px; }
+
+    .form-hint {
+      font-size: 11px; color: #94a3b8; margin-top: 3px;
+    }
+
+    .separador {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 4px 0;
+    }
+
+    /* BOTÕES */
+    .btn {
+      height: 40px; border: none; border-radius: 10px;
+      padding: 0 18px; font-size: 13px; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-gravar {
+      background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%);
+      color: white; border: 1px solid #2f9d4d;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 5px rgba(0,0,0,0.1);
+      flex: 1;
+    }
+    .btn-gravar:hover { filter: brightness(1.04); }
+    .btn-voltar {
+      background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%);
+      color: #0f172a; border: 1px solid #c7d2de; min-width: 160px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 2px 5px rgba(0,0,0,0.06);
+    }
+    .btn-voltar:hover { filter: brightness(1.02); }
+
+    .rodape-acoes { display: flex; gap: 10px; margin-top: 4px; }
+    .rodape-final { margin-top: 14px; }
+
+    .vazio {
+      padding: 20px; font-size: 13px; color: #64748b;
+      text-align: center; border: 1px dashed #cbd5e1;
+      border-radius: 10px; background: #fafafa;
+    }
+
+    .msg-ok {
+      display: none;
+      background: #dcfce7; border: 1px solid #bbf7d0;
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 12px; font-weight: 600; color: #166534;
+    }
+    .msg-erro {
+      display: none;
+      background: #fee2e2; border: 1px solid #fecaca;
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 12px; font-weight: 600; color: #991b1b;
+    }
+
+    @media (max-width: 860px) {
+      .layout-principal { grid-template-columns: 1fr; }
+      .painel-info { grid-template-columns: 1fr; }
+    }
+  
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #111827; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #111827; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
+  
+  .aviso-vt { background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; color:#92400e; font-size:13px; padding:10px 14px; margin-bottom:12px; }
+  .vt-linha { display:grid; grid-template-columns:1fr 110px; gap:8px; margin-bottom:6px; align-items:center; }
+  .vt-cab { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.3px; }
+  .vales-cel { font-size:12px; }
+  .sem-vale { color:#94a3b8; }
+  .btn-parar { background:#fff; color:#b91c1c; border:1px solid #fca5a5; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+<div class="pagina">
+
+  {% include "_folha_ativa_tarja.html" %}
+  <div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa_info }}</span>
+        <span class="topo-nome">{{ nome_cliente }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Vale Transporte do Funcionário</span>
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    {% if not perc_ok %}
+    <div class="aviso-vt">
+      Nenhum % de Vale Transporte informado: enquanto isso, a folha não desconta o VT. Informe o <b>% Vale Transporte</b> no Cadastro da Empresa ou no Sindicato.
+    </div>
+    {% endif %}
+    {% if not tipos %}
+    <div class="aviso-vt">
+      Nenhum tipo de Vale Transporte cadastrado. Cadastre em <a href="/cad_vt">Tabelas Auxiliares › Vale Transporte</a>.
+    </div>
+    {% endif %}
+
+    <div class="layout-principal">
+
+      <!-- ── LISTA ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2>🚌 Funcionários</h2>
+          <p>Marque um ou mais funcionários</p>
+        </div>
+        <div class="bloco-body">
+          <div class="filtro">
+            <input type="text" id="txtFiltro" placeholder="Filtrar por matrícula, nome ou vale..." oninput="filtrar()">
+          </div>
+          <div class="lista">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:36px; text-align:center;"><input type="checkbox" id="chkTodos" title="Marcar todos os da lista" onchange="marcarTodos(this.checked)"></th>
+                  <th style="width:70px;">Matrícula</th>
+                  <th>Nome</th>
+                  <th style="width:220px;">Vales atuais</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyFunc"></tbody>
+            </table>
+            <div class="vazio" id="semFunc" style="display:none;">Nenhum funcionário ativo nesta empresa.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FORM ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2>Novos Vales</h2>
+          <p id="txtMarcados">Nenhum funcionário marcado</p>
+        </div>
+        <div class="bloco-body">
+          <div id="msgOk"   class="msg-ok"></div>
+          <div id="msgErro" class="msg-erro"></div>
+
+          <div class="form-secao">
+            <label class="form-label">A partir de</label>
+            <input class="form-input" type="month" id="inpDesde" value="{{ folha_am }}" min="{{ folha_am }}">
+            <span class="form-hint">Os vales atuais dos funcionários marcados terminam no mês anterior.</span>
+          </div>
+
+          <hr class="separador">
+
+          <div class="vt-linha vt-cab"><span>Tipo</span><span>Quantidade por dia</span></div>
+          {% for i in range(1, vt_max + 1) %}
+          <div class="vt-linha">
+            <select class="form-input vt-tipo" id="tipo{{ i }}">
+              <option value=""></option>
+              {% for t in tipos %}<option value="{{ t.codigo }}">{{ t.codigo }} - {{ t.texto }} ({{ t.valor_fmt }})</option>{% endfor %}
+            </select>
+            <input class="form-input vt-qtd" type="number" id="qtd{{ i }}" min="1" max="9" step="1">
+          </div>
+          {% endfor %}
+
+          <div class="rodape-acoes">
+            <button class="btn btn-gravar" id="btnGravar" onclick="gravar()">💾 &nbsp;Gravar Vales</button>
+            <button class="btn btn-parar" id="btnParar" onclick="parar()">Parar Vale Transporte</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="rodape-final">
+      <button class="btn btn-voltar" onclick="window.location.href='/menu'">↩ &nbsp;Voltar ao Menu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const FUNCS = {{ funcs|tojson }};
+  const VT_MAX = {{ vt_max }};
+  const el = (id) => document.getElementById(id);
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  function montar() {
+    el('semFunc').style.display = FUNCS.length ? 'none' : '';
+    el('tbodyFunc').innerHTML = FUNCS.map((f) =>
+      '<tr data-busca="' + esc((f.matricula + ' ' + f.nome + ' ' + f.vales).toLowerCase()) + '">'
+      + '<td style="text-align:center;"><input type="checkbox" class="chk-func" value="' + f.matricula + '" onchange="contar()"></td>'
+      + '<td>' + f.matricula + '</td><td>' + esc(f.nome) + '</td>'
+      + '<td class="vales-cel">' + (esc(f.vales) || '<span class="sem-vale">Sem vale</span>') + '</td></tr>'
+    ).join('');
+  }
+
+  function filtrar() {
+    const txt = el('txtFiltro').value.toLowerCase();
+    document.querySelectorAll('#tbodyFunc tr').forEach((tr) => {
+      tr.style.display = (!txt || tr.dataset.busca.includes(txt)) ? '' : 'none';
+    });
+    el('chkTodos').checked = false;
+  }
+
+  function marcarTodos(on) {
+    document.querySelectorAll('#tbodyFunc tr').forEach((tr) => {
+      if (tr.style.display !== 'none') tr.querySelector('.chk-func').checked = on;
+    });
+    contar();
+  }
+
+  function marcados() {
+    return Array.from(document.querySelectorAll('.chk-func:checked')).map((c) => parseInt(c.value, 10));
+  }
+
+  function contar() {
+    const n = marcados().length;
+    el('txtMarcados').textContent = n === 0 ? 'Nenhum funcionário marcado'
+      : (n === 1 ? '1 funcionário marcado' : n + ' funcionários marcados');
+  }
+
+  function mostrarOk(msg) {
+    el('msgOk').textContent = '✔ ' + msg;
+    el('msgOk').style.display = 'block';
+    el('msgErro').style.display = 'none';
+  }
+
+  function mostrarErro(msg) {
+    el('msgErro').textContent = '✖ ' + msg;
+    el('msgErro').style.display = 'block';
+    el('msgOk').style.display = 'none';
+  }
+
+  function travar(on) {
+    el('btnGravar').disabled = on;
+    el('btnParar').disabled = on;
+  }
+
+  async function enviar(url, corpo) {
+    travar(true);
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo)
+      });
+      const d = await r.json();
+      if (d.ok) {
+        mostrarOk(d.msg || 'Gravado.');
+        setTimeout(() => location.reload(), 2500);
+      } else {
+        mostrarErro(d.msg || 'Erro ao gravar.');
+        travar(false);
+      }
+    } catch (e) {
+      mostrarErro('Erro de comunicação com o servidor.');
+      travar(false);
+    }
+  }
+
+  function gravar() {
+    const mats = marcados();
+    if (!mats.length) { mostrarErro('Marque ao menos um funcionário.'); return; }
+    const desde = el('inpDesde').value;
+    if (!desde) { mostrarErro('Informe o mês de início.'); return; }
+    const vales = [];
+    for (let i = 1; i <= VT_MAX; i++) {
+      const tipo = el('tipo' + i).value;
+      const qtd = el('qtd' + i).value.trim();
+      if (!tipo && !qtd) continue;
+      if (!tipo) { mostrarErro('Linha ' + i + ': escolha o tipo.'); return; }
+      if (!qtd) { mostrarErro('Linha ' + i + ': informe a quantidade por dia.'); return; }
+      vales.push({ tipo: tipo, qtd: parseInt(qtd, 10) });
+    }
+    if (!vales.length) { mostrarErro('Informe ao menos um vale.'); return; }
+    enviar('/api/vt_funcionario/gravar', { matriculas: mats, vales: vales, a_partir: desde });
+  }
+
+  async function parar() {
+    const mats = marcados();
+    if (!mats.length) { mostrarErro('Marque ao menos um funcionário.'); return; }
+    const desde = el('inpDesde').value;
+    if (!desde) { mostrarErro('Informe o mês de início.'); return; }
+    const mes = desde.slice(5) + '/' + desde.slice(0, 4);
+    if (!await f10Confirm('Parar o Vale Transporte de ' + mats.length + ' funcionário(s) a partir de ' + mes + '?')) return;
+    enviar('/api/vt_funcionario/parar', { matriculas: mats, a_partir: desde });
+  }
+
+  montar();
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>
