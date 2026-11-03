@@ -81673,6 +81673,183 @@ def api_ponto_gravar():
 
 
 # =========================================================
+# eSocial — Informar Recibo Manual
+# =========================================================
+# A remessa foi aceita no eSocial, mas o retorno nao chegou ao tab_esocial (falha
+# ao trazer o XML de volta, por exemplo): a linha fica sem recibo e o sistema
+# acha que nada saiu. O usuario copia o recibo do portal e grava aqui. Mesmo caso
+# do Desktop (Eventos Diversos > "R- Informar RECIBO manualmente"), com as mesmas
+# regras de formato: eSocial_Recibo_Formato_Padrao em SR_eS_Diversos.vb.
+RECIBO_MANUAL_RX = re.compile(r"^\d\.\d\.\d{19}$")
+
+
+def _recibo_manual_situacao(row):
+    """Situacao de uma linha do tab_esocial nesta tela: (codigo, texto)."""
+    if (row.get("recibo") or "").strip():
+        return "com_recibo", "Com recibo"
+    obs = (row.get("observacao_erro") or "").strip()
+    if obs.upper() == "EXCLUIDO":
+        return "excluido", "Excluído"
+    if obs.upper().startswith("AGUARDANDO:"):
+        return "sem_recibo", "Sem recibo (aguardando retorno)"
+    if obs and not obs.upper().startswith("PARAMS:"):
+        return "sem_recibo", "Sem recibo (com erro)"
+    return "sem_recibo", "Sem recibo"
+
+
+@app.route("/esocial_recibo_manual")
+def esocial_recibo_manual():
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template("F10_eSocial_Recibo_Manual.html", versao=ler_versao(),
+                           nome=session.get("nome", ""), empresa=session.get("empresa_info", ""),
+                           anomes_atual=str(session.get("anomes_atual") or ""))
+
+
+@app.route("/api/esocial_recibo_manual/funcionarios")
+def api_recibo_manual_funcionarios():
+    """Todos os funcionarios da empresa, inclusive os demitidos: o S-2299 e o
+    S-1200 da rescisao tambem podem ter ficado sem recibo."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    itens, ini = [], 0
+    try:
+        while True:                          # o PostgREST corta em 1000 linhas
+            lote = (supabase.table("tab_cad").select("matricula, nome")
+                    .eq("id_empresa", id_empresa).order("matricula")
+                    .range(ini, ini + 999).execute().data or [])
+            itens += lote
+            if len(lote) < 1000:
+                break
+            ini += 1000
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler os funcionários: {e}"[:200]})
+    return jsonify({"ok": True, "itens": [{"matricula": f.get("matricula"),
+                                           "nome": f.get("nome") or ""} for f in itens]})
+
+
+@app.route("/api/esocial_recibo_manual/remessas")
+def api_recibo_manual_remessas():
+    """Remessas do funcionario no mes. As que ja tem recibo vem junto, travadas."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    mes = re.sub(r"\D", "", request.args.get("mes", ""))
+    matricula = re.sub(r"\D", "", request.args.get("matricula", ""))
+    if len(mes) != 6 or not ("01" <= mes[4:] <= "12"):
+        return jsonify({"ok": False, "msg": "Informe o mês."})
+    if not matricula or int(matricula) <= 0:
+        return jsonify({"ok": False, "msg": "Selecione o funcionário."})
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, layout, ano_mes, folha_tipo, flag1, recibo, "
+                        "observacao_erro, data_cad, data_grava")
+                .eq("id_empresa", id_empresa).eq("ano_mes", int(mes))
+                .eq("matricula", int(matricula))
+                .order("layout").order("id_esocial").execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler as remessas: {e}"[:200]})
+    itens = []
+    for r in rows:
+        cod, txt = _recibo_manual_situacao(r)
+        obs = (r.get("observacao_erro") or "").strip()
+        if obs.upper().startswith("PARAMS:"):
+            obs = ""
+        dc = str(r.get("data_cad") or "")
+        itens.append({
+            "id_esocial": r["id_esocial"],
+            "layout":     r.get("layout") or "",
+            "folha":      r.get("folha_tipo") or "",
+            "flag1":      r.get("flag1") or "",
+            "data_cad":   f"{dc[6:8]}/{dc[4:6]}/{dc[:4]}" if len(dc) == 8 else "",
+            "recibo":     (r.get("recibo") or "").strip(),
+            "situacao":   cod,
+            "texto":      txt,
+            "obs":        obs[:200],
+        })
+    return jsonify({"ok": True, "itens": itens})
+
+
+@app.route("/api/esocial_recibo_manual/gravar", methods=["POST"])
+def api_recibo_manual_gravar():
+    """Grava o recibo copiado do eSocial numa linha que esteja mesmo sem recibo.
+
+    A checagem e' feita aqui, relendo a linha, e nao pelo que a tela mostrou; e o
+    update so' pega a linha se o recibo ainda estiver como foi lido, para nao
+    sobrescrever um retorno que tenha chegado nesse meio tempo.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    dados = request.get_json(silent=True) or {}
+    recibo = re.sub(r"\s", "", str(dados.get("recibo") or ""))
+    try:
+        id_reg = int(dados.get("id_esocial") or 0)
+    except (TypeError, ValueError):
+        id_reg = 0
+    if id_reg <= 0:
+        return jsonify({"ok": False, "msg": "Remessa não informada."})
+    if not RECIBO_MANUAL_RX.match(recibo):
+        return jsonify({"ok": False, "msg": "Número do recibo fora do padrão: são 23 "
+                                            "caracteres, como 1.1.0000000000000000000."})
+    if recibo.startswith("9.9."):
+        return jsonify({"ok": False, "msg": "Este é um recibo provisório do Folha10. "
+                                            "Copie o número verdadeiro no eSocial."})
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, layout, ano_mes, matricula, recibo, observacao_erro, data_grava")
+                .eq("id_esocial", id_reg).eq("id_empresa", id_empresa)
+                .limit(1).execute().data or [])
+        if not rows:
+            return jsonify({"ok": False, "msg": "Remessa não encontrada nesta empresa."})
+        row = rows[0]
+        cod, _ = _recibo_manual_situacao(row)
+        if cod == "com_recibo":
+            return jsonify({"ok": False, "msg": "Esta remessa já tem recibo: "
+                                                + (row.get("recibo") or "").strip()})
+        if cod == "excluido":
+            return jsonify({"ok": False, "msg": "Esta remessa está excluída."})
+
+        outra = (supabase.table("tab_esocial")
+                 .select("id_esocial, layout, ano_mes, matricula")
+                 .eq("id_empresa", id_empresa).eq("recibo", recibo)
+                 .limit(1).execute().data or [])
+        if outra:
+            o = outra[0]
+            am = str(o.get("ano_mes") or "")
+            return jsonify({"ok": False, "msg": (
+                f"Este recibo já está gravado no S-{o.get('layout')} de "
+                f"{am[4:6]}/{am[:4]}, matrícula {int(o.get('matricula') or 0):06d}.")})
+
+        obs_antes = (row.get("observacao_erro") or "").strip()
+        upd = {"recibo": recibo}
+        if not obs_antes.upper().startswith("PARAMS:"):
+            upd["observacao_erro"] = ""
+        if not (row.get("data_grava") or "").strip():
+            agora = _agora_brasilia()
+            upd["data_grava"] = agora.strftime("%Y%m%d")
+            upd["hora_grava"] = agora.strftime("%H%M")
+
+        q = (supabase.table("tab_esocial").update(upd)
+             .eq("id_esocial", id_reg).eq("id_empresa", id_empresa))
+        lido = row.get("recibo")
+        q = q.is_("recibo", "null") if lido is None else q.eq("recibo", lido)
+        if not (q.execute().data or []):
+            return jsonify({"ok": False, "msg": "A remessa mudou enquanto a tela estava "
+                                                "aberta. Busque de novo."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"[:200]})
+
+    am = str(row.get("ano_mes") or "")
+    gravar_log("ESOC-RECIBO",
+               (f"Recibo manual S-{row.get('layout')} {am} mat={row.get('matricula')} "
+                f"id={id_reg} recibo={recibo} obs antes: {obs_antes}")[:300],
+               ano_mes=row.get("ano_mes"), matricula=row.get("matricula"))
+    return jsonify({"ok": True, "msg": "Recibo gravado.", "recibo": recibo})
+
+
+# =========================================================
 # START
 # =========================================================
 if __name__ == "__main__":

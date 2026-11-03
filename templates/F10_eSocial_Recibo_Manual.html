@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Informar Recibo Manual</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff; color: #111827; border: 2px solid #86efac;
+}
+.badge-sem-folha { color: #991b1b; border-color: #fca5a5; }
+.conteudo { max-width: 1200px; margin: 24px auto; padding: 0 20px 60px; }
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 20px; overflow: hidden;
+}
+.card-titulo {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+}
+.card-body { padding: 18px 20px; }
+.linha-op { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+.linha-op label { display: inline-flex; align-items: center; gap: 6px; }
+.linha-op select, .linha-op input {
+    padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--sans); font-size: 13px; background: #fff;
+}
+#funcionario { min-width: 340px; max-width: 100%; }
+.btn {
+    background: var(--accent); border: none; color: #fff; font-size: 13px; font-weight: 600;
+    padding: 9px 20px; border-radius: 8px; cursor: pointer; font-family: var(--sans);
+    transition: 0.15s; white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { background: #cbd5e1; cursor: not-allowed; filter: none; }
+.btn-mini { padding: 5px 14px; font-size: 12px; background: #16a34a; }
+.hint { font-size: 12px; color: #64748b; margin-top: 10px; line-height: 1.5; }
+.alerta { padding: 11px 16px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+.alerta-erro  { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.alerta-aviso { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.alerta-ok    { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.tabela-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+thead th {
+    background: #f8fafc; color: #475569; font-weight: 600; text-align: left;
+    padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+.mono { font-family: var(--mono); }
+.badge-st { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
+.b-ok  { background: #d1fae5; color: #065f46; }
+.b-avi { background: #fef3c7; color: #92400e; }
+.b-rej { background: #e2e8f0; color: #475569; }
+.msg-cel { white-space: normal; font-size: 11px; color: #64748b; min-width: 200px; }
+.inp-rec { width: 215px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: 12px; }
+.travada { color: #94a3b8; }
+.oculto { display: none; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Informar Recibo Manual</span>
+        {% if anomes_atual %}
+        {% include "_folha_ativa_badge.html" %}
+        {% else %}
+        <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+    <div class="card">
+        <div class="card-titulo">1. Mês e funcionário</div>
+        <div class="card-body">
+            <div class="linha-op">
+                <label>Mês <input type="month" id="mes"></label>
+                <label>Funcionário <select id="funcionario"><option value="">Carregando...</option></select></label>
+                <button class="btn" id="btnBuscar" onclick="buscar()">Buscar Remessas</button>
+            </div>
+            <div class="hint">Use quando o evento já foi aceito no eSocial, mas a remessa continua sem recibo aqui.
+                Copie o número do recibo no portal do eSocial. Depois de gravado, o Folha10 considera a remessa enviada.</div>
+        </div>
+    </div>
+
+    <div id="msg"></div>
+
+    <div class="card oculto" id="cardLista">
+        <div class="card-titulo">2. Remessas do funcionário no mês</div>
+        <div class="card-body">
+            <div class="tabela-wrap">
+                <table>
+                    <thead><tr><th>Evento</th><th>Folha</th><th>Criada em</th><th>Situação</th><th>Recibo</th><th></th><th>Mensagem</th></tr></thead>
+                    <tbody id="linhas"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ANOMES = "{{ anomes_atual }}";
+let LINHAS = [];
+
+function el(id) { return document.getElementById(id); }
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function aviso(tipo, texto) {
+    el('msg').innerHTML = texto ? '<div class="alerta alerta-' + tipo + '">' + esc(texto) + '</div>' : '';
+}
+function mat6(m) { return String(m || 0).padStart(6, '0'); }
+function nomeFolha(f, flag) {
+    if (String(flag || '').toUpperCase().charAt(0) === 'R') return 'Rescisão';
+    if (f === 'N') return 'Normal';
+    if (f === '1' || f === '2') return '13º';
+    return f || '';
+}
+
+async function carregarFuncionarios() {
+    const sel = el('funcionario');
+    try {
+        const r = await (await fetch('/api/esocial_recibo_manual/funcionarios')).json();
+        if (!r.ok) { sel.innerHTML = '<option value="">Erro ao carregar</option>'; aviso('erro', r.msg); return; }
+        sel.innerHTML = '<option value="">Selecione...</option>' + r.itens.map(function (f) {
+            return '<option value="' + esc(f.matricula) + '">' + mat6(f.matricula) + ' - ' + esc(f.nome) + '</option>';
+        }).join('');
+    } catch (e) {
+        sel.innerHTML = '<option value="">Erro ao carregar</option>';
+        aviso('erro', 'Não foi possível carregar os funcionários.');
+    }
+}
+
+async function buscar() {
+    const mes = el('mes').value.replace('-', '');
+    const mat = el('funcionario').value;
+    aviso('', '');
+    el('cardLista').classList.add('oculto');
+    if (mes.length !== 6) { aviso('erro', 'Informe o mês.'); return; }
+    if (!mat) { aviso('erro', 'Selecione o funcionário.'); return; }
+    el('btnBuscar').disabled = true;
+    try {
+        const r = await (await fetch('/api/esocial_recibo_manual/remessas?mes=' + mes + '&matricula=' + encodeURIComponent(mat))).json();
+        if (!r.ok) { aviso('erro', r.msg); return; }
+        LINHAS = r.itens;
+        if (!LINHAS.length) { aviso('aviso', 'Não há remessa deste funcionário neste mês.'); return; }
+        desenhar();
+        if (!LINHAS.some(function (l) { return l.situacao === 'sem_recibo'; })) {
+            aviso('aviso', 'Nenhuma remessa sem recibo: todas deste funcionário neste mês já têm recibo ou estão excluídas.');
+        }
+    } catch (e) {
+        aviso('erro', 'Não foi possível buscar as remessas.');
+    } finally {
+        el('btnBuscar').disabled = false;
+    }
+}
+
+function desenhar() {
+    el('linhas').innerHTML = LINHAS.map(function (l, i) {
+        const cls = l.situacao === 'com_recibo' ? 'b-ok' : (l.situacao === 'excluido' ? 'b-rej' : 'b-avi');
+        const livre = l.situacao === 'sem_recibo';
+        return '<tr>' +
+            '<td><strong>S-' + esc(l.layout) + '</strong></td>' +
+            '<td>' + esc(nomeFolha(l.folha, l.flag1)) + '</td>' +
+            '<td>' + esc(l.data_cad) + '</td>' +
+            '<td><span class="badge-st ' + cls + '">' + esc(l.texto) + '</span></td>' +
+            (livre
+                ? '<td><input class="inp-rec" id="rec' + i + '" maxlength="30" placeholder="1.1.0000000000000000000"></td>' +
+                  '<td><button class="btn btn-mini" id="btn' + i + '" onclick="gravar(' + i + ')">Gravar</button></td>'
+                : '<td class="mono travada">' + esc(l.recibo || '—') + '</td><td></td>') +
+            '<td class="msg-cel">' + esc(l.obs) + '</td>' +
+            '</tr>';
+    }).join('');
+    el('cardLista').classList.remove('oculto');
+}
+
+async function gravar(i) {
+    const l = LINHAS[i];
+    const recibo = el('rec' + i).value.replace(/\s/g, '');
+    aviso('', '');
+    if (!recibo) { aviso('erro', 'Informe o número do recibo do S-' + l.layout + '.'); return; }
+    const sel = el('funcionario');
+    const quem = sel.options[sel.selectedIndex].text;
+    if (!confirm('Gravar o recibo ' + recibo + ' no S-' + l.layout + ' de ' + quem + '?\n\n' +
+                 'Depois disso o Folha10 considera esta remessa enviada.')) return;
+    el('btn' + i).disabled = true;
+    try {
+        const r = await (await fetch('/api/esocial_recibo_manual/gravar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_esocial: l.id_esocial, recibo: recibo })
+        })).json();
+        if (!r.ok) { aviso('erro', r.msg); el('btn' + i).disabled = false; return; }
+        l.recibo = r.recibo; l.situacao = 'com_recibo'; l.texto = 'Com recibo'; l.obs = '';
+        desenhar();
+        aviso('ok', 'Recibo gravado no S-' + l.layout + ' de ' + quem + '.');
+    } catch (e) {
+        aviso('erro', 'Não foi possível gravar o recibo.');
+        el('btn' + i).disabled = false;
+    }
+}
+
+if (/^\d{6}$/.test(ANOMES)) el('mes').value = ANOMES.slice(0, 4) + '-' + ANOMES.slice(4);
+carregarFuncionarios();
+</script>
+</body>
+</html>
