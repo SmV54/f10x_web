@@ -80688,7 +80688,7 @@ def api_adiantamento_editar():
 #
 # Importar de novo troca só o que veio do ponto nesta folha (lote próprio no
 # tab_mov; PONTO_MARCA_FALTA no motivo da falta). O lançado à mão fica.
-PONTO_LOTE        = 2100
+PONTO_LOTE        = 3333     # para desfazer: tab_mov com lote 3333 na folha
 PONTO_PREF        = "ponto_layout"
 PONTO_MARCA_FALTA = "Importado do ponto"
 PONTO_MAX_MIN     = 744 * 60     # 31 dias x 24 h: acima disso é formato errado
