@@ -12678,6 +12678,10 @@ SUPORTE_GRUPOS = {
 # Tela com mais de um assunto: uma LISTA de títulos — o botão "? Ajuda" abre
 # um menu para o cliente escolher o guia.
 SUPORTE_TELAS = {
+    "/comprar_licenca":            "Como Comprar ou Renovar a Licenca",
+    "/ponto_layout":               "Importar Ponto - Configurar o Layout",
+    "/ponto_importar":             "Importar Ponto - Verificar e Importar o Arquivo",
+    "/esocial_recibo_manual":      "Informar Recibo Manual",
     "/select_funcionario?contexto=aumento": "Como alterar salários",
     "/cad_aumento":                "Como alterar salários",
     "/rel_aumento":                "Como alterar salários",
