@@ -81681,6 +81681,24 @@ def api_ponto_gravar():
 # do Desktop (Eventos Diversos > "R- Informar RECIBO manualmente"), com as mesmas
 # regras de formato: eSocial_Recibo_Formato_Padrao em SR_eS_Diversos.vb.
 RECIBO_MANUAL_RX = re.compile(r"^\d\.\d\.\d{19}$")
+# Eventos oferecidos na tela. So' o S-1005 nao tem funcionario. S-1010, S-1298 e
+# S-1299 ficam de fora: neles a coluna matricula do tab_esocial nao e' funcionario.
+RECIBO_MANUAL_LAYOUTS = [
+    ("1005", "S-1005 Estabelecimentos"),
+    ("1200", "S-1200 Remuneração"),
+    ("1210", "S-1210 Pagamentos"),
+    ("2200", "S-2200 Admissão"),
+    ("2205", "S-2205 Alt. Dados Cadastrais"),
+    ("2206", "S-2206 Alt. Contrato"),
+    ("2220", "S-2220 Monitoramento da Saúde (ASO)"),
+    ("2230", "S-2230 Afastamento"),
+    ("2240", "S-2240 Condições Ambientais"),
+    ("2299", "S-2299 Desligamento"),
+    ("2300", "S-2300 Início TSVE"),
+    ("2306", "S-2306 Alteração TSVE"),
+    ("2399", "S-2399 Término TSVE"),
+    ("3000", "S-3000 Exclusão"),
+]
 
 
 def _recibo_manual_situacao(row):
@@ -81703,7 +81721,8 @@ def esocial_recibo_manual():
         return redirect("/")
     return render_template("F10_eSocial_Recibo_Manual.html", versao=ler_versao(),
                            nome=session.get("nome", ""), empresa=session.get("empresa_info", ""),
-                           anomes_atual=str(session.get("anomes_atual") or ""))
+                           anomes_atual=str(session.get("anomes_atual") or ""),
+                           layouts=RECIBO_MANUAL_LAYOUTS)
 
 
 @app.route("/api/esocial_recibo_manual/funcionarios")
@@ -81731,8 +81750,8 @@ def api_recibo_manual_funcionarios():
 
 @app.route("/api/esocial_recibo_manual/remessas")
 def api_recibo_manual_remessas():
-    """Remessas do funcionario no mes, ou todas as S-1005 da empresa (o S-1005 nao
-    tem matricula e costuma ter uma remessa so', de um mes que ninguem lembra).
+    """Remessas do layout escolhido: do funcionario no mes, ou todas as S-1005 da
+    empresa (o S-1005 nao tem matricula e costuma ter uma remessa so', de um mes que ninguem lembra).
     As que ja tem recibo vem junto, travadas. Nada e' criado aqui: sem uma linha
     do layout sem recibo no tab_esocial, nao ha' onde gravar."""
     if not session.get("logado"):
@@ -81741,6 +81760,8 @@ def api_recibo_manual_remessas():
     evento = request.args.get("evento", "").strip()
     mes = re.sub(r"\D", "", request.args.get("mes", ""))
     matricula = re.sub(r"\D", "", request.args.get("matricula", ""))
+    if evento not in dict(RECIBO_MANUAL_LAYOUTS):
+        return jsonify({"ok": False, "msg": "Selecione o evento."})
     if evento != "1005":
         if len(mes) != 6 or not ("01" <= mes[4:] <= "12"):
             return jsonify({"ok": False, "msg": "Informe o mês."})
@@ -81750,12 +81771,10 @@ def api_recibo_manual_remessas():
         q = (supabase.table("tab_esocial")
              .select("id_esocial, layout, ano_mes, folha_tipo, flag1, recibo, "
                      "observacao_erro, data_cad, data_grava")
-             .eq("id_empresa", id_empresa))
-        if evento == "1005":
-            q = q.eq("layout", "1005")
-        else:
+             .eq("id_empresa", id_empresa).eq("layout", evento))
+        if evento != "1005":
             q = q.eq("ano_mes", int(mes)).eq("matricula", int(matricula))
-        rows = q.order("layout").order("id_esocial").execute().data or []
+        rows = q.order("id_esocial").execute().data or []
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao ler as remessas: {e}"[:200]})
     itens = []
@@ -81820,9 +81839,10 @@ def api_recibo_manual_gravar():
                                                 + (row.get("recibo") or "").strip()})
         if cod == "excluido":
             return jsonify({"ok": False, "msg": "Esta remessa está excluída."})
-        if not int(row.get("matricula") or 0) and str(row.get("layout")) != "1005":
-            return jsonify({"ok": False, "msg": "Esta tela só grava recibo de evento "
-                                                "de funcionário e de S-1005."})
+        _lay = str(row.get("layout") or "")
+        if _lay not in dict(RECIBO_MANUAL_LAYOUTS) or (
+                _lay != "1005" and not int(row.get("matricula") or 0)):
+            return jsonify({"ok": False, "msg": "Esta tela não grava recibo deste evento."})
 
         outra = (supabase.table("tab_esocial")
                  .select("id_esocial, layout, ano_mes, matricula")

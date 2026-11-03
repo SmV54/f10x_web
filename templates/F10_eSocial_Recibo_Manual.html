@@ -124,8 +124,9 @@ tbody tr:last-child td { border-bottom: none; }
         <div class="card-body">
             <div class="linha-op">
                 <label>Evento <select id="evento" onchange="trocarEvento()">
-                    <option value="">Eventos do funcionário</option>
-                    <option value="1005">S-1005 Estabelecimentos</option>
+                    <option value="">Selecione...</option>
+                    {% for cod, nome_ev in layouts %}<option value="{{ cod }}">{{ nome_ev }}</option>
+                    {% endfor %}
                 </select></label>
                 <label class="so-func">Mês <input type="month" id="mes"></label>
                 <label class="so-func">Funcionário <select id="funcionario"><option value="">Carregando...</option></select></label>
@@ -195,31 +196,33 @@ function trocarEvento() {
 }
 
 async function buscar() {
-    const s1005 = el('evento').value === '1005';
+    const ev = el('evento').value;
+    const s1005 = ev === '1005';
     const mes = el('mes').value.replace('-', '');
     const mat = el('funcionario').value;
     aviso('', '');
     el('cardLista').classList.add('oculto');
+    if (!ev) { aviso('erro', 'Selecione o evento.'); return; }
     if (!s1005) {
         if (mes.length !== 6) { aviso('erro', 'Informe o mês.'); return; }
         if (!mat) { aviso('erro', 'Selecione o funcionário.'); return; }
     }
     el('btnBuscar').disabled = true;
-    const url = '/api/esocial_recibo_manual/remessas?' +
-        (s1005 ? 'evento=1005' : 'mes=' + mes + '&matricula=' + encodeURIComponent(mat));
+    const url = '/api/esocial_recibo_manual/remessas?evento=' + ev +
+        (s1005 ? '' : '&mes=' + mes + '&matricula=' + encodeURIComponent(mat));
     try {
         const r = await (await fetch(url)).json();
         if (!r.ok) { aviso('erro', r.msg); return; }
         LINHAS = r.itens;
         if (!LINHAS.length) {
-            aviso('aviso', s1005 ? 'Não há remessa de S-1005 nesta empresa. Sem ela não há onde gravar o recibo.'
-                                 : 'Não há remessa deste funcionário neste mês. Sem ela não há onde gravar o recibo.');
+            aviso('aviso', 'Não há remessa de S-' + ev + (s1005 ? ' nesta empresa' : ' deste funcionário neste mês') +
+                           '. Sem ela não há onde gravar o recibo.');
             return;
         }
-        el('tituloLista').textContent = s1005 ? '2. Remessas de S-1005 da empresa' : '2. Remessas do funcionário no mês';
+        el('tituloLista').textContent = '2. Remessas de S-' + ev + (s1005 ? ' da empresa' : ' do funcionário no mês');
         desenhar();
         if (!LINHAS.some(function (l) { return l.situacao === 'sem_recibo'; })) {
-            aviso('aviso', 'Nenhuma remessa sem recibo: todas as listadas já têm recibo ou estão excluídas.');
+            aviso('aviso', 'Nenhuma remessa de S-' + ev + ' sem recibo: as listadas já têm recibo ou estão excluídas.');
         }
     } catch (e) {
         aviso('erro', 'Não foi possível buscar as remessas.');
