@@ -12693,6 +12693,7 @@ SUPORTE_TELAS = {
     "/cad_funcionario":            "Cadastro de um Novo Funcionario",
     "/cad_mov":                    "Como Excluir um Movimento Digitado no Mes",
     "/cad_verba":                  ["Cadastro de uma Verba",
+                                    "Verba de Hora Extra com Outro Percentual",
                                     "Verba de Plano de Saude - Operadora no S-1210"],
     "/processo_trabalhista":       "Processo Trabalhista - S-2500 e S-2501",
     "/processo_trabalhista/editar": "Processo Trabalhista - S-2500 e S-2501",
