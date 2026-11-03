@@ -80669,6 +80669,917 @@ def api_adiantamento_editar():
 
 
 # =========================================================
+# IMPORTAR PONTO — arquivo do relógio de ponto para a folha ativa
+# =========================================================
+# Layout por EMPRESA, na tabela de preferências que já existe: tab_tabela_cli,
+# num_tabela 1001, codigo "ponto_layout", com o JSON em texto2 (o `texto` só
+# tem 255 e o `codigo` só 12 — o de-para não caberia linha a linha, porque o
+# código de um sistema de ponto pode ser "HORA EXTRA 50%").
+#
+# Cada linha do arquivo é UMA verba de UM funcionário. O código da verba passa
+# pelo de-para do layout (HE50 → 0073) e vai para um de dois lugares:
+#   - verba  → tab_mov, lote PONTO_LOTE (hora em MINUTOS, como o Lançar Eventos);
+#   - falta  → tab_eventos op1=21, com a data da linha, sempre INJUSTIFICADA:
+#              a justificada é tratada ANTES da importação. Falta NÃO vai para
+#              o tab_mov: o cálculo e o DSR leem as faltas do tab_eventos.
+#
+# Antes de gravar há a verificação, com relatório das inconsistências. A
+# gravação só libera com zero erros (a rota confere de novo, não confia na tela).
+#
+# Importar de novo troca só o que veio do ponto nesta folha (lote próprio no
+# tab_mov; PONTO_MARCA_FALTA no motivo da falta). O lançado à mão fica.
+PONTO_LOTE        = 2100
+PONTO_PREF        = "ponto_layout"
+PONTO_MARCA_FALTA = "Importado do ponto"
+PONTO_MAX_MIN     = 744 * 60     # 31 dias x 24 h: acima disso é formato errado
+_PONTO_FMT_HORA   = ("HORA", "DEC", "MIN")   # HORA aceita 08:30 e 0830
+_PONTO_SEPS       = {";": ";", ",": ",", "TAB": "\t", "|": "|"}
+_PONTO_DESCR_DEST = {"FI": "Falta injustificada"}
+_PONTO_COL_HORAS  = {0: "horas_2a", 1: "horas_3a", 2: "horas_4a", 3: "horas_5a",
+                     4: "horas_6a", 5: "horas_sab", 6: "horas_dom"}
+
+
+def _ponto_todas(montar_query, passo=1000):
+    """Todas as linhas de um select. O PostgREST corta em 1000 sem avisar."""
+    linhas, ini = [], 0
+    while True:
+        lote = montar_query().range(ini, ini + passo - 1).execute().data or []
+        linhas.extend(lote)
+        if len(lote) < passo:
+            return linhas
+        ini += passo
+
+
+def _ponto_layout_ler(id_cliente, id_empresa):
+    """Layout salvo da empresa (dict) ou None."""
+    r = (supabase.table("tab_tabela_cli").select("texto2")
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("num_tabela", "1001").eq("codigo", PONTO_PREF)
+         .eq("situacao", "A").limit(1).execute())
+    if not r.data or not r.data[0].get("texto2"):
+        return None
+    try:
+        return json.loads(r.data[0]["texto2"])
+    except ValueError:
+        return None
+
+
+def _ponto_layouts_cliente(id_cliente):
+    """{id_empresa: layout} de todas as empresas do cliente que já têm layout."""
+    linhas = _ponto_todas(lambda: (
+        supabase.table("tab_tabela_cli").select("id_empresa, texto2")
+        .eq("id_cliente", id_cliente).eq("num_tabela", "1001")
+        .eq("codigo", PONTO_PREF).eq("situacao", "A").order("id")))
+    saida = {}
+    for l in linhas:
+        try:
+            lay = json.loads(l.get("texto2") or "")
+        except ValueError:
+            continue
+        if isinstance(lay, dict):
+            saida[int(l["id_empresa"])] = lay
+    return saida
+
+
+def _ponto_layout_gravar(id_cliente, id_empresa, lay):
+    texto2 = json.dumps(lay, ensure_ascii=False)
+    r = (supabase.table("tab_tabela_cli").select("id")
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("num_tabela", "1001").eq("codigo", PONTO_PREF).limit(1).execute())
+    if r.data:
+        (supabase.table("tab_tabela_cli")
+         .update({"texto2": texto2, "situacao": "A"})
+         .eq("id", r.data[0]["id"]).execute())
+    else:
+        supabase.table("tab_tabela_cli").insert({
+            "id_cliente": id_cliente, "id_empresa": id_empresa,
+            "num_tabela": "1001", "codigo": PONTO_PREF,
+            "texto": "", "texto2": texto2, "valor": 0, "situacao": "A",
+        }).execute()
+
+
+def _ponto_layout_validar(bruto):
+    """Confere e limpa o layout que veio da tela. Devolve (layout, erro)."""
+    if not isinstance(bruto, dict):
+        return None, "Layout inválido."
+    formato = "fixo" if bruto.get("formato") == "fixo" else "sep"
+    sep = str(bruto.get("sep") or ";")
+    if sep not in _PONTO_SEPS:
+        sep = ";"
+    try:
+        ignorar = max(0, min(int(bruto.get("ignorar") or 0), 50))
+    except (TypeError, ValueError):
+        ignorar = 0
+    hora_fmt = bruto.get("hora_fmt")
+    if hora_fmt not in _PONTO_FMT_HORA:
+        return None, "Escolha o formato da hora."
+    repetida = "erro" if bruto.get("repetida") == "erro" else "somar"
+    comp_junto = bool(bruto.get("comp_junto"))
+
+    verbas, vistos = [], set()
+    for v in (bruto.get("verbas") or []):
+        cod = str((v or {}).get("cod") or "").strip()
+        dest = str((v or {}).get("dest") or "").strip().upper()
+        if not cod and not dest:
+            continue
+        if not cod:
+            return None, "Há uma linha de verba sem o código do arquivo."
+        chave = _ponto_norm_cod(cod)
+        if chave in vistos:
+            return None, f"O código {cod} está repetido no de-para."
+        vistos.add(chave)
+        if dest == "FI":
+            verbas.append({"cod": cod, "dest": dest})
+        elif dest.isdigit() and int(dest) > 0:
+            verbas.append({"cod": cod, "dest": "V", "verba": int(dest)})
+        else:
+            return None, f"Escolha o destino do código {cod}."
+    if not verbas:
+        return None, "Informe ao menos uma verba no de-para."
+    tem_falta = any(v["dest"] != "V" for v in verbas)
+
+    obrig = ["matricula", "verba"]
+    obrig += ["comp"] if comp_junto else ["mes", "ano"]
+    if any(v["dest"] == "V" for v in verbas):
+        obrig.append("qtd")
+    if tem_falta:
+        obrig.append("data")
+    nomes = {"matricula": "Matrícula eSocial", "verba": "Verba", "comp": "Mês/Ano",
+             "mes": "Mês", "ano": "Ano", "qtd": "Quantidade", "data": "Data da falta"}
+    campos = {}
+    for nome in nomes:
+        c = (bruto.get("campos") or {}).get(nome) or {}
+        try:
+            if formato == "fixo":
+                ini, tam = int(c.get("ini") or 0), int(c.get("tam") or 0)
+                if ini > 0 and tam > 0:
+                    campos[nome] = {"ini": ini, "tam": tam}
+            else:
+                col = int(c.get("col") or 0)
+                if col > 0:
+                    campos[nome] = {"col": col}
+        except (TypeError, ValueError):
+            pass
+    faltando = [nomes[n] for n in obrig if n not in campos]
+    if faltando:
+        return None, "Falta informar: " + ", ".join(faltando) + "."
+    return {"formato": formato, "sep": sep, "ignorar": ignorar,
+            "comp_junto": comp_junto, "campos": campos, "hora_fmt": hora_fmt,
+            "repetida": repetida, "verbas": verbas}, None
+
+
+def _ponto_norm_cod(v):
+    """Código da verba para comparar: '0073', 73 e 73.0 são o mesmo; texto em maiúsculas."""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = str(v if v is not None else "").strip().upper()
+    return (s.lstrip("0") or "0") if s.isdigit() else s
+
+
+def _ponto_ler_linhas(file_bytes, lay):
+    """Arquivo → lista de (número da linha, {campo: valor bruto}).
+
+    O número é o da linha no arquivo, em branco contando — é com ele que a
+    pessoa acha o erro. Excel (.xlsx) sempre lê por coluna.
+    """
+    excel = file_bytes[:2] == b"PK" or file_bytes[:4] == b"\xd0\xcf\x11\xe0"
+    campos = lay.get("campos") or {}
+    if lay.get("formato") == "fixo":
+        if excel:
+            raise ValueError("O layout é de posição fixa, mas o arquivo é Excel.")
+        brutas = _consig_csv_texto(file_bytes).splitlines()
+
+        def pegar(linha, c):
+            return linha[c["ini"] - 1: c["ini"] - 1 + c["tam"]].strip()
+    else:
+        if excel:
+            brutas = _consig_ler_arquivo(file_bytes)
+        else:
+            import csv
+            brutas = list(csv.reader(
+                io.StringIO(_consig_csv_texto(file_bytes), newline=""),
+                delimiter=_PONTO_SEPS.get(lay.get("sep"), ";"), quotechar='"'))
+
+        def pegar(linha, c):
+            i = c["col"] - 1
+            v = linha[i] if i < len(linha) else None
+            return v.strip() if isinstance(v, str) else v
+
+    saida = []
+    for num, linha in enumerate(brutas, 1):
+        if num <= int(lay.get("ignorar") or 0):
+            continue
+        if isinstance(linha, str):
+            vazia = not linha.strip()
+        else:
+            vazia = not any(str(x).strip() for x in linha if x is not None)
+        if vazia:
+            continue
+        saida.append((num, {n: pegar(linha, c) for n, c in campos.items()}))
+    return saida
+
+
+def _ponto_int(v):
+    n = _consig_num(v)
+    return int(n) if n is not None and float(n).is_integer() else None
+
+
+def _ponto_data(v):
+    """Data em qualquer forma usual → AAAAMMDD ('' se não for data válida)."""
+    import datetime as _dt
+    if isinstance(v, (_dt.datetime, _dt.date)):
+        return v.strftime("%Y%m%d")
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = str(v if v is not None else "").strip().split(" ")[0].split("T")[0]
+    for padrao, fmts in ((r"\d{4}-\d{1,2}-\d{1,2}", ("%Y-%m-%d",)),
+                         (r"\d{1,2}[/-]\d{1,2}[/-]\d{4}", ("%d/%m/%Y",)),
+                         (r"\d{1,2}[/-]\d{1,2}[/-]\d{2}", ("%d/%m/%y",)),
+                         (r"\d{8}", ("%Y%m%d", "%d%m%Y"))):
+        if re.fullmatch(padrao, s):
+            for fmt in fmts:
+                try:
+                    return datetime.strptime(s.replace("-", "/") if "/" in fmt else s,
+                                             fmt).strftime("%Y%m%d")
+                except ValueError:
+                    pass
+    return ""
+
+
+def _ponto_comp(row, junto):
+    """Competência da linha → AAAAMM ('' se não der para entender)."""
+    if not junto:
+        mes, ano = _ponto_int(row.get("mes")), _ponto_int(row.get("ano"))
+        if mes is None or ano is None or not 1 <= mes <= 12:
+            return ""
+        ano = ano + 2000 if ano < 100 else ano
+        return f"{ano:04d}{mes:02d}" if 1900 <= ano <= 2100 else ""
+    v = row.get("comp")
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = str(v if v is not None else "").strip()
+    m = re.fullmatch(r"(\d{1,2})[/-](\d{4})", s)
+    if m:
+        mes, ano = int(m.group(1)), int(m.group(2))
+    else:
+        m = re.fullmatch(r"(\d{4})[/-](\d{1,2})", s)
+        if m:
+            ano, mes = int(m.group(1)), int(m.group(2))
+        else:
+            m = re.fullmatch(r"(\d{1,2})[/-](\d{2})", s)
+            if m:
+                mes, ano = int(m.group(1)), 2000 + int(m.group(2))
+            elif re.fullmatch(r"\d{6}", s):
+                # AAAAMM ou MMAAAA: só uma das leituras dá mês de 1 a 12
+                if 1 <= int(s[4:]) <= 12 and s[:2] in ("19", "20"):
+                    ano, mes = int(s[:4]), int(s[4:])
+                else:
+                    mes, ano = int(s[:2]), int(s[2:])
+            else:
+                d = _ponto_data(v)
+                return d[:6] if d else ""
+    return f"{ano:04d}{mes:02d}" if 1 <= mes <= 12 and 1900 <= ano <= 2100 else ""
+
+
+def _ponto_horas(v, fmt):
+    """Quantidade de horas → minutos inteiros (None se não servir no formato).
+
+    O formato vem do layout, não é adivinhado: '8,30' pode ser 8h30 ou 8,3 h.
+    Em HORA valem as duas formas, mesmo misturadas no arquivo: 08:30 e 0830.
+    """
+    import datetime as _dt
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, _dt.timedelta):
+        return int(round(v.total_seconds() / 60))
+    if isinstance(v, _dt.datetime):     # célula [h]:mm acima de 24 h
+        return int(round((v - _dt.datetime(1899, 12, 30)).total_seconds() / 60))
+    if isinstance(v, _dt.time):
+        return v.hour * 60 + v.minute
+    if isinstance(v, float) and v.is_integer() and fmt != "DEC":
+        v = int(v)
+    s = str(v).strip()
+    if not s:
+        return None
+    if fmt == "HORA":
+        m = re.fullmatch(r"(\d{1,4})[:hH](\d{1,2})(?::\d{1,2})?", s)
+        if m:
+            hh, mm = int(m.group(1)), int(m.group(2))
+        elif re.fullmatch(r"\d{1,8}", s):
+            hh, mm = int(s[:-2] or 0), int(s[-2:])
+        else:
+            return None
+        return None if mm > 59 else hh * 60 + mm
+    n = _consig_num(v)
+    if n is None or n < 0:
+        return None
+    if fmt == "DEC":
+        return int(round(n * 60))
+    return int(n) if float(n).is_integer() else None   # MIN
+
+
+def _ponto_fmt_min(m):
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def _ponto_fmt_data(d):
+    return f"{d[6:8]}/{d[4:6]}/{d[:4]}" if len(d) == 8 else d
+
+
+def _ponto_processar(file_bytes, lay, id_cliente, id_empresa, anomes):
+    """Valida o arquivo inteiro (sem gravar) e monta o que seria gravado."""
+    linhas_arq = _ponto_ler_linhas(file_bytes, lay)
+    depara = {_ponto_norm_cod(v["cod"]): v for v in (lay.get("verbas") or [])}
+    folha_int = int(anomes)
+
+    cadastro = _ponto_todas(lambda: (
+        supabase.table("tab_cad")
+        .select("matricula, matricula_es, nome, nomer, situacao, datarescisao, dtadm, "
+                "dttransf, tpadmissao, vrsalfx, undsalfixo, qtdhrsmes, id_tab_horario")
+        .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).order("matricula")))
+    # Mesma regra do eSocial: quem não tem matricula_es usa a nossa com 6 dígitos.
+    por_mat_es = {}
+    for f in cadastro:
+        for chave in set(_consig_norm_mat(_mat_es(f))):
+            if chave:
+                por_mat_es.setdefault(chave, []).append(f)
+
+    rubricas = {}
+    for r in sorted(_ponto_todas(lambda: (
+            supabase.table("tab_rubrica")
+            .select("cod_rubr, dsc_rubr, unid_verba, is_nao_digitar, id_cliente")
+            .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").order("id"))),
+            key=lambda x: int(x.get("id_cliente") or 0)):
+        rubricas[int(r["cod_rubr"])] = r         # a do cliente vale sobre a do sistema
+
+    # O que já está na folha: separa o lançado à mão do que veio do ponto antes.
+    mov_folha = _ponto_todas(lambda: (
+        supabase.table("tab_mov").select("matricula, cod_verba, lote")
+        .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+        .eq("folha", folha_int).eq("folha_tipo", "N")
+        .eq("situacao", "A").eq("origem", "M").order("id")))
+    mov_manual = {(int(m["matricula"]), int(m["cod_verba"]))
+                  for m in mov_folha if int(m.get("lote") or 0) != PONTO_LOTE}
+    qtd_mov_antes = sum(1 for m in mov_folha if int(m.get("lote") or 0) == PONTO_LOTE)
+
+    p_ini, p_fim = _periodo_faltas(id_empresa, anomes, id_cliente)
+    falta_antes = _ponto_todas(lambda: (
+        supabase.table("tab_eventos").select("matricula, data1i, folha, op2, campotxt4")
+        .eq("id_empresa", id_empresa).eq("op1", 21)
+        .gte("data1i", p_ini).lte("data1i", p_fim).order("id")))
+    def _do_ponto(e):
+        return (str(e.get("campotxt4") or "") == PONTO_MARCA_FALTA
+                and int(e.get("folha") or 0) == folha_int)
+    falta_outras = {(int(e["matricula"]), str(e["data1i"]))
+                    for e in falta_antes if not _do_ponto(e)}
+    # A justificada é tratada antes da importação. Se o arquivo ainda trouxer
+    # aquele dia, a linha é desconsiderada: não trava nem desfaz a justificativa.
+    falta_justif = {(int(e["matricula"]), str(e["data1i"]))
+                    for e in falta_antes
+                    if not _do_ponto(e) and int(e.get("op2") or 0) == 2}
+    qtd_falta_antes = sum(1 for e in falta_antes if _do_ponto(e))
+
+    horarios = {}
+    if any(v.get("dest") != "V" for v in depara.values()):
+        ids = sorted({f["id_tab_horario"] for f in cadastro if f.get("id_tab_horario")})
+        if ids:
+            r = (supabase.table("tab_aux_horarios")
+                 .select("id_horario, " + ", ".join(_PONTO_COL_HORAS.values()))
+                 .in_("id_horario", ids).execute())
+            horarios = {h["id_horario"]: h for h in (r.data or [])}
+
+    dias_mes = _dias_no_mes_total(anomes)
+    pct = _pct_rubricas(id_cliente)
+    linhas, mov, faltas = [], {}, {}
+
+    for num, row in linhas_arq:
+        erros, avisos, ignorar = [], [], False
+        mat_arq = row.get("matricula")
+        cod_arq = row.get("verba")
+        it = {"linha": num, "mat_es": str(mat_arq if mat_arq is not None else "").strip(),
+              "matricula": "", "nome": "", "cod": str(cod_arq if cod_arq is not None else "").strip(),
+              "destino": "", "qtd": "", "data": ""}
+
+        comp = _ponto_comp(row, lay.get("comp_junto"))
+        if not comp:
+            erros.append("Mês/ano inválido")
+        elif comp != anomes:
+            erros.append(f"Mês/ano {comp[4:]}/{comp[:4]} não é o da folha ativa")
+
+        cheia, curta = _consig_norm_mat(mat_arq)
+        achados = {f["matricula"]: f
+                   for ch in {cheia, curta} if ch for f in por_mat_es.get(ch, [])}
+        func = None
+        if not cheia:
+            erros.append("Matrícula em branco")
+        elif not achados:
+            erros.append("Matrícula não encontrada")
+        elif len(achados) > 1:
+            ativos = [f for f in achados.values() if str(f.get("situacao")) == "A"]
+            if len(ativos) == 1:
+                func = ativos[0]
+            else:
+                erros.append("Matrícula de mais de um funcionário: "
+                             + ", ".join(str(m) for m in sorted(achados)))
+        else:
+            func = next(iter(achados.values()))
+
+        mat = None
+        if func:
+            mat = int(func["matricula"])
+            it["matricula"] = mat
+            it["nome"] = (func.get("nomer") or func.get("nome") or "").strip()
+            com = _comeco_na_empresa(func)
+            if len(com) >= 6 and com[:6] > anomes:
+                erros.append(f"Começou nesta empresa em {_ponto_fmt_data(com)}, depois desta folha")
+            dem = _norm_data8(str(func.get("datarescisao") or ""))
+            if str(func.get("situacao")) == "D" and (not dem or dem[:6] <= anomes):
+                erros.append("Desligado" + (f" em {_ponto_fmt_data(dem)}" if dem else "")
+                             + ": lance em Movimento Mês Rescisão")
+
+        conf = depara.get(_ponto_norm_cod(cod_arq))
+        rub = None
+        if not it["cod"]:
+            erros.append("Verba em branco")
+        elif not conf:
+            erros.append("Código sem de-para no Layout do Ponto")
+        elif conf["dest"] == "V":
+            cod = int(conf["verba"])
+            rub = rubricas.get(cod)
+            it["destino"] = f"{cod:04d} {(rub or {}).get('dsc_rubr') or ''}".strip()
+            if not rub:
+                erros.append(f"Verba {cod:04d} não existe ou está desativada")
+                rub = None
+            elif rub.get("is_nao_digitar") or CONSIG_VERBA_INI <= cod <= CONSIG_VERBA_FIM:
+                erros.append(f"Verba {cod:04d} não pode ser lançada no movimento")
+                rub = None
+        else:
+            it["destino"] = _PONTO_DESCR_DEST[conf["dest"]]
+
+        if conf and conf["dest"] != "V":                  # ── FALTA ──
+            dt = _ponto_data(row.get("data"))
+            it["data"] = _ponto_fmt_data(dt) if dt else str(row.get("data") or "")
+            if not dt:
+                erros.append("Data da falta inválida")
+            elif not p_ini <= dt <= p_fim:
+                erros.append(f"Data fora do período de faltas ({_ponto_fmt_data(p_ini)} a "
+                             f"{_ponto_fmt_data(p_fim)})")
+            elif mat and (mat, dt) in falta_justif:
+                avisos.append("Falta já justificada nesta data: fica como está")
+                ignorar = True
+            elif mat:
+                if (mat, dt) in falta_outras:
+                    erros.append("Já existe falta lançada nesta data")
+                id_hor = func.get("id_tab_horario")
+                if not id_hor:
+                    avisos.append("Funcionário sem horário: dia de trabalho não conferido")
+                elif id_hor in horarios:
+                    d_sem = datetime.strptime(dt, "%Y%m%d").weekday()
+                    if _horas_dia(horarios[id_hor].get(_PONTO_COL_HORAS[d_sem])) <= 0:
+                        erros.append("Não é dia de trabalho no horário do funcionário")
+                ja = faltas.get((mat, dt))
+                if ja:
+                    avisos.append(f"Mesma falta da linha {ja['linha']}: entra uma vez só")
+                    ignorar = True
+                elif not erros:
+                    faltas[(mat, dt)] = {"linha": num}
+
+        elif conf:                                         # ── VERBA ──
+            unid = str((rub or {}).get("unid_verba") or "V")
+            bruto = row.get("qtd")
+            qtd, valor = 0, 0
+            if rub:
+                if unid == "H":
+                    qtd = _ponto_horas(bruto, lay.get("hora_fmt"))
+                    if qtd is None:
+                        erros.append(f"Quantidade '{bruto if bruto is not None else ''}' fora do "
+                                     "formato de hora do layout")
+                    elif qtd > PONTO_MAX_MIN:
+                        erros.append(f"Quantidade {_ponto_fmt_min(qtd)}: mais horas do que o mês tem")
+                    else:
+                        it["qtd"] = _ponto_fmt_min(qtd)
+                elif unid == "D":
+                    qtd = _ponto_int(bruto)
+                    if qtd is None or qtd < 0:
+                        erros.append("Verba em dias: a quantidade tem de ser número inteiro")
+                    else:
+                        it["qtd"] = f"{qtd} dia(s)"
+                else:
+                    n = _consig_num(bruto)
+                    if n is None or n < 0:
+                        erros.append("Verba em valor: informe o valor em reais")
+                    else:
+                        valor = int(round(n * 100))
+                        it["qtd"] = _fmt_brl(valor)
+                if not erros and not (qtd or valor):
+                    avisos.append("Quantidade zerada: linha ignorada")
+                    ignorar = True
+            if rub and mat and not ignorar:
+                cod = int(conf["verba"])
+                if (mat, cod) in mov_manual:
+                    erros.append("Verba já lançada no movimento desta folha")
+                ja = mov.get((mat, cod))
+                if ja:
+                    if lay.get("repetida") == "erro":
+                        erros.append(f"Verba repetida (linha {ja['linha']})")
+                    elif not erros:
+                        ja["qtd"] += qtd or 0
+                        ja["valor"] += valor
+                        avisos.append(f"Somada à linha {ja['linha']}")
+                elif not erros:
+                    mov[(mat, cod)] = {"qtd": qtd or 0, "valor": valor, "unid": unid,
+                                       "func": func, "linha": num}
+
+        it["status"] = "erro" if erros else ("ignorada" if ignorar else ("aviso" if avisos else "ok"))
+        it["msg"] = " | ".join(erros + avisos)
+        linhas.append(it)
+
+    # Valor em R$ da verba de hora/dia: as mesmas contas do Lançar Eventos. O
+    # cálculo da folha refaz o valor a partir da quantidade.
+    reg_mov = []
+    for (mat, cod), m in mov.items():
+        f = m["func"]
+        vr = int(f.get("vrsalfx") or 0)
+        qhm = int(f.get("qtdhrsmes") or 0) or 220
+        hora_mes = (str(f.get("undsalfixo") or "M").upper() == "H")
+        valor = m["valor"]
+        if m["unid"] == "H":
+            sh = vr if hora_mes else _sal_hora_exato(vr, "M", qhm)
+            valor = int(round(m["qtd"] / 60 * sh * (1 + pct.get(cod, 0) / 100)))
+        elif m["unid"] == "D":
+            sal_mes = vr * qhm if hora_mes else vr
+            valor = int(round(m["qtd"] * (sal_mes / dias_mes))) if dias_mes else 0
+        reg_mov.append({"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                        "matricula": mat, "folha": folha_int, "folha_tipo": "N",
+                        "cod_verba": cod, "qtd": m["qtd"], "valor": valor,
+                        "lote": PONTO_LOTE, "origem": "M", "controle": 0, "os": 0})
+    reg_falta = [{"id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
+                  "folha": folha_int, "op1": 21, "op2": 1, "data1i": dt,
+                  "campotxt4": PONTO_MARCA_FALTA}
+                 for (mat, dt), f in faltas.items()]
+
+    # Totais para conferência no relatório
+    tot = {}
+    for (mat, cod), m in mov.items():
+        t = tot.setdefault(cod, {"funcs": 0, "qtd": 0, "valor": 0, "unid": m["unid"]})
+        t["funcs"] += 1
+        t["qtd"] += m["qtd"]
+        t["valor"] += m["valor"]
+    totais = []
+    for cod, t in sorted(tot.items()):
+        q = (_ponto_fmt_min(t["qtd"]) if t["unid"] == "H"
+             else f"{t['qtd']} dia(s)" if t["unid"] == "D" else _fmt_brl(t["valor"]))
+        totais.append({"destino": f"{cod:04d} {rubricas[cod].get('dsc_rubr') or ''}".strip(),
+                       "funcs": t["funcs"], "total": q})
+    if faltas:
+        totais.append({"destino": _PONTO_DESCR_DEST["FI"],
+                       "funcs": len({mat for mat, _d in faltas}),
+                       "total": f"{len(faltas)} dia(s)"})
+
+    cont = {k: sum(1 for x in linhas if x["status"] == k)
+            for k in ("ok", "aviso", "erro", "ignorada")}
+    return {"linhas": linhas, "resumo": {**cont, "lidas": len(linhas),
+                                         "verbas": len(reg_mov), "faltas": len(reg_falta)},
+            "has_error": cont["erro"] > 0, "reg_mov": reg_mov, "reg_falta": reg_falta,
+            "antes": {"verbas": qtd_mov_antes, "faltas": qtd_falta_antes}, "totais": totais}
+
+
+def _ponto_guarda():
+    """Confere a folha ativa. Devolve (id_cliente, id_empresa, anomes, msg de erro)."""
+    id_cliente, id_empresa = session.get("id_cliente"), _get_id_empresa()
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return id_cliente, id_empresa, anomes, "Nenhuma folha ativa."
+    if str(session.get("anomes_tipo") or "N") not in ("N", ""):
+        return id_cliente, id_empresa, anomes, "A folha ativa não é Normal. Abra a folha Normal antes de importar o ponto."
+    if _empresa_desativada(id_empresa):
+        return id_cliente, id_empresa, anomes, MSG_EMPRESA_DESATIVADA.format(acao="importar o ponto")
+    r = (supabase.table("tab_anomes").select("situacao")
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("ano_mes", anomes).eq("tipo", "N").limit(1).execute())
+    if not r.data or str(r.data[0].get("situacao") or "") != "A":
+        return id_cliente, id_empresa, anomes, "A folha não está Aberta: o ponto só entra em folha Aberta."
+    return id_cliente, id_empresa, anomes, ""
+
+
+def _ponto_arquivo():
+    f = request.files.get("arquivo")
+    if not f or not f.filename.lower().endswith((".xlsx", ".csv", ".txt")):
+        return None, ""
+    return f.read(), f.filename
+
+
+@app.route("/ponto_layout")
+def ponto_layout():
+    """Configuração do layout e do de-para de verbas da empresa ativa."""
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template("F10_Ponto_Layout.html", versao=ler_versao(),
+                           nome=session.get("nome", ""), empresa=session.get("empresa_info", ""),
+                           anomes_atual=str(session.get("anomes_atual") or ""))
+
+
+@app.route("/ponto_importar")
+def ponto_importar():
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template("F10_Ponto_Importar.html", versao=ler_versao(),
+                           nome=session.get("nome", ""), empresa=session.get("empresa_info", ""),
+                           anomes_atual=str(session.get("anomes_atual") or ""))
+
+
+@app.route("/api/ponto/layout")
+def api_ponto_layout():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    id_cliente, id_empresa = session.get("id_cliente"), _get_id_empresa()
+    try:
+        lay = _ponto_layout_ler(id_cliente, id_empresa)
+        vm = {}
+        for v in sorted(_ponto_todas(lambda: (
+                supabase.table("tab_rubrica")
+                .select("cod_rubr, dsc_rubr, unid_verba, is_nao_digitar, id_cliente")
+                .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").order("id"))),
+                key=lambda x: int(x.get("id_cliente") or 0)):
+            vm[int(v["cod_rubr"])] = v
+        verbas = [{"cod": c, "dsc": v.get("dsc_rubr") or "", "unid": v.get("unid_verba") or "V"}
+                  for c, v in sorted(vm.items())
+                  if not v.get("is_nao_digitar") and not CONSIG_VERBA_INI <= c <= CONSIG_VERBA_FIM]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    return jsonify({"ok": True, "layout": lay, "verbas": verbas})
+
+
+@app.route("/api/ponto/layout", methods=["POST"])
+def api_ponto_layout_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    id_cliente, id_empresa = session.get("id_cliente"), _get_id_empresa()
+    lay, erro = _ponto_layout_validar((request.get_json(silent=True) or {}).get("layout"))
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    try:
+        _ponto_layout_gravar(id_cliente, id_empresa, lay)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar o layout: {str(e)[:200]}"})
+    gravar_log("PONTO-LAY", f"layout do ponto: {lay['formato']} hora={lay['hora_fmt']} "
+                            f"repetida={lay['repetida']} verbas={len(lay['verbas'])}")
+    return jsonify({"ok": True, "msg": "Layout salvo."})
+
+
+@app.route("/api/ponto/layouts_empresas")
+def api_ponto_layouts_empresas():
+    """Outras empresas DO MESMO CLIENTE com layout salvo, para copiar. Só lê: a
+    cópia vai para a tela, e grava quando a pessoa clica em Salvar Layout."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    id_cliente, id_empresa = session.get("id_cliente"), _get_id_empresa()
+    try:
+        layouts = _ponto_layouts_cliente(id_cliente)
+        lista = [{"id_empresa": e["id_empresa"], "nome": e["nome"],
+                  "cnpj": _fmt_cnpj(e.get("cnpj") or ""), "layout": layouts[int(e["id_empresa"])]}
+                 for e in _listar_empresas(id_cliente)
+                 if int(e["id_empresa"]) != int(id_empresa or 0) and int(e["id_empresa"]) in layouts]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    return jsonify({"ok": True, "empresas": lista})
+
+
+@app.route("/api/ponto/layout_testar", methods=["POST"])
+def api_ponto_layout_testar():
+    """Lê o arquivo com o layout da tela (ainda sem salvar) e mostra como ficou."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    try:
+        bruto = json.loads(request.form.get("layout") or "{}")
+    except ValueError:
+        return jsonify({"ok": False, "msg": "Layout inválido."})
+    lay, erro = _ponto_layout_validar(bruto)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    dados, _nome = _ponto_arquivo()
+    if dados is None:
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx, .csv ou .txt."})
+    try:
+        linhas = _ponto_ler_linhas(dados, lay)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o arquivo: {str(e)[:200]}"})
+    depara = {_ponto_norm_cod(v["cod"]) for v in lay["verbas"]}
+    amostra, sem_depara = [], {}
+    for num, row in linhas:
+        cod = str(row.get("verba") if row.get("verba") is not None else "").strip()
+        if cod and _ponto_norm_cod(row.get("verba")) not in depara:
+            sem_depara[cod] = sem_depara.get(cod, 0) + 1
+        if len(amostra) < 10:
+            q = row.get("qtd")
+            m = _ponto_horas(q, lay["hora_fmt"]) if q not in (None, "") else None
+            comp = _ponto_comp(row, lay["comp_junto"])
+            d = _ponto_data(row.get("data")) if row.get("data") not in (None, "") else ""
+            amostra.append({"linha": num,
+                            "matricula": str(row.get("matricula") if row.get("matricula") is not None else ""),
+                            "comp": f"{comp[4:]}/{comp[:4]}" if comp else "?",
+                            "verba": cod,
+                            "qtd": str(q if q is not None else ""),
+                            "horas": _ponto_fmt_min(m) if m is not None else "",
+                            "data": _ponto_fmt_data(d)})
+    return jsonify({"ok": True, "total": len(linhas), "amostra": amostra,
+                    "sem_depara": [{"cod": c, "linhas": n} for c, n in sorted(sem_depara.items())]})
+
+
+@app.route("/api/ponto/preview", methods=["POST"])
+def api_ponto_preview():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    try:
+        id_cliente, id_empresa, anomes, erro = _ponto_guarda()
+        if erro:
+            return jsonify({"ok": False, "msg": erro})
+        lay = _ponto_layout_ler(id_cliente, id_empresa)
+        if not lay:
+            return jsonify({"ok": False, "msg": "Esta empresa ainda não tem o Layout do Ponto."})
+        dados, _nome = _ponto_arquivo()
+        if dados is None:
+            return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx, .csv ou .txt."})
+        res = _ponto_processar(dados, lay, id_cliente, id_empresa, anomes)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o arquivo: {str(e)[:200]}"})
+    return jsonify({"ok": True, "anomes": anomes, "resumo": res["resumo"], "antes": res["antes"],
+                    "has_error": res["has_error"], "linhas": res["linhas"]})
+
+
+@app.route("/api/ponto/relatorio", methods=["POST"])
+def api_ponto_relatorio():
+    """Relatório da verificação: as inconsistências, e se a importação está liberada."""
+    if not session.get("logado"):
+        return redirect("/")
+    try:
+        id_cliente, id_empresa, anomes, erro = _ponto_guarda()
+        if erro:
+            return jsonify({"ok": False, "msg": erro})
+        lay = _ponto_layout_ler(id_cliente, id_empresa)
+        if not lay:
+            return jsonify({"ok": False, "msg": "Esta empresa ainda não tem o Layout do Ponto."})
+        dados, nome_arq = _ponto_arquivo()
+        if dados is None:
+            return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx, .csv ou .txt."})
+        res = _ponto_processar(dados, lay, id_cliente, id_empresa, anomes)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o arquivo: {str(e)[:200]}"})
+
+    from io import BytesIO
+    from flask import make_response
+    from reportlab.lib.pagesizes import landscape as rl_landscape
+
+    def P(txt, fs=8, col="#1f2937", bold=False, align=0):
+        st = ParagraphStyle("x", fontName="Helvetica-Bold" if bold else "Helvetica", fontSize=fs,
+                            alignment=align, textColor=colors.HexColor(col), leading=fs + 2.5)
+        s = ("" if txt is None else str(txt)).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return Paragraph(s, st)
+
+    def tabela(cab, linhas, larg, extras=()):
+        t = Table([[P(c, bold=True) for c in cab]] + linhas, colWidths=[w * cm for w in larg], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#dbe3ee")),
+            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE")] + list(extras)))
+        return t
+
+    R, antes = res["resumo"], res["antes"]
+    liberado = not res["has_error"] and bool(R["verbas"] + R["faltas"])
+    if res["has_error"]:
+        situacao, cor = f"IMPORTAÇÃO BLOQUEADA: {R['erro']} linha(s) com erro. Corrija o arquivo e verifique de novo.", "#b91c1c"
+    elif liberado:
+        situacao, cor = "IMPORTAÇÃO LIBERADA: nenhum erro encontrado.", "#047857"
+    else:
+        situacao, cor = "IMPORTAÇÃO BLOQUEADA: o arquivo não tem lançamentos a gravar.", "#b91c1c"
+
+    pagesize = rl_landscape(A4)
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=pagesize, leftMargin=2 * cm, rightMargin=2 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    story = [_pdf_cabecalho("Verificação do Arquivo do Ponto",
+                            _fmt_cnpj(session.get("cnpj_empresa", "")),
+                            str(session.get("empresa_info") or ""),
+                            page_width=pagesize[0] - 4 * cm, data_label="Emitido em")]
+    story += [Spacer(1, 4),
+              P(f"Folha: {anomes[4:6]}/{anomes[:4]}   ·   Arquivo: {str(nome_arq)[:90]}", col="#64748b"),
+              P(f"Linhas: {R['lidas']}   ·   OK: {R['ok']}   ·   Avisos: {R['aviso']}   ·   "
+                f"Ignoradas: {R['ignorada']}   ·   Erros: {R['erro']}   ·   "
+                f"A gravar: {R['verbas']} verba(s) e {R['faltas']} falta(s)", col="#64748b"),
+              Spacer(1, 8), P(situacao, fs=11, col=cor, bold=True), Spacer(1, 8)]
+    if antes["verbas"] or antes["faltas"]:
+        story += [P(f"Esta folha já tem uma importação do ponto ({antes['verbas']} verba(s) e "
+                    f"{antes['faltas']} falta(s)). Ao gravar, ela será substituída, inclusive o que "
+                    "tiver sido alterado à mão nessas linhas.", col="#92400e"), Spacer(1, 8)]
+
+    ordem = {"erro": 0, "aviso": 1, "ignorada": 2}
+    pend = sorted((l for l in res["linhas"] if l["status"] != "ok"),
+                  key=lambda l: (ordem[l["status"]], l["linha"]))
+    story += [P("Inconsistências", fs=10, bold=True), Spacer(1, 4)]
+    if pend:
+        rot = {"erro": "Erro", "aviso": "Aviso", "ignorada": "Ignorada"}
+        corl = {"erro": "#b91c1c", "aviso": "#92400e", "ignorada": "#64748b"}
+        fundo = {"erro": "#fef2f2", "aviso": "#fffbeb", "ignorada": "#f8fafc"}
+        linhas, extras = [], []
+        for i, l in enumerate(pend, 1):
+            c = corl[l["status"]]
+            linhas.append([P(l["linha"], col=c), P(rot[l["status"]], col=c, bold=True), P(l["mat_es"], col=c),
+                           P(l["nome"] or "-", col=c), P(l["cod"], col=c), P(l["qtd"] or l["data"], col=c),
+                           P(l["msg"], col=c)])
+            extras.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(fundo[l["status"]])))
+        story.append(tabela(["Linha", "Situação", "Matr. eSocial", "Funcionário", "Código", "Qtd/Data", "O que está errado"],
+                            linhas, [1.2, 1.6, 2.7, 5.4, 2.0, 2.0, 10.8], extras))
+    else:
+        story.append(P("Nenhuma inconsistência encontrada."))
+
+    if res["totais"]:
+        story += [Spacer(1, 12), P("Totais a gravar (linhas sem erro)", fs=10, bold=True), Spacer(1, 4),
+                  tabela(["Verba", "Funcionários", "Total"],
+                         [[P(t["destino"]), P(t["funcs"], align=2), P(t["total"], align=2)] for t in res["totais"]],
+                         [11.0, 2.4, 3.0])]
+    story += [Spacer(1, 8), P("Verificação: nada foi gravado. A importação só é liberada com zero erros. "
+                              "Falta entra como injustificada; a justificada é tratada antes da importação.",
+                              fs=7, col="#64748b")]
+    doc.build(story)
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="verificacao_ponto.pdf"'
+    return resp
+
+
+@app.route("/api/ponto/gravar", methods=["POST"])
+def api_ponto_gravar():
+    """Grava o arquivo, tudo ou nada: se um insert falhar, volta como estava."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    try:
+        id_cliente, id_empresa, anomes, erro = _ponto_guarda()
+        if erro:
+            return jsonify({"ok": False, "msg": erro})
+        lay = _ponto_layout_ler(id_cliente, id_empresa)
+        if not lay:
+            return jsonify({"ok": False, "msg": "Esta empresa ainda não tem o Layout do Ponto."})
+        dados, nome_arq = _ponto_arquivo()
+        if dados is None:
+            return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx, .csv ou .txt."})
+        res = _ponto_processar(dados, lay, id_cliente, id_empresa, anomes)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o arquivo: {str(e)[:200]}"})
+    if res["has_error"]:
+        return jsonify({"ok": False, "msg": "Existem erros no arquivo. Corrija antes de gravar."})
+    if not res["reg_mov"] and not res["reg_falta"]:
+        return jsonify({"ok": False, "msg": "Nenhum lançamento válido no arquivo."})
+
+    folha_int = int(anomes)
+
+    def q_mov(acao):
+        return (acao.eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                .eq("folha", folha_int).eq("folha_tipo", "N").eq("lote", PONTO_LOTE))
+
+    def q_falta(acao):
+        return (acao.eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                .eq("folha", folha_int).eq("op1", 21).eq("campotxt4", PONTO_MARCA_FALTA))
+
+    def inserir(tabela, regs):
+        for i in range(0, len(regs), 500):
+            supabase.table(tabela).insert(regs[i:i + 500]).execute()
+
+    def sem_id(regs):
+        return [{k: v for k, v in r.items() if k != "id"} for r in regs]
+
+    try:
+        ant_mov = _ponto_todas(lambda: q_mov(supabase.table("tab_mov").select("*")).order("id"))
+        ant_falta = _ponto_todas(lambda: q_falta(supabase.table("tab_eventos").select("*")).order("id"))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a importação anterior: {str(e)[:200]}"})
+
+    try:
+        q_mov(supabase.table("tab_mov").delete()).execute()
+        q_falta(supabase.table("tab_eventos").delete()).execute()
+        inserir("tab_mov", res["reg_mov"])
+        inserir("tab_eventos", res["reg_falta"])
+    except Exception as e:
+        msg = f"Erro ao gravar: {str(e)[:200]}. Nada foi importado."
+        try:
+            q_mov(supabase.table("tab_mov").delete()).execute()
+            q_falta(supabase.table("tab_eventos").delete()).execute()
+            inserir("tab_mov", sem_id(ant_mov))
+            inserir("tab_eventos", sem_id(ant_falta))
+        except Exception as e2:
+            msg = (f"Erro ao gravar: {str(e)[:120]}. ATENÇÃO: não consegui voltar a importação "
+                   f"anterior ({str(e2)[:80]}). Importe o arquivo de novo.")
+        return jsonify({"ok": False, "msg": msg})
+
+    n_mov, n_falta = len(res["reg_mov"]), len(res["reg_falta"])
+    gravar_log("PONTO-IMP", f"folha={folha_int} verbas={n_mov} faltas={n_falta} "
+                            f"arq={str(nome_arq)[:120]}")
+    return jsonify({"ok": True, "msg": f"Ponto importado: {n_mov} verba(s) e {n_falta} falta(s).",
+                    "verbas": n_mov, "faltas": n_falta})
+
+
+# =========================================================
 # START
 # =========================================================
 if __name__ == "__main__":

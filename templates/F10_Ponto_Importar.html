@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Importar Ponto</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff; color: #111827; border: 2px solid #86efac;
+}
+.badge-sem-folha { color: #991b1b; border-color: #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1200px; margin: 24px auto; padding: 0 20px 60px; }
+
+/* ── CARD ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 20px; overflow: hidden;
+}
+.card-titulo {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.card-body { padding: 18px 20px; }
+
+/* ── UPLOAD ── */
+.upload-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.file-inp {
+    font-family: var(--sans); font-size: 13px; padding: 8px;
+    border: 1px dashed var(--border); border-radius: 8px; background: #fafbfc; flex: 1; min-width: 260px;
+}
+.btn {
+    background: var(--accent); border: none; color: #fff; font-size: 13px; font-weight: 600;
+    padding: 9px 20px; border-radius: 8px; cursor: pointer; font-family: var(--sans);
+    transition: 0.15s; white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { background: #cbd5e1; cursor: not-allowed; filter: none; }
+.btn-ghost { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.btn-ok { background: #16a34a; }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: .15s; white-space: nowrap; font-family: var(--sans);
+}
+.btn-pdf:hover { background: #b91c1c; }
+.btn-pdf:disabled { background: #cbd5e1; cursor: not-allowed; }
+.hint { font-size: 12px; color: #64748b; margin-top: 10px; line-height: 1.5; }
+
+/* ── RESUMO ── */
+.resumo { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+    border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid;
+}
+.pill-total { background: #f1f5f9; color: #334155; border-color: #e2e8f0; }
+.pill-ok    { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.pill-aviso { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.pill-rej   { background: #f8fafc; color: #64748b; border-color: #e2e8f0; }
+.pill-erro  { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+
+.alerta {
+    padding: 11px 16px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; line-height: 1.5;
+    display: flex; align-items: flex-start; gap: 9px;
+}
+.alerta-erro  { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.alerta-aviso { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.alerta-info  { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+/* ── TABELA ── */
+.tabela-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+thead th {
+    background: #f8fafc; color: #475569; font-weight: 600; text-align: left;
+    padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0;
+}
+tbody td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+.mono { font-family: var(--mono); }
+.num { text-align: right; }
+.st-erro     { background: #fef2f2; }
+.st-aviso    { background: #fffbeb; }
+.st-rejeitado{ background: #f8fafc; color: #94a3b8; }
+.badge-st {
+    display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+}
+.b-ok   { background: #d1fae5; color: #065f46; }
+.b-avi  { background: #fef3c7; color: #92400e; }
+.b-rej  { background: #e2e8f0; color: #475569; }
+.b-err  { background: #fee2e2; color: #991b1b; }
+.msg-cel { white-space: normal; font-size: 11px; color: #64748b; min-width: 220px; }
+.acoes-final { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.oculto { display: none; }
+.spin { font-size: 13px; color: #64748b; }
+
+/* ── IMPORTAR PONTO ── */
+.linha-op { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+.linha-op label { display: inline-flex; align-items: center; gap: 6px; }
+.sep-v { width: 1px; height: 22px; background: var(--border); }
+.obs { font-size: 11px; font-weight: 400; color: #64748b; }
+.inp-n { width: 72px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: 13px; }
+.inp-t { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--sans); font-size: 13px; background: #fff; }
+.linha-op select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--sans); font-size: 13px; }
+.tb-campos { width: auto; font-size: 13px; }
+.tb-campos td { white-space: normal; }
+.btn-mini { padding: 4px 12px; font-size: 12px; }
+.btn-x { background: none; border: none; color: #b91c1c; font-size: 18px; cursor: pointer; line-height: 1; }
+.lk { text-decoration: none; display: inline-block; }
+.conteudo > .acoes-final { margin-bottom: 20px; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Importar Ponto</span>
+        {% if anomes_atual %}
+        {% include "_folha_ativa_badge.html" %}
+        {% else %}
+        <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="card">
+        <div class="card-titulo"><span>1. Selecionar o arquivo do ponto (.xlsx, .csv ou .txt)</span>
+            <a class="btn btn-ghost btn-mini lk" href="/ponto_layout">Layout do Ponto</a></div>
+        <div class="card-body">
+            <div class="upload-row">
+                <input type="file" id="arquivo" class="file-inp" accept=".xlsx,.csv,.txt" onchange="novoArquivo()">
+                <button class="btn" id="btn-preview" onclick="verificar()">Verificar Arquivo</button>
+            </div>
+            <div class="hint">Cada linha traz uma verba de um funcionário, localizado pela matrícula do eSocial. Primeiro o arquivo é verificado e o relatório aponta as inconsistências. A importação só é liberada com zero erros.</div>
+            <div id="erro-topo" style="margin-top:12px"></div>
+        </div>
+    </div>
+
+    <div id="resultado" class="oculto">
+        <div class="card">
+            <div class="card-titulo"><span>2. Verificação</span>
+                <label class="obs"><input type="checkbox" id="so-pend" onchange="desenhar()"> Só erros e avisos</label></div>
+            <div class="card-body">
+                <div id="alertas"></div>
+                <div class="resumo" id="resumo"></div>
+                <div class="tabela-wrap" style="margin-top:14px; max-height:520px; overflow-y:auto;">
+                    <table>
+                        <thead><tr>
+                            <th>Linha</th><th>Matr. eSocial</th><th>Matr.</th><th>Funcionário</th>
+                            <th>Código</th><th>Vai para</th><th class="num">Quantidade</th><th>Data</th>
+                            <th>Situação</th><th>Observação</th>
+                        </tr></thead>
+                        <tbody id="corpo"></tbody>
+                    </table>
+                </div>
+                <div class="acoes-final">
+                    <button class="btn-pdf" id="btn-rel" onclick="relatorio()">Emitir Relatório</button>
+                    <button class="btn btn-ok" id="btn-gravar" onclick="gravar()" disabled>Importar para a Folha</button>
+                    <button class="btn btn-ghost" onclick="location.reload()">Cancelar</button>
+                    <span class="spin oculto" id="spin">Processando...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let arquivoSel = null, ultima = null;
+
+function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtComp(a) { return a.slice(4) + '/' + a.slice(0, 4); }
+function erroTopo(t) {
+    document.getElementById('erro-topo').innerHTML = t ? '<div class="alerta alerta-erro">' + esc(t) + '</div>' : '';
+}
+function novoArquivo() {
+    // Trocou o arquivo: a verificação anterior não vale mais.
+    ultima = null; arquivoSel = null; erroTopo('');
+    document.getElementById('resultado').classList.add('oculto');
+    document.getElementById('btn-gravar').disabled = true;
+}
+async function relatorio() {
+    if (!arquivoSel) return;
+    const win = window.open('', '_blank');
+    const btn = document.getElementById('btn-rel');
+    const fd = new FormData();
+    fd.append('arquivo', arquivoSel);
+    btn.disabled = true; btn.textContent = 'Gerando...';
+    try {
+        const r = await fetch('/api/ponto/relatorio', {method:'POST', body: fd});
+        const ct = r.headers.get('Content-Type') || '';
+        if (!ct.includes('application/pdf')) {
+            const d = await r.json().catch(() => ({msg:'Falha ao gerar o relatório.'}));
+            if (win) win.close();
+            erroTopo(d.msg || 'Falha ao gerar o relatório.');
+        } else {
+            const url = URL.createObjectURL(await r.blob());
+            if (win) win.location = url; else window.location = url;
+        }
+    } catch (e) {
+        if (win) win.close();
+        erroTopo('Falha ao gerar o relatório: ' + e.message);
+    }
+    btn.disabled = false; btn.textContent = 'Emitir Relatório';
+}
+async function verificar() {
+    const inp = document.getElementById('arquivo');
+    erroTopo('');
+    if (!inp.files.length) { erroTopo('Selecione um arquivo.'); return; }
+    arquivoSel = inp.files[0];
+    const fd = new FormData();
+    fd.append('arquivo', arquivoSel);
+    const btn = document.getElementById('btn-preview');
+    btn.disabled = true; btn.textContent = 'Lendo...';
+    document.getElementById('resultado').classList.add('oculto');
+    try {
+        const r = await fetch('/api/ponto/preview', {method:'POST', body: fd});
+        const d = await r.json();
+        if (!d.ok) { erroTopo(d.msg); }
+        else { ultima = d; desenhar(); document.getElementById('resultado').classList.remove('oculto'); }
+    } catch (e) { erroTopo('Erro de comunicação: ' + e.message); }
+    btn.disabled = false; btn.textContent = 'Verificar Arquivo';
+}
+function desenhar() {
+    const d = ultima, res = d.resumo;
+    document.getElementById('resumo').innerHTML =
+          '<span class="pill pill-total">Linhas: ' + res.lidas + '</span>'
+        + '<span class="pill pill-ok">OK: ' + res.ok + '</span>'
+        + '<span class="pill pill-aviso">Avisos: ' + res.aviso + '</span>'
+        + '<span class="pill pill-rej">Ignoradas: ' + res.ignorada + '</span>'
+        + '<span class="pill pill-erro">Erros: ' + res.erro + '</span>'
+        + '<span class="pill pill-total">A gravar: ' + res.verbas + ' verba(s) e ' + res.faltas + ' falta(s)</span>';
+    let al = '<div class="alerta alerta-info">Folha de destino: <b>' + fmtComp(d.anomes) + '</b></div>';
+    const liberado = !d.has_error && (res.verbas + res.faltas) > 0;
+    if (d.has_error) al += '<div class="alerta alerta-erro"><b>Importação bloqueada:</b> ' + res.erro
+        + ' linha(s) com erro. Emita o relatório, corrija o arquivo e verifique de novo.</div>';
+    else if (liberado) al += '<div class="alerta alerta-info"><b>Importação liberada:</b> nenhum erro encontrado.</div>';
+    else al += '<div class="alerta alerta-erro"><b>Importação bloqueada:</b> o arquivo não tem lançamentos a gravar.</div>';
+    if (d.antes.verbas || d.antes.faltas) {
+        al += '<div class="alerta alerta-aviso">Esta folha já tem uma importação do ponto ('
+            + d.antes.verbas + ' verba(s) e ' + d.antes.faltas + ' falta(s)). Ao gravar, ela será substituída, '
+            + 'inclusive o que tiver sido alterado à mão nessas linhas.</div>';
+    }
+    document.getElementById('alertas').innerHTML = al;
+    const so = document.getElementById('so-pend').checked;
+    const rot = {ok:['b-ok','OK'], aviso:['b-avi','Aviso'], erro:['b-err','Erro'], ignorada:['b-rej','Ignorada']};
+    const cls = {aviso:'st-aviso', erro:'st-erro', ignorada:'st-rejeitado', ok:''};
+    let h = '';
+    for (const l of d.linhas) {
+        if (so && l.status === 'ok') continue;
+        h += '<tr class="' + cls[l.status] + '"><td>' + l.linha + '</td><td class="mono">' + esc(l.mat_es)
+           + '</td><td class="mono">' + esc(l.matricula) + '</td><td>' + esc(l.nome)
+           + '</td><td class="mono">' + esc(l.cod) + '</td><td>' + esc(l.destino)
+           + '</td><td class="num mono">' + esc(l.qtd) + '</td><td>' + esc(l.data)
+           + '</td><td><span class="badge-st ' + rot[l.status][0] + '">' + rot[l.status][1]
+           + '</span></td><td class="msg-cel">' + esc(l.msg) + '</td></tr>';
+    }
+    document.getElementById('corpo').innerHTML = h;
+    document.getElementById('btn-gravar').disabled = !liberado;
+}
+async function gravar() {
+    if (!arquivoSel) return;
+    const res = ultima.resumo;
+    if (!confirm('Importar ' + res.verbas + ' verba(s) e ' + res.faltas + ' falta(s) na folha '
+                 + fmtComp(ultima.anomes) + '?')) return;
+    const btn = document.getElementById('btn-gravar'), spin = document.getElementById('spin');
+    btn.disabled = true; spin.classList.remove('oculto');
+    const fd = new FormData();
+    fd.append('arquivo', arquivoSel);
+    try {
+        const r = await fetch('/api/ponto/gravar', {method:'POST', body: fd});
+        const d = await r.json();
+        spin.classList.add('oculto');
+        document.getElementById('alertas').innerHTML =
+            '<div class="alerta alerta-' + (d.ok ? 'info' : 'erro') + '">' + esc(d.msg) + '</div>';
+        if (!d.ok) btn.disabled = false;
+    } catch (e) {
+        spin.classList.add('oculto');
+        document.getElementById('alertas').innerHTML =
+            '<div class="alerta alerta-erro">Erro de comunicação: ' + esc(e.message) + '</div>';
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>
