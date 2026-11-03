@@ -81731,23 +81731,31 @@ def api_recibo_manual_funcionarios():
 
 @app.route("/api/esocial_recibo_manual/remessas")
 def api_recibo_manual_remessas():
-    """Remessas do funcionario no mes. As que ja tem recibo vem junto, travadas."""
+    """Remessas do funcionario no mes, ou todas as S-1005 da empresa (o S-1005 nao
+    tem matricula e costuma ter uma remessa so', de um mes que ninguem lembra).
+    As que ja tem recibo vem junto, travadas. Nada e' criado aqui: sem uma linha
+    do layout sem recibo no tab_esocial, nao ha' onde gravar."""
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
     id_empresa = _get_id_empresa()
+    evento = request.args.get("evento", "").strip()
     mes = re.sub(r"\D", "", request.args.get("mes", ""))
     matricula = re.sub(r"\D", "", request.args.get("matricula", ""))
-    if len(mes) != 6 or not ("01" <= mes[4:] <= "12"):
-        return jsonify({"ok": False, "msg": "Informe o mês."})
-    if not matricula or int(matricula) <= 0:
-        return jsonify({"ok": False, "msg": "Selecione o funcionário."})
+    if evento != "1005":
+        if len(mes) != 6 or not ("01" <= mes[4:] <= "12"):
+            return jsonify({"ok": False, "msg": "Informe o mês."})
+        if not matricula or int(matricula) <= 0:
+            return jsonify({"ok": False, "msg": "Selecione o funcionário."})
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("id_esocial, layout, ano_mes, folha_tipo, flag1, recibo, "
-                        "observacao_erro, data_cad, data_grava")
-                .eq("id_empresa", id_empresa).eq("ano_mes", int(mes))
-                .eq("matricula", int(matricula))
-                .order("layout").order("id_esocial").execute().data or [])
+        q = (supabase.table("tab_esocial")
+             .select("id_esocial, layout, ano_mes, folha_tipo, flag1, recibo, "
+                     "observacao_erro, data_cad, data_grava")
+             .eq("id_empresa", id_empresa))
+        if evento == "1005":
+            q = q.eq("layout", "1005")
+        else:
+            q = q.eq("ano_mes", int(mes)).eq("matricula", int(matricula))
+        rows = q.order("layout").order("id_esocial").execute().data or []
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao ler as remessas: {e}"[:200]})
     itens = []
@@ -81757,9 +81765,11 @@ def api_recibo_manual_remessas():
         if obs.upper().startswith("PARAMS:"):
             obs = ""
         dc = str(r.get("data_cad") or "")
+        am = str(r.get("ano_mes") or "")
         itens.append({
             "id_esocial": r["id_esocial"],
             "layout":     r.get("layout") or "",
+            "competencia": f"{am[4:6]}/{am[:4]}" if len(am) == 6 else "",
             "folha":      r.get("folha_tipo") or "",
             "flag1":      r.get("flag1") or "",
             "data_cad":   f"{dc[6:8]}/{dc[4:6]}/{dc[:4]}" if len(dc) == 8 else "",
@@ -81810,6 +81820,9 @@ def api_recibo_manual_gravar():
                                                 + (row.get("recibo") or "").strip()})
         if cod == "excluido":
             return jsonify({"ok": False, "msg": "Esta remessa está excluída."})
+        if not int(row.get("matricula") or 0) and str(row.get("layout")) != "1005":
+            return jsonify({"ok": False, "msg": "Esta tela só grava recibo de evento "
+                                                "de funcionário e de S-1005."})
 
         outra = (supabase.table("tab_esocial")
                  .select("id_esocial, layout, ano_mes, matricula")

@@ -120,26 +120,31 @@ tbody tr:last-child td { border-bottom: none; }
 
 <div class="conteudo">
     <div class="card">
-        <div class="card-titulo">1. Mês e funcionário</div>
+        <div class="card-titulo">1. O que procurar</div>
         <div class="card-body">
             <div class="linha-op">
-                <label>Mês <input type="month" id="mes"></label>
-                <label>Funcionário <select id="funcionario"><option value="">Carregando...</option></select></label>
+                <label>Evento <select id="evento" onchange="trocarEvento()">
+                    <option value="">Eventos do funcionário</option>
+                    <option value="1005">S-1005 Estabelecimentos</option>
+                </select></label>
+                <label class="so-func">Mês <input type="month" id="mes"></label>
+                <label class="so-func">Funcionário <select id="funcionario"><option value="">Carregando...</option></select></label>
                 <button class="btn" id="btnBuscar" onclick="buscar()">Buscar Remessas</button>
             </div>
             <div class="hint">Use quando o evento já foi aceito no eSocial, mas a remessa continua sem recibo aqui.
-                Copie o número do recibo no portal do eSocial. Depois de gravado, o Folha10 considera a remessa enviada.</div>
+                Copie o número do recibo no portal do eSocial. Depois de gravado, o Folha10 considera a remessa enviada.
+                É preciso já existir a remessa do evento sem recibo: esta tela não cria remessa.</div>
         </div>
     </div>
 
     <div id="msg"></div>
 
     <div class="card oculto" id="cardLista">
-        <div class="card-titulo">2. Remessas do funcionário no mês</div>
+        <div class="card-titulo" id="tituloLista">2. Remessas</div>
         <div class="card-body">
             <div class="tabela-wrap">
                 <table>
-                    <thead><tr><th>Evento</th><th>Folha</th><th>Criada em</th><th>Situação</th><th>Recibo</th><th></th><th>Mensagem</th></tr></thead>
+                    <thead><tr><th>Evento</th><th>Competência</th><th>Folha</th><th>Criada em</th><th>Situação</th><th>Recibo</th><th></th><th>Mensagem</th></tr></thead>
                     <tbody id="linhas"></tbody>
                 </table>
             </div>
@@ -182,22 +187,39 @@ async function carregarFuncionarios() {
     }
 }
 
+function trocarEvento() {
+    const s1005 = el('evento').value === '1005';
+    document.querySelectorAll('.so-func').forEach(function (x) { x.classList.toggle('oculto', s1005); });
+    aviso('', '');
+    el('cardLista').classList.add('oculto');
+}
+
 async function buscar() {
+    const s1005 = el('evento').value === '1005';
     const mes = el('mes').value.replace('-', '');
     const mat = el('funcionario').value;
     aviso('', '');
     el('cardLista').classList.add('oculto');
-    if (mes.length !== 6) { aviso('erro', 'Informe o mês.'); return; }
-    if (!mat) { aviso('erro', 'Selecione o funcionário.'); return; }
+    if (!s1005) {
+        if (mes.length !== 6) { aviso('erro', 'Informe o mês.'); return; }
+        if (!mat) { aviso('erro', 'Selecione o funcionário.'); return; }
+    }
     el('btnBuscar').disabled = true;
+    const url = '/api/esocial_recibo_manual/remessas?' +
+        (s1005 ? 'evento=1005' : 'mes=' + mes + '&matricula=' + encodeURIComponent(mat));
     try {
-        const r = await (await fetch('/api/esocial_recibo_manual/remessas?mes=' + mes + '&matricula=' + encodeURIComponent(mat))).json();
+        const r = await (await fetch(url)).json();
         if (!r.ok) { aviso('erro', r.msg); return; }
         LINHAS = r.itens;
-        if (!LINHAS.length) { aviso('aviso', 'Não há remessa deste funcionário neste mês.'); return; }
+        if (!LINHAS.length) {
+            aviso('aviso', s1005 ? 'Não há remessa de S-1005 nesta empresa. Sem ela não há onde gravar o recibo.'
+                                 : 'Não há remessa deste funcionário neste mês. Sem ela não há onde gravar o recibo.');
+            return;
+        }
+        el('tituloLista').textContent = s1005 ? '2. Remessas de S-1005 da empresa' : '2. Remessas do funcionário no mês';
         desenhar();
         if (!LINHAS.some(function (l) { return l.situacao === 'sem_recibo'; })) {
-            aviso('aviso', 'Nenhuma remessa sem recibo: todas deste funcionário neste mês já têm recibo ou estão excluídas.');
+            aviso('aviso', 'Nenhuma remessa sem recibo: todas as listadas já têm recibo ou estão excluídas.');
         }
     } catch (e) {
         aviso('erro', 'Não foi possível buscar as remessas.');
@@ -212,6 +234,7 @@ function desenhar() {
         const livre = l.situacao === 'sem_recibo';
         return '<tr>' +
             '<td><strong>S-' + esc(l.layout) + '</strong></td>' +
+            '<td>' + esc(l.competencia) + '</td>' +
             '<td>' + esc(nomeFolha(l.folha, l.flag1)) + '</td>' +
             '<td>' + esc(l.data_cad) + '</td>' +
             '<td><span class="badge-st ' + cls + '">' + esc(l.texto) + '</span></td>' +
@@ -231,7 +254,7 @@ async function gravar(i) {
     aviso('', '');
     if (!recibo) { aviso('erro', 'Informe o número do recibo do S-' + l.layout + '.'); return; }
     const sel = el('funcionario');
-    const quem = sel.options[sel.selectedIndex].text;
+    const quem = el('evento').value === '1005' ? 'esta empresa' : sel.options[sel.selectedIndex].text;
     if (!confirm('Gravar o recibo ' + recibo + ' no S-' + l.layout + ' de ' + quem + '?\n\n' +
                  'Depois disso o Folha10 considera esta remessa enviada.')) return;
     el('btn' + i).disabled = true;
