@@ -50081,6 +50081,46 @@ def api_esocial_s1210_reconsultar():
 # =========================================================
 # eSocial S-1299 — GERADOR DE XML
 # =========================================================
+def _s1299_rescisao_com_remuneracao(id_empresa, ano_mes):
+    """O periodo tem rescisao aceita que leva verbas no proprio S-2299/S-2399?
+
+    No mes do desligamento nao ha S-1200 do trabalhador: a remuneracao vai no
+    <verbasResc>. O evtRemun do S-1299 tem que ser S mesmo assim, senao volta
+    [588] (empresa 76, 10/2026). Nao contam: evento sem recibo, anulado por
+    S-3000 (EXCLUIDO), transferencia (S-2299 sem verbasResc) e TSVE fora o 721
+    (S-2399 sem verbasResc; as verbas dele vao no S-1200)."""
+    try:
+        evs = (supabase.table("tab_esocial")
+               .select("layout, matricula, recibo, observacao_erro")
+               .eq("id_empresa", id_empresa)
+               .eq("ano_mes", int(ano_mes))
+               .in_("layout", ["2299", "2399"])
+               .execute().data or [])
+        evs = [e for e in evs
+               if (e.get("recibo") or "").strip()
+               and (e.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"]
+        if not evs:
+            return False
+        mats = sorted({int(e["matricula"]) for e in evs if e.get("matricula") is not None})
+        cads = (supabase.table("tab_cad")
+                .select("matricula, motrescisao, codcateg")
+                .eq("id_empresa", id_empresa)
+                .in_("matricula", mats)
+                .execute().data or [])
+        por_mat = {int(c["matricula"]): c for c in cads}
+        _transf = str(TRANSF_MOTIVO_DEMISSAO).zfill(2)
+        for e in evs:
+            c = por_mat.get(int(e.get("matricula") or 0)) or {}
+            if str(e.get("layout")) == "2299":
+                if str(c.get("motrescisao") or "").strip().zfill(2) != _transf:
+                    return True
+            elif str(c.get("codcateg") or "").strip() == "721":
+                return True
+    except Exception as e:
+        print(f"[s1299 rescisao] erro: {e}")
+    return False
+
+
 def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, evt_remun, evt_pgtos, tpAmb="1"):
     """Gera string XML do S-1299 (Fechamento dos Eventos Periódicos) - schema evtFechaEvPer/v_S_01_03_00."""
     import re
@@ -50235,6 +50275,8 @@ def esocial_s1299():
     # indApuracao segue o tipo da folha ativa: so o 13o FINAL (tipo "1") e'
     # apuracao anual (2). O adiantamento do 13o (tipo "A") e' mensal.
     ind_apuracao = "2" if str(session.get("anomes_tipo") or "N") == "1" else "1"
+    tem_resc_remun = bool(anomes_atual and ind_apuracao == "1"
+                          and _s1299_rescisao_com_remuneracao(id_empresa, anomes_atual))
 
     return render_template(
         "F10_eSocial_S1299.html",
@@ -50248,6 +50290,7 @@ def esocial_s1299():
         folha_aberta_esocial=_folha_aberta_no_esocial(),
         tem_s1200_enviado=tem_s1200_enviado,
         tem_s1210_enviado=tem_s1210_enviado,
+        tem_resc_remun=tem_resc_remun,
         ind_apuracao=ind_apuracao,
     )
 
@@ -50293,47 +50336,10 @@ def api_esocial_s1299_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
-    # Reutiliza registro existente ou cria novo
     agora = _agora_brasilia()
     sem_mov_flag = 1 if ind_exist_info == "N" else 0
     folha_tp     = "1" if ind_apuracao == "2" else "N"
     id_cliente   = session.get("id_cliente")
-    try:
-        _exist = (supabase.table("tab_esocial")
-                  .select("id_esocial")
-                  .eq("id_empresa", id_empresa)
-                  .eq("layout", "1299")
-                  .eq("ano_mes", int(ano_mes))
-                  .eq("folha_tipo", folha_tp)
-                  .eq("codigo2", sem_mov_flag)
-                  .order("data_cad", desc=True)
-                  .limit(1).execute())
-        if _exist.data:
-            id_reg = _exist.data[0]["id_esocial"]
-            supabase.table("tab_esocial").update({
-                "recibo":          "",
-                "observacao_erro": "",
-                "data_grava":      "",
-                "hora_grava":      "",
-                "id_remessa":      agora.strftime("%Y%m%d%H%M%S"),
-            }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
-        else:
-            ins = {
-                "id_cliente": id_cliente,
-                "id_empresa": id_empresa,
-                "data_cad":   agora.strftime("%Y%m%d"),
-                "hora_cad":   agora.strftime("%H%M"),
-                "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
-                "ano_mes":    int(ano_mes),
-                "folha_tipo": folha_tp,
-                "layout":     "1299",
-                "matricula":  0,
-                "codigo2":    sem_mov_flag,
-            }
-            res_ins = supabase.table("tab_esocial").insert(ins).execute()
-            id_reg  = res_ins.data[0]["id_esocial"]
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao criar/atualizar registro: {e}"})
 
     # Flags de eventos: sem movimento → ambos N; senão usa o que veio do formulário
     sem_mov = (ind_exist_info == "N")
@@ -50365,6 +50371,11 @@ def api_esocial_s1299_enviar():
     if not sem_mov:
         tem_1200 = _tem_enviado("1200")
         tem_1210 = _tem_enviado("1210")
+        # Rescisao aceita no periodo e remuneracao, mesmo sem nenhum S-1200.
+        tem_resc = (ind_apuracao == "1"
+                    and _s1299_rescisao_com_remuneracao(id_empresa, ano_mes))
+        if tem_resc:
+            evt_remun = "S"
         if evt_remun == "N" and tem_1200:
             return jsonify({"ok": False,
                 "msg": ("Existem S-1200 enviados no periodo — marque "
@@ -50375,7 +50386,7 @@ def api_esocial_s1299_enviar():
                         "'S-1210 Pagamentos' antes de enviar o S-1299.")})
         # Caso oposto: marcou "S" sem ter nada enviado → gov tambem rejeita
         # com erro 589 ("preencha com Nao quando nao existir").
-        if evt_remun == "S" and not tem_1200:
+        if evt_remun == "S" and not tem_1200 and not tem_resc:
             return jsonify({"ok": False,
                 "msg": ("Nao ha S-1200 enviado/processado no periodo. "
                         "Envie os S-1200 primeiro ou desmarque "
@@ -50435,6 +50446,46 @@ def api_esocial_s1299_enviar():
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
+    # Reutiliza registro existente ou cria novo. So aqui, na hora de transmitir:
+    # limpar antes apagava o erro do envio anterior sempre que uma validacao ou
+    # o certificado parava a rota no meio (o historico ficava "Gerado", sem erro).
+    try:
+        _exist = (supabase.table("tab_esocial")
+                  .select("id_esocial")
+                  .eq("id_empresa", id_empresa)
+                  .eq("layout", "1299")
+                  .eq("ano_mes", int(ano_mes))
+                  .eq("folha_tipo", folha_tp)
+                  .eq("codigo2", sem_mov_flag)
+                  .order("data_cad", desc=True)
+                  .limit(1).execute())
+        if _exist.data:
+            id_reg = _exist.data[0]["id_esocial"]
+            supabase.table("tab_esocial").update({
+                "recibo":          "",
+                "observacao_erro": "",
+                "data_grava":      "",
+                "hora_grava":      "",
+                "id_remessa":      agora.strftime("%Y%m%d%H%M%S"),
+            }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        else:
+            ins = {
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "data_cad":   agora.strftime("%Y%m%d"),
+                "hora_cad":   agora.strftime("%H%M"),
+                "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
+                "ano_mes":    int(ano_mes),
+                "folha_tipo": folha_tp,
+                "layout":     "1299",
+                "matricula":  0,
+                "codigo2":    sem_mov_flag,
+            }
+            res_ins = supabase.table("tab_esocial").insert(ins).execute()
+            id_reg  = res_ins.data[0]["id_esocial"]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao criar/atualizar registro: {e}"})
+
     # Enviar
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
@@ -50471,6 +50522,9 @@ def api_esocial_s1299_enviar():
     supabase.table("tab_esocial").update({
         "data_grava": agora2.strftime("%Y%m%d"),
         "hora_grava": agora2.strftime("%H%M"),
+        # Guarda o protocolo ja: se o processo cair durante a consulta, a remessa
+        # fica "Aguardando" e da para re-consultar, em vez de "Gerado" sem retorno.
+        "observacao_erro": f"AGUARDANDO:{protocolo_envio}",
     }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
 
     # Consultar resultado (até 3×)
@@ -50510,7 +50564,7 @@ def api_esocial_s1299_enviar():
         break
 
     aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
-    upd = {"recibo": recibo_final}
+    upd = {"recibo": recibo_final, "observacao_erro": ""}
     if aguardando:
         upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
     elif obs_erro:

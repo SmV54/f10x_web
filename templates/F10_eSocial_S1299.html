@@ -205,10 +205,11 @@ tr:hover td { background: #f8fafc; }
 
     <!-- Eventos do período -->
     <div id="divEventos" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-top:12px;" data-tour="eventos">
-      <label class="check-semmov"{% if not tem_s1200_enviado %} style="opacity:0.5;" title="Nenhum S-1200 enviado no período"{% endif %}>
-        <input type="checkbox" id="chkS1200"{% if tem_s1200_enviado %} checked{% else %} disabled{% endif %}>
+      <label class="check-semmov"{% if not tem_s1200_enviado and not tem_resc_remun %} style="opacity:0.5;" title="Nenhum S-1200 enviado no período"{% endif %}>
+        <input type="checkbox" id="chkS1200"{% if tem_s1200_enviado or tem_resc_remun %} checked{% endif %}{% if not tem_s1200_enviado %} disabled{% endif %}>
         S-1200 Remuneração
-        {% if not tem_s1200_enviado %}<small style="color:#9a3412;">(nenhum enviado)</small>{% endif %}
+        {% if not tem_s1200_enviado and tem_resc_remun %}<small style="color:#166534;">(remuneração da rescisão, S-2299/S-2399)</small>
+        {% elif not tem_s1200_enviado %}<small style="color:#9a3412;">(nenhum enviado)</small>{% endif %}
       </label>
       <label class="check-semmov"{% if not tem_s1210_enviado %} style="opacity:0.5;" title="Nenhum S-1210 enviado no período"{% endif %}>
         <input type="checkbox" id="chkS1210"{% if tem_s1210_enviado %} checked{% else %} disabled{% endif %}>
