@@ -279,6 +279,29 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
             </div>
         </div>
 
+        <!-- Conexão perdida no meio do cálculo -->
+        <div id="sec-conexao" class="bloqueio-wrap" style="display:none">
+            <div class="bloqueio-icon">⚠️</div>
+            <div class="bloqueio-msg">A conexão com o servidor caiu e o cálculo pode não ter terminado.</div>
+            <div class="bloqueio-sub" id="conexao-sub"></div>
+            <div style="display:flex; gap:10px; margin-top:4px;">
+                <a href="/calcular_folha" style="
+                    display:inline-block;
+                    background:#2563eb; color:white; font-weight:700;
+                    font-size:13px; padding:9px 22px; border-radius:8px;
+                    text-decoration:none; transition:background 0.15s;">
+                    Calcular Novamente
+                </a>
+                <a href="/menu" style="
+                    display:inline-block;
+                    background:#e5e7eb; color:#111827; font-weight:700;
+                    font-size:13px; padding:9px 22px; border-radius:8px;
+                    text-decoration:none; transition:background 0.15s;">
+                    Voltar ao Menu
+                </a>
+            </div>
+        </div>
+
         <!-- Resumo (visível após conclusão) -->
         <div id="sec-resumo" class="resumo-wrap" style="display:none"></div>
 
@@ -353,8 +376,17 @@ src.onmessage = function(e) {
     }
 };
 
+// A conexao caiu sem chegar a mensagem final: os casos que terminam normalmente
+// (fim, bloqueio, erro) ja fecharam o src, e entao este evento nao dispara.
 src.onerror = function() {
     src.close();
+    const parou = document.getElementById('progFunc').textContent.trim();
+    document.getElementById('conexao-sub').textContent =
+        (parou && parou.indexOf('Preparando') < 0 ? 'Último funcionário em andamento: ' + parou + '. ' : '') +
+        'Não use esta folha nem envie o eSocial dela até o cálculo concluir. ' +
+        'Aguarde 1 minuto e calcule novamente.';
+    document.getElementById('sec-prog').style.display = 'none';
+    document.getElementById('sec-conexao').style.display = 'flex';
 };
 
 function mostrarResumo(r) {
