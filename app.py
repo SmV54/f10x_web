@@ -43976,6 +43976,15 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     else:
         dt_alt_fmt = dt_alteracao
 
+    # A alteracao nao pode ser anterior a admissao. O data_cad, que vira esta
+    # data, e o dia do lancamento: quem cadastra o funcionario antes de ele
+    # comecar e muda um campo contratual gera um S-2206 datado antes da
+    # admissao, e o eSocial nao acha o vinculo naquela data: volta [180] com
+    # [553] e [1275]. Caso real: empresa 70, mat 2, 04/11/2026.
+    _dtadm = dg(func.get('dtadm'))
+    if len(_dtadm) == 8 and dt_alt_fmt.replace('-', '') < _dtadm:
+        dt_alt_fmt = fmt_d8(_dtadm)
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtAltContratual/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
