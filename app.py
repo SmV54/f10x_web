@@ -9220,6 +9220,48 @@ def _demitidos_do_mes_folha(id_empresa, anomes):
     return saida
 
 
+def _resc_para_folha(id_empresa, anomes, id_cliente, mats, adiant_data):
+    """Verbas e totais da rescisao de quem saiu no mes, para o relatorio da Folha.
+
+    Devolve ({mat: linhas das verbas}, {mat: linha do tab_total R}). As 161-164
+    entram em adiant_data, como na folha, quando ha a 160: ela e' o desconto. Sem
+    a 160 (rescisao antiga, com a 161 digitada) a propria 161 e' o desconto e fica
+    entre as verbas, senao o liquido nao fecharia com o tab_total."""
+    mov, tot = {}, {}
+    if not mats:
+        return mov, tot
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula,cod_verba,qtd,valor")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("folha", int(anomes)).eq("folha_tipo", "R")
+             .in_("matricula", list(mats)))
+        q_t = (supabase.table("tab_total")
+               .select("matricula,valor_base_inss_semlimite,valor_irrf_basetabela,"
+                       "valor_base_fgts,valor_fgts")
+               .eq("id_empresa", id_empresa)
+               .eq("folha", int(anomes)).eq("folha_tipo", "R")
+               .in_("matricula", list(mats)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+            q_t = q_t.eq("id_cliente", id_cliente)
+        por_mat = {}
+        for r in (q.execute().data or []):
+            por_mat.setdefault(int(r.get("matricula") or 0), []).append(r)
+        for m, linhas in por_mat.items():
+            tem_160 = any(int(r.get("cod_verba") or 0) == 160 for r in linhas)
+            for r in linhas:
+                if tem_160 and int(r.get("cod_verba") or 0) in VERBAS_ADTO_QUINZENAL:
+                    adiant_data.setdefault(m, []).append(r)
+                else:
+                    mov.setdefault(m, []).append(r)
+        for r in (q_t.execute().data or []):
+            tot[int(r.get("matricula") or 0)] = r
+    except Exception as e:
+        print(f"[rescisao na folha] empresa {id_empresa} {anomes}: {e}")
+    return mov, tot
+
+
 def _desligado_limpar_folha_n(id_cliente, id_empresa, anomes, mat):
     """Tira da folha normal o que o calculo gravou para quem saiu neste mes.
 
@@ -59302,6 +59344,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     # daqui, e la' uma linha zerada nao tem o que somar.
     _dem_mes = (_demitidos_do_mes_folha(id_empresa, anomes)
                 if com_demitidos and folha_tipo_mov == "N" else {})
+    _resc_mov, _resc_tot = _resc_para_folha(id_empresa, anomes, id_cliente, _dem_mes, adiant_data)
 
     func_info = {}
     try:
@@ -59387,14 +59430,15 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
 
     cc_groups = {}
     for mat in sorted(set(mov_data) | set(_dem_mes)):
-        # Desligado no mes: liquido zero e a linha DEMISSAO. Verba que tenha
+        # Desligado no mes: as verbas sao as da rescisao, e a linha 9999 tira o
+        # liquido ja' pago nela: liquido zero, como no Desktop. Verba que tenha
         # ficado na folha N dele nao entra nos totais e aparece como aviso.
         _demissao = _dem_mes.get(mat, "")
         _aviso_n  = bool(_demissao and mov_data.get(mat))
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
                                   "funcao":"—","cc":"000","filial":""})
         agg = {}
-        for v in ([] if _demissao else mov_data[mat]):
+        for v in (_resc_mov.get(mat, []) if _demissao else mov_data[mat]):
             cod = int(v.get("cod_verba") or 0)
             val = int(v.get("valor")     or 0)
             qtd = int(v.get("qtd")       or 0)
@@ -59412,6 +59456,15 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
+        if _demissao and liquido:
+            verbas.append({"cod": 9999, "dsc": "Desconto Líquido da Rescisão já Paga",
+                           "tp": "2" if liquido > 0 else "1", "unid": "V", "icp": "",
+                           "ift": "", "iir": "", "qtd": 0, "val": abs(liquido)})
+            if liquido > 0:
+                tot_desc += liquido
+            else:
+                tot_prov -= liquido
+            liquido = 0
         inss_val  = agg.get(101, {}).get("val", 0)
         # 102 = INSS do contribuinte individual (pró-labore). Quem é CI desconta
         # na 102, não na 101 — a Análise de Custo soma as duas.
@@ -59424,7 +59477,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         adiant_desc_val = sum(agg.get(c, {}).get("val", 0)
                               for c in VERBAS_DESC_ADIANTAMENTO)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = 0 if _demissao else irrf_basetabela.get(mat, 0)
+        base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
@@ -59439,6 +59492,12 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
         if mat in bases_13f:
             base_inss, base_fgts, fgts_val = bases_13f[mat]
+        if _demissao:
+            _t_r = _resc_tot.get(mat, {})
+            base_inss = int(_t_r.get("valor_base_inss_semlimite") or 0)
+            base_irrf = int(_t_r.get("valor_irrf_basetabela") or 0)
+            base_fgts = int(_t_r.get("valor_base_fgts") or 0)
+            fgts_val  = int(_t_r.get("valor_fgts") or 0)
 
         # Adiantamento Quinzenal (161-164) — bloco próprio acima das informativas
         adiant_list = []
@@ -59730,6 +59789,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     _dem_mes = (_demitidos_do_mes_folha(id_empresa, anomes)
                 if folha_tipo_mov == "N" else {})
+    _resc_mov, _resc_tot = _resc_para_folha(id_empresa, anomes, id_cliente, _dem_mes, adiant_data)
 
     func_info = {}
     _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg"
@@ -59816,14 +59876,15 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     # ── MONTA POR CC ──────────────────────────────────────────────
     cc_groups = {}
     for mat in sorted(set(mov_data) | set(_dem_mes)):
-        # Desligado no mes: liquido zero e a linha DEMISSAO. Verba que tenha
+        # Desligado no mes: as verbas sao as da rescisao, e a linha 9999 tira o
+        # liquido ja' pago nela: liquido zero, como no Desktop. Verba que tenha
         # ficado na folha N dele nao entra nos totais e aparece como aviso.
         _demissao = _dem_mes.get(mat, "")
         _aviso_n  = bool(_demissao and mov_data.get(mat))
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
                                   "unid":"M","funcao":"—","cc":"000","filial":""})
         agg = {}
-        for v in ([] if _demissao else mov_data[mat]):
+        for v in (_resc_mov.get(mat, []) if _demissao else mov_data[mat]):
             cod = int(v.get("cod_verba") or 0)
             val = int(v.get("valor")     or 0)
             qtd = int(v.get("qtd")       or 0)
@@ -59842,10 +59903,19 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
+        if _demissao and liquido:
+            verbas.append({"cod": 9999, "dsc": "Desconto Líquido da Rescisão já Paga",
+                           "tp": "2" if liquido > 0 else "1", "unid": "V", "icp": "",
+                           "ift": "", "iir": "", "qtd": 0, "val": abs(liquido)})
+            if liquido > 0:
+                tot_desc += liquido
+            else:
+                tot_prov -= liquido
+            liquido = 0
 
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = 0 if _demissao else irrf_basetabela.get(mat, 0)
+        base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
@@ -59860,6 +59930,12 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
         if mat in bases_13f:
             base_inss, base_fgts, fgts_val = bases_13f[mat]
+        if _demissao:
+            _t_r = _resc_tot.get(mat, {})
+            base_inss = int(_t_r.get("valor_base_inss_semlimite") or 0)
+            base_irrf = int(_t_r.get("valor_irrf_basetabela") or 0)
+            base_fgts = int(_t_r.get("valor_base_fgts") or 0)
+            fgts_val  = int(_t_r.get("valor_fgts") or 0)
 
         # Adiantamentos quinzenais (verbas 161-164) — linha acima das informativas
         adiant_list = []
