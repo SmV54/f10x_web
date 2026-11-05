@@ -528,6 +528,19 @@ async function _reconsultar(id, btn) {
   btn.disabled    = true;
   btn.textContent = 'Consultando…';
 
+  // Barrinha: com varios lotes a consulta leva alguns segundos.
+  const bar = document.getElementById('progBar');
+  const lbl = document.getElementById('progLabel');
+  document.getElementById('divProgresso').classList.add('ativo');
+  bar.style.background = '#2a7de1';
+  bar.style.width      = '20%';
+  lbl.textContent      = 'Consultando o eSocial…';
+  let pct = 20;
+  const animTimer = setInterval(() => {
+    pct = Math.min(pct + 7, 90);
+    bar.style.width = pct + '%';
+  }, 1000);
+
   try {
     const r = await fetch('/api/esocial_s1299_reconsultar', {
       method: 'POST',
@@ -535,6 +548,12 @@ async function _reconsultar(id, btn) {
       body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb }),
     });
     const data = await lerRespostaJson(r);
+    clearInterval(animTimer);
+
+    bar.style.width      = '100%';
+    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
+    lbl.textContent      = data.ok ? 'Enviado — Recibo: ' + (data.nr_rec || '')
+                                   : (data.msg || 'Erro desconhecido');
 
     if (data.ok) {
       sit.className    = 'sit-badge sit-enviado';
@@ -553,9 +572,12 @@ async function _reconsultar(id, btn) {
       recTd.innerHTML  = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
     }
   } catch(e) {
+    clearInterval(animTimer);
+    bar.style.width      = '100%';
+    bar.style.background = '#ef4444';
+    lbl.textContent      = msgFalha(e);
     btn.disabled    = false;
     btn.textContent = 'Re-consultar';
-    alert(msgFalha(e));
   }
 }
 </script>
