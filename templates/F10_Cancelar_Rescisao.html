@@ -85,6 +85,7 @@ body { font-family:var(--sans); background:var(--bg); color:var(--text-sub); min
         <div class="desc">
             A rescisão{% if funcionario %} de <strong>{{ funcionario.nome }}</strong> (matrícula {{ funcionario.mat_fmt }}){% endif %}
             e o <strong>aviso prévio</strong> correspondente foram cancelados. O funcionário voltou para <strong>Ativo</strong>.
+            <strong>Calcule a folha de novo</strong> para ele voltar à folha do mês.
         </div>
         <div class="btns">
             <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_rescisao">Cancelar Outra</a>

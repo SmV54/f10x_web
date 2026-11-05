@@ -9058,6 +9058,16 @@ def cancelar_rescisao():
              .eq("op1", 9).in_("folha", [int(anomes_atual), _prev]).execute())
         except Exception:
             pass
+        # O adiantamento que a rescisão trouxe volta para a folha normal: a pessoa
+        # está ativa de novo, e é lá que a ETAPA 1140 vai descontar.
+        try:
+            (supabase.table("tab_mov")
+             .update({"folha_tipo": "N", "origem": "C"})
+             .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+             .eq("folha", int(anomes_atual)).eq("folha_tipo", "R").eq("situacao", "A")
+             .in_("cod_verba", VERBAS_ADTO_QUINZENAL).execute())
+        except Exception as e:
+            gravar_log("RESC-CAN-ER", f"Adiantamento nao voltou: {str(e)[:170]}", matricula=mat_int)
         gravar_log("RESC-CANCEL",
                    f"Rescisão + aviso prévio cancelados — {funcionario['nome']} "
                    f"(resc. {funcionario['resc_data']})",
@@ -9153,6 +9163,113 @@ VERBAS_ADTO_QUINZENAL = [161, 162, 163, 164]
 # demitido, o adiantamento fica lancado na folha do mes (161-164) e o desconto
 # sai na folha de rescisao (160).
 VERBAS_DESC_ADIANTAMENTO = (18, 48, 51, 160)
+
+
+def _resc_sem_adto_duplo(itens):
+    """Verbas da rescisao para o XML e a TRCT, com o adiantamento uma vez so'.
+
+    Na rescisao vale o mesmo da folha: as 161-164 sao o registro do adiantamento
+    pago, e a 160 e' o desconto. Com as duas juntas, somar as duas cobra o
+    adiantamento duas vezes. Rescisao que so' tem a 161 (digitada, em meses ja'
+    enviados) continua como esta: ali a 161 e' o proprio desconto."""
+    itens = itens or []
+    if any(int(i.get("cod_verba") or 0) == 160 for i in itens):
+        return [i for i in itens
+                if int(i.get("cod_verba") or 0) not in VERBAS_ADTO_QUINZENAL]
+    return itens
+
+
+def _mats_com_termino_aceito(id_empresa, folha_int, mats):
+    """Matriculas com S-2299/S-2399 de recibo na competencia. O liquido ali ja'
+    foi declarado: recalcular nao pode passar a descontar o adiantamento."""
+    if not mats:
+        return set()
+    r = (supabase.table("tab_esocial")
+         .select("matricula, recibo, observacao_erro")
+         .eq("id_empresa", id_empresa).eq("ano_mes", int(folha_int))
+         .in_("layout", ["2299", "2399"]).in_("matricula", list(mats))
+         .execute())
+    return {int(x.get("matricula") or 0) for x in (r.data or [])
+            if (x.get("recibo") or "").strip()
+            and (x.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"}
+
+
+def _demitidos_do_mes_folha(id_empresa, anomes):
+    """{matricula: 'dd/mm/aaaa'} de quem foi desligado no mes da folha.
+
+    O relatorio da Folha de Pagamento mostra essas pessoas com liquido zero e a
+    linha DEMISSAO, como o Folha10-Desktop: o que elas receberam esta na
+    rescisao, e a folha normal nao tem movimento delas. A data so' vale para quem
+    nao esta ativo: rescisao cancelada deixa a data para tras na ficha ativa."""
+    saida = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, situacao, datarescisao")
+             .eq("id_empresa", id_empresa)
+             .neq("situacao", "A")
+             .gte("datarescisao", int(f"{anomes}01"))
+             .lte("datarescisao", int(f"{anomes}31"))
+             .execute())
+        for f in (r.data or []):
+            d = str(f.get("datarescisao") or "")
+            m = int(f.get("matricula") or 0)
+            if m and len(d) == 8 and d[:6] == str(anomes):
+                saida[m] = f"{d[6:8]}/{d[4:6]}/{d[:4]}"
+    except Exception as e:
+        print(f"[demitidos do mes] empresa {id_empresa} {anomes}: {e}")
+    return saida
+
+
+def _desligado_limpar_folha_n(id_cliente, id_empresa, anomes, mat):
+    """Tira da folha normal o que o calculo gravou para quem saiu neste mes.
+
+    No mes do desligamento o movimento e' a rescisao: nao ha folha N. Mas a folha
+    pode ter sido calculada com a pessoa ainda ativa, e o recalculo da folha nao
+    alcanca quem ja' saiu. Foi o que deixou 1.650,00 de salario na folha N da
+    empresa 33 matricula 171 em 10/2026: rescisao cancelada, folha calculada,
+    rescisao lancada de novo um minuto depois.
+
+    O digitado ja' passou para a rescisao, e as 161-164 tem tratamento proprio.
+    Com S-1200 da folha aceito ou em processamento nada muda aqui: a folha ja'
+    foi declarada, e sumir com ela deixaria o sistema diferente do governo.
+    Devolve True se limpou."""
+    mat = int(mat)
+    folha = int(anomes)
+    q = (supabase.table("tab_mov").select("id")
+         .eq("id_empresa", id_empresa).eq("matricula", mat)
+         .eq("folha", folha).eq("folha_tipo", "N")
+         .in_("origem", ["C", "F"])
+         .not_.in_("cod_verba", VERBAS_ADTO_QUINZENAL))
+    q_t = (supabase.table("tab_total").select("matricula")
+           .eq("id_empresa", id_empresa).eq("matricula", mat)
+           .eq("folha", folha).eq("folha_tipo", "N"))
+    if id_cliente:
+        q = q.eq("id_cliente", id_cliente)
+        q_t = q_t.eq("id_cliente", id_cliente)
+    if not (q.limit(1).execute().data or q_t.limit(1).execute().data):
+        return False
+    s1200 = [r for r in (supabase.table("tab_esocial")
+                         .select("id_esocial, recibo, observacao_erro, flag1, folha_tipo")
+                         .eq("id_empresa", id_empresa).eq("matricula", mat)
+                         .eq("ano_mes", folha).eq("layout", "1200")
+                         .execute().data or [])
+             if str(r.get("flag1") or "").upper()[:1] != "R"
+             and str(r.get("folha_tipo") or "N").upper()[:1] == "N"
+             and (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"]
+    if any((r.get("recibo") or "").strip()
+           or (r.get("observacao_erro") or "").strip().upper().startswith("AGUARDANDO")
+           for r in s1200):
+        gravar_log("CALC_RES",
+                   "Folha normal do desligado mantida: o S-1200 dela ja foi enviado",
+                   ano_mes=anomes, matricula=mat)
+        return False
+    _limpar_folha_calculada(id_cliente, id_empresa, anomes, "N", matricula=mat)
+    for r in s1200:
+        _esocial_delete().eq("id_esocial", r["id_esocial"]).execute()
+    gravar_log("CALC_RES",
+               "Calculo da folha normal apagado: no mes do desligamento vale a rescisao",
+               ano_mes=anomes, matricula=mat)
+    return True
 
 
 def _irrf_abate_adto(id_cliente, anomes):
@@ -9841,6 +9958,11 @@ def _calc_rescisao_nucleo(body, sim=None):
     # 816716, 09/2026: a 0130 ATRASOS de R$ 1,52 derrubou o S-1200 com [267] e
     # [933]). Agora a rescisão para e pergunta; confirmado, o lançamento passa
     # para a rescisão (folha_tipo 'R') e entra no cálculo como verba manual.
+    #
+    # O adiantamento (161-164) vai junto, mesmo calculado: o Desktop também o
+    # leva para a rescisão. Em 11 rescisões de 08 a 10/2026 ele ficou na folha N,
+    # e em 5 delas nem a 160 foi digitada: o adiantamento pago não foi descontado.
+    # Quem já tem S-2299 aceito fica como está: o líquido já foi declarado.
     if not sim:
         _mats_d = [int(c.get("matricula") or 0) for c in demitidos]
         try:
@@ -9850,13 +9972,17 @@ def _calc_rescisao_nucleo(body, sim=None):
                    .eq("folha", folha_int)
                    .eq("folha_tipo", "N")
                    .eq("situacao", "A")
-                   .neq("origem", "C")
                    .in_("matricula", _mats_d))
             if id_cliente:
                 _qn = _qn.eq("id_cliente", id_cliente)
-            _mov_n = _qn.execute().data or []
+            _mov_n_tudo = _qn.execute().data or []
+            _mats_term_ok = _mats_com_termino_aceito(id_empresa, folha_int, _mats_d)
         except Exception as e:
             return (f"Erro ao conferir o movimento da folha normal: {e}", [], {})
+        _eh_adto = lambda m: int(m.get("cod_verba") or 0) in VERBAS_ADTO_QUINZENAL
+        _mov_n = [m for m in _mov_n_tudo
+                  if (int(m.get("matricula") or 0) not in _mats_term_ok
+                      if _eh_adto(m) else m.get("origem") not in (None, "C"))]
         if _mov_n and not body.get("transferir_mov_normal"):
             _nomes = {int(c.get("matricula") or 0):
                       (c.get("nome") or c.get("nomer") or "").strip() for c in demitidos}
@@ -9872,6 +9998,26 @@ def _calc_rescisao_nucleo(body, sim=None):
                     "passar para a rescisão.", [], {"confirmar_mov_normal": _pend})
         if _mov_n:
             try:
+                # 161-164 digitadas na rescisão são o mesmo adiantamento que está
+                # chegando da folha: ficando as duas, ele seria descontado em dobro.
+                _mats_adto = sorted({int(m.get("matricula") or 0)
+                                     for m in _mov_n if _eh_adto(m)})
+                if _mats_adto:
+                    _qd = (supabase.table("tab_mov")
+                           .select("id, matricula, cod_verba, valor")
+                           .eq("id_empresa", id_empresa).eq("folha", folha_int)
+                           .eq("folha_tipo", "R").eq("situacao", "A")
+                           .in_("cod_verba", VERBAS_ADTO_QUINZENAL)
+                           .in_("matricula", _mats_adto))
+                    if id_cliente:
+                        _qd = _qd.eq("id_cliente", id_cliente)
+                    for _d in (_qd.execute().data or []):
+                        supabase.table("tab_mov").delete().eq("id", int(_d["id"])).execute()
+                        gravar_log("CALC_RES",
+                                   f"Verba {int(_d.get('cod_verba') or 0):04d} digitada "
+                                   f"({_fmt_brl(int(_d.get('valor') or 0))}) apagada: "
+                                   "o adiantamento veio da folha normal",
+                                   ano_mes=anomes, matricula=int(_d.get("matricula") or 0))
                 (supabase.table("tab_mov")
                  .update({"folha_tipo": "R", "origem": "M"})
                  .in_("id", [int(m["id"]) for m in _mov_n]).execute())
@@ -9883,6 +10029,15 @@ def _calc_rescisao_nucleo(body, sim=None):
                                ano_mes=anomes, matricula=int(m.get("matricula") or 0))
             except Exception as e:
                 return (f"Erro ao transferir as verbas para a rescisão: {e}", [], {})
+        # O cálculo da folha feito com a pessoa ainda ativa também sai da folha N.
+        for _c_d in demitidos:
+            if str(_c_d.get("datarescisao") or "")[:6] != anomes:
+                continue
+            try:
+                _desligado_limpar_folha_n(id_cliente, id_empresa, anomes,
+                                          int(_c_d.get("matricula") or 0))
+            except Exception as e:
+                return (f"Erro ao limpar a folha normal do desligado: {e}", [], {})
 
     # Verbas manuais (origem='M') da rescisão do mês, por matrícula. Não são
     # apagadas pelo recálculo; aqui entram nas bases (INSS/IRRF/FGTS) e totais.
@@ -9915,6 +10070,49 @@ def _calc_rescisao_nucleo(body, sim=None):
             _linhas_man = []
     for row in _linhas_man:
         manual_mov.setdefault(int(row.get("matricula") or 0), []).append(row)
+
+    # Adiantamento quinzenal: mesma regra da folha (ETAPA 1140). As 161-164 são o
+    # registro do que foi pago e ficam na rescisão como tal; quem desconta é a
+    # 160, gerada no cálculo. A 160 digitada é o mesmo desconto e não soma. Sem
+    # 161-164, a 160 digitada segue valendo sozinha.
+    # Na simulação nada foi transferido: o adiantamento ainda está na folha N.
+    _adto_n = {}
+    if sim:
+        try:
+            _qa = (supabase.table("tab_mov")
+                   .select("matricula, valor")
+                   .eq("id_empresa", id_empresa).eq("folha", folha_int)
+                   .eq("folha_tipo", "N").eq("situacao", "A")
+                   .in_("cod_verba", VERBAS_ADTO_QUINZENAL)
+                   .in_("matricula", [int(c.get("matricula") or 0) for c in demitidos]))
+            if id_cliente:
+                _qa = _qa.eq("id_cliente", id_cliente)
+            for _r_a in (_qa.execute().data or []):
+                _m_a = int(_r_a.get("matricula") or 0)
+                _adto_n[_m_a] = _adto_n.get(_m_a, 0) + int(_r_a.get("valor") or 0)
+        except Exception as e_ad:
+            return (f"Erro ao ler o adiantamento da folha normal: {str(e_ad)[:150]}", [], {})
+    _adto_resc = {}
+    for _m_a in set(manual_mov) | set(_adto_n):
+        _ls_a = manual_mov.get(_m_a, [])
+        _v_a = _adto_n.get(_m_a) or sum(int(r.get("valor") or 0) for r in _ls_a
+                                        if int(r.get("cod_verba") or 0) in VERBAS_ADTO_QUINZENAL)
+        if not _v_a:
+            continue
+        _adto_resc[_m_a] = _v_a
+        manual_mov[_m_a] = [r for r in _ls_a if int(r.get("cod_verba") or 0)
+                            not in (160, *VERBAS_ADTO_QUINZENAL)]
+        if not sim:
+            for r in _ls_a:
+                if int(r.get("cod_verba") or 0) == 160 and r.get("id"):
+                    try:
+                        supabase.table("tab_mov").delete().eq("id", int(r["id"])).execute()
+                        gravar_log("CALC_RES",
+                                   f"Verba 0160 digitada ({_fmt_brl(int(r.get('valor') or 0))}) "
+                                   "apagada: o desconto vem das verbas 0161-0164",
+                                   ano_mes=anomes, matricula=_m_a)
+                    except Exception as e_ad:
+                        return (f"Erro ao ajustar a verba 0160: {str(e_ad)[:150]}", [], {})
 
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
 
@@ -10594,6 +10792,14 @@ def _calc_rescisao_nucleo(body, sim=None):
                                 "unid": unid_m, "qtd": qtd_m, "det": det_m,
                                 "inc": "+".join(incs) if incs else "—"})
 
+        adto_resc = _adto_resc.get(mat, 0)
+        if adto_resc:
+            man_desc += adto_resc
+            manuais_det.append({"cod": 160, "dsc": _rubr_desc.get(160, "Verba 0160"),
+                                "tp": "D", "val": adto_resc, "unid": "V", "qtd": 0,
+                                "det": f"Adiantamento pago (verbas 0161-0164): {_fmt_brl(adto_resc)}",
+                                "inc": "—"})
+
         # ── Plano de saúde por faixa de idade (ETAPA 3075) ──
         # Desktop (Calculo_Plano_Saude, RESCISAO_CALCULAR): o valor da faixa
         # proporcional ao dia do desligamento sobre os dias do mes. A verba
@@ -10769,6 +10975,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         recs += [{**base_mov, **_p} for _p in plano_recs if _p["valor"]]
         if vt_desc:
             recs.append({**base_mov, "cod_verba": VT_VERBA, "qtd": 0, "valor": vt_desc})
+        if adto_resc:
+            recs.append({**base_mov, "cod_verba": 160, "qtd": 0, "valor": adto_resc})
         if recs and not sim:
             try:
                 supabase.table("tab_mov").insert(recs).execute()
@@ -11943,7 +12151,7 @@ def trct_pdf(matricula):
              .eq("folha", folha_int).eq("folha_tipo", "R").eq("situacao", "A"))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        movs = q.execute().data or []
+        movs = _resc_sem_adto_duplo(q.execute().data or [])
     except Exception:
         movs = []
     if not movs:
@@ -44071,6 +44279,7 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
     com recibo) = codRubr CRU + ideTabRubr = raiz do CNPJ (ver bloco detVerbas).
     Mesma convenção já aplicada no S-1200 (_gerar_xml_s1200).
     """
+    mov_items = _resc_sem_adto_duplo(mov_items)
     import re
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
@@ -44284,6 +44493,7 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
         manda verbas; e o dmDev e ideDmDev + ideEstabLot direto: sem codCateg
         e sem infoPerApur (esse grupo e do S-2299).
     """
+    mov_items = _resc_sem_adto_duplo(mov_items)
     import re
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
@@ -59020,7 +59230,8 @@ def _mats_de_outra_empresa(id_empresa, anomes, id_cliente=None):
     return fora
 
 
-def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat", cnpj_empresa=""):
+def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat", cnpj_empresa="",
+                           com_demitidos=False):
     _cnpj_dig = ''.join(c for c in cnpj_empresa if c.isdigit())
     def _clean_fil(v):
         raw = str(v or "").strip()
@@ -59087,6 +59298,11 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     except Exception:
         pass
 
+    # So' no relatorio: a Analise de Custo e a Relacao de Liquidos tambem leem
+    # daqui, e la' uma linha zerada nao tem o que somar.
+    _dem_mes = (_demitidos_do_mes_folha(id_empresa, anomes)
+                if com_demitidos and folha_tipo_mov == "N" else {})
+
     func_info = {}
     try:
         r = (supabase.table("tab_cad")
@@ -59120,7 +59336,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     # Antes esta busca só rodava com `not func_info`, ou seja, quando NENHUM
     # ativo tinha sido lido — numa empresa com um ativo sequer ela nunca
     # acontecia, e é justamente aí que mora o desligado no meio da lista.
-    _sem_nome = [m for m in (mov_data or {}) if m not in func_info]
+    _sem_nome = [m for m in set(mov_data) | set(_dem_mes) if m not in func_info]
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
@@ -59170,11 +59386,15 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                  if folha_tipo_mov == "1" else {})
 
     cc_groups = {}
-    for mat in sorted(mov_data.keys()):
+    for mat in sorted(set(mov_data) | set(_dem_mes)):
+        # Desligado no mes: liquido zero e a linha DEMISSAO. Verba que tenha
+        # ficado na folha N dele nao entra nos totais e aparece como aviso.
+        _demissao = _dem_mes.get(mat, "")
+        _aviso_n  = bool(_demissao and mov_data.get(mat))
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
                                   "funcao":"—","cc":"000","filial":""})
         agg = {}
-        for v in mov_data[mat]:
+        for v in ([] if _demissao else mov_data[mat]):
             cod = int(v.get("cod_verba") or 0)
             val = int(v.get("valor")     or 0)
             qtd = int(v.get("qtd")       or 0)
@@ -59204,7 +59424,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         adiant_desc_val = sum(agg.get(c, {}).get("val", 0)
                               for c in VERBAS_DESC_ADIANTAMENTO)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = irrf_basetabela.get(mat, 0)
+        base_irrf = 0 if _demissao else irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
@@ -59239,6 +59459,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
             "dtadm":fi["dtadm"], "sal":fi["sal"], "filial":fi["filial"],
             "verbas":verbas, "verbas_info":verbas_info,
             "adiant_list": adiant_list,
+            "demissao":_demissao, "aviso_n":_aviso_n,
             "prov":tot_prov, "desc":tot_desc, "liq":liquido,
             "b_inss":base_inss, "b_irrf":base_irrf, "b_fgts":base_fgts, "fgts":fgts_val,
             # Retidos e categoria — a Análise de Custo precisa deles em número,
@@ -59285,6 +59506,8 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
             "cc_liq_fmt":  _fmt_brl(cc_liq),
             "funcs": [{
                 "mat":        f"{f['mat']:06d}",
+                "demissao":   f["demissao"],
+                "aviso_n":    f["aviso_n"],
                 "nome":       f["nome"],
                 "funcao":     f["funcao"],
                 "dtadm_fmt":  _fdt(f["dtadm"]),
@@ -59367,7 +59590,8 @@ def relatorio_folha():
     from flask import request as _req
     ordem = _req.args.get("ordem") or _get_pref("ordem_rel", "mat")
     cnpj_empresa = str(session.get("cnpj_empresa") or "")
-    d = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem=ordem, cnpj_empresa=cnpj_empresa)
+    d = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem=ordem, cnpj_empresa=cnpj_empresa,
+                               com_demitidos=True)
     return render_template(
         "F10_Rel_Folha_Preview.html",
         versao  = ler_versao(),
@@ -59504,6 +59728,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     except Exception:
         pass
 
+    _dem_mes = (_demitidos_do_mes_folha(id_empresa, anomes)
+                if folha_tipo_mov == "N" else {})
+
     func_info = {}
     _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg"
     try:
@@ -59536,7 +59763,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     # sequer ela nunca acontecia, e e' justamente ai que mora o desligado no
     # meio da lista, saindo como "Matr. 000002" e sem funcao nem centro de
     # custo. Mesmo caso do GENILDO SOARES em 08/2026 na empresa 39.
-    _sem_nome = [m for m in (mov_data or {}) if m not in func_info]
+    _sem_nome = [m for m in set(mov_data) | set(_dem_mes) if m not in func_info]
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
@@ -59588,11 +59815,15 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     # ── MONTA POR CC ──────────────────────────────────────────────
     cc_groups = {}
-    for mat in sorted(mov_data.keys()):
+    for mat in sorted(set(mov_data) | set(_dem_mes)):
+        # Desligado no mes: liquido zero e a linha DEMISSAO. Verba que tenha
+        # ficado na folha N dele nao entra nos totais e aparece como aviso.
+        _demissao = _dem_mes.get(mat, "")
+        _aviso_n  = bool(_demissao and mov_data.get(mat))
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
                                   "unid":"M","funcao":"—","cc":"000","filial":""})
         agg = {}
-        for v in mov_data[mat]:
+        for v in ([] if _demissao else mov_data[mat]):
             cod = int(v.get("cod_verba") or 0)
             val = int(v.get("valor")     or 0)
             qtd = int(v.get("qtd")       or 0)
@@ -59614,7 +59845,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = irrf_basetabela.get(mat, 0)
+        base_irrf = 0 if _demissao else irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
@@ -59649,6 +59880,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             "dtadm":fi["dtadm"],"sal":fi["sal"],"unid":fi["unid"],"filial":fi["filial"],
             "verbas":verbas,"verbas_info":verbas_info,
             "adiant_list": adiant_list,
+            "demissao":_demissao, "aviso_n":_aviso_n,
             "prov":tot_prov,"desc":tot_desc,"liq":liquido,
             "b_inss":base_inss,"b_irrf":base_irrf,"b_fgts":base_fgts,"fgts":fgts_val,
         })
@@ -59829,7 +60061,22 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 ("LEFTPADDING",   (0,0),(-1,-1), 6),
             ]))
 
-            elementos = [fhdr1, fhdr2, v_tbl]
+            elementos = [fhdr1, fhdr2]
+            if func.get("demissao"):
+                _dem_txt = f"<b>DEMISSÃO em {func['demissao']}</b>"
+                if func.get("aviso_n"):
+                    _dem_txt += "   —   Há verbas na folha normal: verificar"
+                dem_tbl = Table([[Paragraph(_dem_txt, _st("dem", fontName="Helvetica", fontSize=7,
+                                                          textColor=colors.HexColor("#991b1b")))]],
+                                colWidths=[W])
+                dem_tbl.setStyle(TableStyle([
+                    ("BACKGROUND",    (0,0),(-1,-1), colors.HexColor("#fef2f2")),
+                    ("TOPPADDING",    (0,0),(-1,-1), 2),
+                    ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+                    ("LEFTPADDING",   (0,0),(-1,-1), 6),
+                ]))
+                elementos.append(dem_tbl)
+            elementos.append(v_tbl)
 
             # Adiantamento Quinzenal (verbas 161-164) — acima das informativas
             if func.get("adiant_list"):
@@ -62404,7 +62651,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
              .eq("id_empresa", id_empresa)
              .eq("situacao",   "A")
              .eq("folha",      int(anomes))
-             .eq("folha_tipo", folha_tipo_mov)
+             .in_("folha_tipo", ["N", "R"] if folha_tipo_mov == "N" else [folha_tipo_mov])
              .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
@@ -62777,7 +63024,7 @@ def recibo_adiantamento():
              .eq("id_empresa", id_empresa)
              .eq("situacao",   "A")
              .eq("folha",      int(anomes))
-             .eq("folha_tipo", folha_tipo_mov)
+             .in_("folha_tipo", ["N", "R"] if folha_tipo_mov == "N" else [folha_tipo_mov])
              .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
@@ -62870,7 +63117,7 @@ def recibo_adiantamento_pdf():
                  .eq("id_empresa", id_empresa)
                  .eq("situacao",   "A")
                  .eq("folha",      int(anomes))
-                 .eq("folha_tipo", folha_tipo_mov)
+                 .in_("folha_tipo", ["N", "R"] if folha_tipo_mov == "N" else [folha_tipo_mov])
                  .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
             if id_cliente:
                 q = q.eq("id_cliente", id_cliente)
@@ -77864,6 +78111,7 @@ def api_calcular_adiantamento():
                       .select("id")
                       .eq("id_empresa", id_empresa)
                       .eq("folha",      folha_int)
+                      .eq("folha_tipo", folha_tipo)
                       .eq("situacao",   "A")
                       .eq("cod_verba",  verba_usar)
                       .execute())
@@ -77873,6 +78121,7 @@ def api_calcular_adiantamento():
                  .update({"situacao": "D"})
                  .eq("id_empresa", id_empresa)
                  .eq("folha",      folha_int)
+                 .eq("folha_tipo", folha_tipo)
                  .eq("situacao",   "A")
                  .eq("cod_verba",  verba_usar)
                  .execute())

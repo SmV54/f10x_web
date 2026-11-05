@@ -117,6 +117,8 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
   border-bottom: 1px solid var(--border);
 }
 .func-det span { margin-right: 18px; }
+.func-demissao { background: #fef2f2; color: #991b1b; padding: 5px 14px; font-size: 11px; border-bottom: 1px solid var(--border); }
+.func-demissao strong { margin-right: 18px; }
 .func-det span::before { content: ''; }
 
 /* Tabela de verbas */
@@ -292,6 +294,10 @@ function mudarOrdem(v) {
       <span>Salário: <strong>{{ f.sal_fmt }}</strong></span>
       {% if f.filial %}<span>Filial: <strong>{{ f.filial }}</strong></span>{% endif %}
     </div>
+
+    {% if f.demissao %}
+    <div class="func-demissao"><strong>DEMISSÃO em {{ f.demissao }}</strong>{% if f.aviso_n %}Há verbas na folha normal: verificar{% endif %}</div>
+    {% endif %}
 
     <!-- Verbas -->
     <table class="tbl-verbas">
