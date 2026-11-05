@@ -448,11 +448,14 @@ async function fecharFolha(btn) {
     clearInterval(animTimer);
 
     bar.style.width      = '100%';
-    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
+    bar.style.background = data.ok ? '#00a651' : ((data.aguardando || data.bloqueado) ? '#f97316' : '#ef4444');
 
     if (data.ok) {
       lbl.textContent = 'Enviado — Recibo: ' + (data.nr_rec || '');
       _adicionarHistorico(data.id_esocial, anoMesRaw, 'E', data.nr_rec || '');
+      btn.disabled = false;
+    } else if (data.bloqueado) {
+      lbl.textContent = data.msg;
       btn.disabled = false;
     } else if (data.aguardando) {
       lbl.textContent = data.msg || 'Aguardando processamento…';

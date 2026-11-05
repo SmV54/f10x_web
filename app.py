@@ -46321,6 +46321,10 @@ def api_esocial_reconsultar_generico():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    # S-1299 pode ter varios lotes no governo: a Fila usa a mesma consulta da tela.
+    if str(r_es.data[0].get("layout") or "") == "1299":
+        return api_esocial_s1299_reconsultar()
+
     _params_raw = ""
     protocolo_envio = ""
     if obs.startswith("AGUARDANDO:"):
@@ -50172,6 +50176,159 @@ def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, evt_remun, evt_pgtos, tpAmb
 # =========================================================
 # eSocial S-1299 — TELA
 # =========================================================
+# S-1299: um mesmo periodo pode ter varios lotes no governo. O registro da
+# tab_esocial guarda so o protocolo do ultimo, e cada reenvio trocava esse
+# protocolo: se um lote antigo fechasse a folha, ninguem perguntava por ele, e o
+# lote novo voltava com erro numa folha ja fechada. Empresa 70, 04-05/11/2026:
+# 9 lotes em processamento. Os protocolos vem do _5_resposta.xml do Storage, que
+# ja existe para todo envio; assim os lotes antigos tambem entram, sem campo novo.
+_S1299_HORAS_BLOQUEIO   = 24
+_S1299_CONSULTA_SEGUNDOS = 20   # teto para nao estourar o tempo do gateway
+
+
+def _s1299_protocolos_periodo(es):
+    """Protocolos dos lotes do periodo do registro, do mais antigo ao mais novo.
+
+    Lote de antes da ultima reabertura (S-1298 com recibo) fica de fora: ele
+    devolveria o recibo do fechamento que ja foi desfeito.
+    """
+    id_empresa = es.get("id_empresa")
+    ano_mes    = str(es.get("ano_mes") or "")
+    folha_tp   = str(es.get("folha_tipo") or "N")
+    ind_apur   = "2" if folha_tp == "1" else "1"
+
+    corte = ""
+    try:
+        r = (supabase.table("tab_esocial")
+             .select("data_grava, hora_grava")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1298")
+             .eq("ano_mes", int(ano_mes))
+             .eq("folha_tipo", folha_tp)
+             .not_.is_("recibo", "null")
+             .neq("recibo", "")
+             .order("data_grava", desc=True)
+             .order("hora_grava", desc=True)
+             .limit(1).execute())
+        if r.data:
+            corte = (str(r.data[0].get("data_grava") or "").strip()
+                     + str(r.data[0].get("hora_grava") or "").strip())
+    except Exception as e:
+        print(f"[s1299 lotes] corte S-1298: {e}")
+
+    hoje = _agora_brasilia()
+    d0   = str(es.get("data_cad") or "").strip()
+    try:
+        ano, mes = int(d0[:4]), int(d0[4:6])
+        if not 1 <= mes <= 12:
+            raise ValueError
+    except ValueError:
+        ano, mes = hoje.year, hoje.month
+
+    padrao = re.compile(rf"^S1299_{re.escape(ano_mes)}_(\d{{8}})_(\d{{6}})_5_resposta\.xml$")
+    achados = []       # (carimbo, pasta, prefixo do arquivo)
+    while (ano, mes) <= (hoje.year, hoje.month):
+        pasta = _xml_dir_rel(id_empresa, datetime(ano, mes, 1), es.get("id_cliente"))
+        for item in _storage_listar(pasta):
+            m = padrao.match(item.get("name") or "")
+            if m and (m.group(1) + m.group(2)[:4]) >= corte:
+                prefixo = item["name"][:-len("_5_resposta.xml")]
+                achados.append((m.group(1) + m.group(2), pasta, prefixo))
+        ano, mes = (ano + 1, 1) if mes == 12 else (ano, mes + 1)
+    achados.sort()
+
+    caminhos = []
+    for _, pasta, prefixo in achados:
+        caminhos += [f"{pasta}/{prefixo}_5_resposta.xml", f"{pasta}/{prefixo}_1_evento.xml"]
+    textos = _storage_baixar_varios(caminhos) if caminhos else {}
+
+    protocolos = []
+    for _, pasta, prefixo in achados:
+        evento = textos.get(f"{pasta}/{prefixo}_1_evento.xml") or ""
+        m_ind  = re.search(r"<indApuracao>(\d)</indApuracao>", evento)
+        if m_ind and m_ind.group(1) != ind_apur:
+            continue    # 13o e folha mensal de dezembro tem o mesmo ano_mes
+        resposta = textos.get(f"{pasta}/{prefixo}_5_resposta.xml") or ""
+        m_prot = re.search(r"<protocoloEnvio>([^<]+)</protocoloEnvio>", resposta)
+        if m_prot and m_prot.group(1).strip() not in protocolos:
+            protocolos.append(m_prot.group(1).strip())
+
+    # O protocolo do registro nunca fica de fora, mesmo se o Storage falhar.
+    obs = (es.get("observacao_erro") or "").strip()
+    if obs.startswith("AGUARDANDO:"):
+        atual = obs[len("AGUARDANDO:"):].strip()
+        if atual in protocolos:
+            protocolos.remove(atual)
+        protocolos.append(atual)
+    return protocolos
+
+
+def _s1299_consultar_lotes(protocolos, url_consulta, pfx_bytes, senha_str):
+    """Pergunta ao governo por cada lote; para no primeiro que trouxer recibo.
+
+    Devolve {"recibo", "pendentes", "erro"}. "pendentes" conta lote em
+    processamento, consulta que falhou e lote que ficou fora do tempo: nada
+    disso e resposta final. "erro" e a recusa do lote mais novo.
+    """
+    import time
+    res = {"recibo": "", "pendentes": 0, "erro": ""}
+    inicio = time.monotonic()
+    for pos, protocolo in enumerate(protocolos):
+        if time.monotonic() - inicio > _S1299_CONSULTA_SEGUNDOS:
+            res["pendentes"] += len(protocolos) - pos
+            break
+        try:
+            resp = _http_post_cert(url_consulta, _soap_consultar(protocolo),
+                                   pfx_bytes, senha_str, _SA_CONSULTAR)
+            resultado = _extrair_resultado_consulta(resp)
+        except Exception as e:
+            print(f"[s1299 lotes] consulta {protocolo}: {e}")
+            res["pendentes"] += 1
+            continue
+        cd_resp = resultado.get("cdResposta", "")
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            if ev0.get("nrRec") and ev0.get("cdResp", "") in ("", "201", "202"):
+                res["recibo"] = ev0["nrRec"]
+                return res
+            ocorrs = ev0.get("ocorrs", [])
+            res["erro"] = (" · ".join(ocorrs) if ocorrs
+                           else ev0.get("dscResp") or resultado.get("descResposta", ""))
+        elif cd_resp in ("101", "202"):
+            res["pendentes"] += 1
+        else:
+            res["erro"] = f"Sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+    return res
+
+
+def _s1299_bloqueio_reenvio(id_empresa, ano_mes, folha_tp):
+    """Registro do periodo que esta Aguardando, e quando o reenvio fica liberado.
+
+    Devolve (registro, liberado_em), ou (None, None) se nao ha lote aguardando.
+    """
+    r = (supabase.table("tab_esocial")
+         .select("*")
+         .eq("id_empresa", id_empresa)
+         .eq("layout", "1299")
+         .eq("ano_mes", int(ano_mes))
+         .eq("folha_tipo", folha_tp)
+         .like("observacao_erro", "AGUARDANDO:%")
+         .order("data_grava", desc=True)
+         .order("hora_grava", desc=True)
+         .limit(1).execute())
+    if not r.data:
+        return None, None
+    es = r.data[0]
+    try:
+        enviado = datetime.strptime(str(es.get("data_grava") or "").strip()
+                                    + str(es.get("hora_grava") or "").strip(), "%Y%m%d%H%M")
+    except ValueError:
+        # Sem data de envio nao ha como contar o prazo; prender a empresa
+        # para sempre seria pior do que deixar reenviar.
+        return es, datetime.min
+    return es, enviado + timedelta(hours=_S1299_HORAS_BLOQUEIO)
+
+
 @app.route("/esocial_s1299")
 def esocial_s1299():
     if not session.get("logado"):
@@ -50341,6 +50498,20 @@ def api_esocial_s1299_enviar():
     folha_tp     = "1" if ind_apuracao == "2" else "N"
     id_cliente   = session.get("id_cliente")
 
+    # Lote ainda no governo: reenviar so aumenta a fila e troca o protocolo.
+    # Se a checagem falhar, nao envia: e o erro menos caro dos dois.
+    try:
+        es_aguard, liberado_em = _s1299_bloqueio_reenvio(id_empresa, ano_mes, folha_tp)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao verificar remessa anterior: {e}"})
+    if es_aguard and agora < liberado_em:
+        return jsonify({
+            "ok": False, "bloqueado": True, "id_esocial": es_aguard["id_esocial"],
+            "msg": ("Já existe uma remessa deste período aguardando o retorno do eSocial. "
+                    "Um novo envio não acelera o processamento. Use o botão Re-consultar. "
+                    f"Novo envio liberado em {liberado_em.strftime('%d/%m/%Y às %H:%M')}."),
+        })
+
     # Flags de eventos: sem movimento → ambos N; senão usa o que veio do formulário
     sem_mov = (ind_exist_info == "N")
     if sem_mov:
@@ -50427,6 +50598,24 @@ def api_esocial_s1299_enviar():
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
+
+    # Prazo do bloqueio vencido: antes de reenviar, confere se algum lote antigo
+    # ja fechou a folha. Com recibo, nao ha o que enviar.
+    if es_aguard:
+        _, _url_cons = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+        _lotes = _s1299_consultar_lotes(_s1299_protocolos_periodo(es_aguard),
+                                        _url_cons, pfx_bytes, senha_str)
+        if _lotes["recibo"]:
+            supabase.table("tab_esocial").update(
+                {"recibo": _lotes["recibo"], "observacao_erro": ""})\
+                .eq("id_esocial", es_aguard["id_esocial"]).eq("id_empresa", id_empresa).execute()
+            gravar_log("ESOCIAL", f"S-1299 recibo de lote anterior: id={es_aguard['id_esocial']} "
+                                  f"nrRec={_lotes['recibo']}; novo envio cancelado")
+            return jsonify({
+                "ok": True, "aguardando": False, "nr_rec": _lotes["recibo"],
+                "id_esocial": es_aguard["id_esocial"],
+                "msg": f"A remessa anterior já foi processada. Recibo: {_lotes['recibo']}",
+            })
 
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
@@ -50595,8 +50784,6 @@ def api_esocial_s1299_reconsultar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
-    import time
-
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
     data       = request.get_json(force=True) or {}
@@ -50639,41 +50826,15 @@ def api_esocial_s1299_reconsultar():
     senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
 
-    recibo_final = ""
-    obs_erro     = ""
-    cd_resp      = ""
+    protocolos = _s1299_protocolos_periodo(es)
+    lotes = _s1299_consultar_lotes(protocolos, url_consulta, pfx_bytes, senha_str)
+    recibo_final = lotes["recibo"]
+    # Recusa so vale como resposta quando nenhum lote pode mais fechar a folha.
+    aguardando = not recibo_final and lotes["pendentes"] > 0
+    obs_erro   = "" if (recibo_final or aguardando) else lotes["erro"]
+    if not recibo_final and not aguardando and not obs_erro:
+        obs_erro = "Nenhum lote retornou recibo."
 
-    for tentativa in range(3):
-        if tentativa:
-            time.sleep(10)
-        soap_cons = _soap_consultar(protocolo)
-        try:
-            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
-        except Exception as e:
-            obs_erro = f"Erro na consulta: {e}"
-            break
-
-        try:
-            resultado = _extrair_resultado_consulta(resp_cons)
-        except Exception as e:
-            obs_erro = f"Erro ao analisar: {e}"
-            break
-
-        cd_resp = resultado.get("cdResposta", "")
-        if cd_resp in ("101", "202"):
-            continue
-
-        if resultado["eventos"]:
-            ev0 = resultado["eventos"][0]
-            recibo_final = ev0.get("nrRec", "")
-            if ev0.get("cdResp", "") not in ("", "201"):
-                ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
-        elif not recibo_final:
-            obs_erro = f"Sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
-        break
-
-    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
     upd = {"recibo": recibo_final}
     if aguardando:
         upd["observacao_erro"] = f"AGUARDANDO:{protocolo}"
@@ -50685,16 +50846,21 @@ def api_esocial_s1299_reconsultar():
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
     gravar_log("ESOCIAL",
-               f"S-1299 reconsulta: id={id_reg} nrRec={recibo_final} cd={cd_resp}")
+               f"S-1299 reconsulta: id={id_reg} lotes={len(protocolos)} "
+               f"pendentes={lotes['pendentes']} nrRec={recibo_final}")
 
-    ok = bool(recibo_final) and not obs_erro and not aguardando
+    ok = bool(recibo_final)
+    msg_aguard = ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". '
+                  'É indispensável checar o retorno.')
+    if lotes["pendentes"] > 1:
+        msg_aguard += f" Lotes em aberto: {lotes['pendentes']}."
     return jsonify({
         "ok":         ok,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
-        "cd_resp":    cd_resp,
-        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
-                else obs_erro or f"Recibo: {recibo_final}"),
+        "lotes":      len(protocolos),
+        "pendentes":  lotes["pendentes"],
+        "msg": (msg_aguard if aguardando else obs_erro or f"Recibo: {recibo_final}"),
     })
 
 

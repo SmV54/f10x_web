@@ -935,9 +935,14 @@ async function _enviarFila(btn, forcar) {
     const newId = data.id_esocial || id;
 
     bar.style.width = '100%';
-    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
+    bar.style.background = data.ok ? '#00a651' : ((data.aguardando || data.bloqueado) ? '#f97316' : '#ef4444');
 
-    if (data.ok) {
+    if (data.bloqueado) {
+      // Nao e erro: ja ha remessa no governo, e a situacao da linha nao muda.
+      lbl.textContent = data.msg;
+      btn.disabled    = false;
+      btn.textContent = '▶ Enviar';
+    } else if (data.ok) {
       lbl.textContent = 'Enviado — Recibo: ' + (data.nr_rec || '');
       sit.className   = 'sit-badge sit-enviado';
       sit.textContent = 'Enviado';
