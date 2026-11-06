@@ -280,6 +280,11 @@ tr:hover td { background: #f8fafc; }
     <span class="dtpgto-label">&#128197; Data de Pagamento:</span>
     <input type="date" class="dtpgto-input" id="inputDtPgto" value="{{ dtpgto_default }}">
     <span class="dtpgto-nota">Informe a data em que o salário foi / será creditado ao funcionário (dtPgto do S-1210).</span>
+    {% if mostra_dt_adto %}
+    <span class="dtpgto-label" style="margin-left:14px;">&#128197; Data do Adiantamento:</span>
+    <input type="date" class="dtpgto-input" id="inputDtPgtoAdto" value="{{ dtpgto_adto_default }}">
+    <span class="dtpgto-nota">Pagamento do adiantamento quinzenal (verbas 0161-0164), que vai no S-1210 com data própria.</span>
+    {% endif %}
   </div>
 
   {% set total_pendentes = contagens.P + contagens.X %}
@@ -587,7 +592,8 @@ async function _enviar(id, btn, suppressBanner) {
     const r = await fetch('/api/esocial_s1210_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, dtPgto: dtPgto }),
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, dtPgto: dtPgto,
+                             dtPgtoAdto: (document.getElementById('inputDtPgtoAdto') || {}).value || '' }),
     });
     const data = await lerRespostaJson(r);
 

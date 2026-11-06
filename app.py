@@ -587,7 +587,9 @@ def _fmt_cod_rubr(c, ftipo):
       R = Rescisão          -> "-RES"
       demais (N)            -> "-FOL"
     """
-    sufixo = {'F': 'FER', '1': '13S', 'A': '13S', 'R': 'RES'}.get(str(ftipo), 'FOL')
+    # Q = demonstrativo do adiantamento quinzenal (ver _adto_dmdev_proprio)
+    sufixo = {'F': 'FER', '1': '13S', 'A': '13S', 'R': 'RES',
+              'Q': 'ADT'}.get(str(ftipo), 'FOL')
     s = str(c or '').strip()
     try:
         return f"{int(s):04d}-{sufixo}"
@@ -38383,7 +38385,48 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
 # por trabalhador dentro do evento, e o S-1210 referencia exatamente este valor.
 # Padrão do legado: matrícula 6 dígitos + sufixo de 2. "00" (folha normal) é o
 # que já estava em produção — NÃO mudar, senão os S-1210 antigos deixam de casar.
-_IDE_DMDEV_SUF = {"N": "00", "A": "13", "1": "14", "F": "02", "R": "03"}
+_IDE_DMDEV_SUF = {"N": "00", "A": "13", "1": "14", "F": "02", "R": "03",
+                  "Q": "04"}
+
+# ── Adiantamento quinzenal com DEMONSTRATIVO PROPRIO (SMV 06/11/2026) ──────
+# Ate 09/2026 o S-1200 mandava a 161-164 como DESCONTO no demonstrativo mensal
+# e tirava a 160 — a forma do Desktop. A partir da competencia abaixo:
+#   * dmDev do adiantamento (pseudo folha "Q", ideDmDev matricula+"04") com a
+#     161-164 como PROVENTO, natureza 5501 (adiantamento pago);
+#   * dmDev mensal com a 160 como desconto, natureza 9200 (desconto de
+#     adiantamentos), e sem a 161-164;
+#   * S-1210 com um <infoPgto> para cada um, o do adiantamento na data dele.
+# As rubricas do modelo novo sao codigos PROPRIOS no S-1010, "0160-ADT" e
+# "0161-ADT".."0164-ADT", declarados por inclusao. As "-FOL" ja declaradas
+# (desconto, 5501) ficam como estao: os S-1200 de 07 a 09/2026, ja aceitos,
+# continuam apontando para elas, inclusive numa retificacao.
+# Comeca em 10/2026; nas empresas que ja tinham S-1200 de 10/2026 aceito no
+# modelo antigo (9 e 77, em 06/11/2026), em 11/2026 — decisao do usuario.
+ADTO_DMDEV_PROPRIO_DESDE    = 202610
+ADTO_DMDEV_PROPRIO_EXCECOES = {9: 202611, 77: 202611}
+VERBAS_ADTO_DMDEV = (160, 161, 162, 163, 164)   # vao com o sufixo "-ADT"
+
+
+def _adto_dmdev_proprio(id_empresa, ano_mes):
+    """True quando a competencia da empresa ja usa o demonstrativo proprio do
+    adiantamento quinzenal (ver ADTO_DMDEV_PROPRIO_DESDE)."""
+    try:
+        am = int(ano_mes)
+        ini = ADTO_DMDEV_PROPRIO_EXCECOES.get(int(id_empresa or 0),
+                                              ADTO_DMDEV_PROPRIO_DESDE)
+    except (TypeError, ValueError):
+        return False
+    return am >= ini
+
+
+def _dt_pgto_adto_padrao(ano, mes):
+    """Data padrao do pagamento do adiantamento quinzenal: dia 20; sabado e
+    domingo voltam para a sexta."""
+    from datetime import date as _d, timedelta as _td
+    d = _d(int(ano), int(mes), 20)
+    if d.weekday() >= 5:
+        d -= _td(days=d.weekday() - 4)
+    return d
 
 
 def _ide_dm_dev(mat_es, folha_tipo):
@@ -38440,8 +38483,11 @@ _TIPOS_FOLHA_JUNTAS = ("N", "A")
 _TIPOS_PGTO_COMPETENCIA = ("N", "A", "1")
 
 
-def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
-    """Verbas de uma folha, agregadas por cod_verba. [] se a folha não tem nada."""
+def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo,
+                        manter_160=False):
+    """Verbas de uma folha, agregadas por cod_verba. [] se a folha não tem nada.
+    manter_160: nao tira a 160 quando ha 161-164 (modelo do demonstrativo
+    proprio do adiantamento, em que as duas vao, cada uma no seu dmDev)."""
     try:
         # instfinanc/nrdoc: identificam o contrato do empréstimo consignado e
         # viram o grupo <descFolha> do S-1200 nas rubricas de natureza 9253.
@@ -38475,7 +38521,7 @@ def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
         # Sai a 160: e a 161-164 que o sistema sempre mandou nas folhas com
         # adiantamento, todas aceitas. Folha que so tem a 160 (rescisao,
         # adiantamento pago por fora) continua como esta.
-        if any(str(c) in agg for c in VERBAS_ADTO_QUINZENAL):
+        if not manter_160 and any(str(c) in agg for c in VERBAS_ADTO_QUINZENAL):
             agg.pop("160", None)
 
         return [{"cod_verba": k, "valor": v, **emprest.get(k, {})}
@@ -38497,10 +38543,27 @@ def _folhas_da_remessa(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
                  "mov_items": _mov_agregado_folha(id_empresa, id_cliente,
                                                   matricula, ano_mes, ft)}]
     saida = []
+    _adt = _adto_dmdev_proprio(id_empresa, ano_mes)
     for t in _TIPOS_FOLHA_JUNTAS:
-        itens = _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, t)
-        if itens:
-            saida.append({"folha_tipo": t, "mov_items": itens})
+        itens = _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, t,
+                                    manter_160=(_adt and t == "N"))
+        if not itens:
+            continue
+        if _adt and t == "N":
+            # Modelo novo: a 161-164 sai para o dmDev proprio ("Q") e a 160
+            # fica no mensal, as duas com o codigo "-ADT".
+            adto  = [i for i in itens
+                     if int(str(i.get("cod_verba") or 0) or 0) in VERBAS_ADTO_QUINZENAL]
+            resto = [dict(i, sufixo="ADT")
+                     if int(str(i.get("cod_verba") or 0) or 0) == 160 else i
+                     for i in itens
+                     if int(str(i.get("cod_verba") or 0) or 0) not in VERBAS_ADTO_QUINZENAL]
+            if resto:
+                saida.append({"folha_tipo": "N", "mov_items": resto})
+            if adto:
+                saida.append({"folha_tipo": "Q", "mov_items": adto})
+            continue
+        saida.append({"folha_tipo": t, "mov_items": itens})
     # Nenhuma das duas tem movimento: mantém a folha do registro (dmDev zerado).
     return saida or [{"folha_tipo": ft, "mov_items": []}]
 
@@ -38785,6 +38848,11 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
             val = int(item.get('valor') or 0)
             if cod and val != 0:
                 _cod_fmt = _fmt_cod_rubr(cod, ftipo)
+                if item.get('sufixo'):            # 0160-ADT no dmDev mensal
+                    try:
+                        _cod_fmt = f"{int(cod):04d}-{item['sufixo']}"
+                    except ValueError:
+                        pass
                 # <descFolha> — obrigatório nas rubricas de natureza 9253
                 # (Empréstimos Consignados - desconto), do Programa Crédito do
                 # Trabalhador. Sem ele o evento volta com [8] "Grupo 'Informações
@@ -38819,12 +38887,24 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     # rubricas das duas folhas ficam juntas em <remunPerApur>.
     # O SUFIXO do codRubr continua sendo o do tipo de folha de origem — a verba
     # 17 do adiantamento vai "0017-13S", que é como está registrada no S-1010.
-    _ft_princ = str(dmdevs[0].get("folha_tipo") or folha_tipo or "N").upper()
+    #
+    # EXCECAO (SMV 06/11/2026): o adiantamento quinzenal do modelo novo
+    # (pseudo folha "Q", ver _adto_dmdev_proprio) vai num <dmDev> PROPRIO,
+    # com ideDmDev matricula+"04" — o S-1210 paga cada um na sua data.
+    _ft_princ = None
     _itens_todos = ""
+    _itens_adto = ""
     for _dm in dmdevs:
         _ft = str(_dm.get("folha_tipo") or folha_tipo or "N").upper()
+        if _ft == "Q":
+            _itens_adto += _itens_xml(_dm.get("mov_items"), _ft)
+            continue
+        if _ft_princ is None:
+            _ft_princ = _ft
         _itens_todos += _itens_xml(_dm.get("mov_items"), _ft)
-    if not _itens_todos.strip():
+    if _ft_princ is None:
+        _ft_princ = str(folha_tipo or "N").upper()
+    if not _itens_todos.strip() and not _itens_adto.strip():
         # Trabalhador sem movimento: o schema exige ao menos um <itensRemun> e
         # o vrRubr tem que ser maior que zero -- nao ha XML valido. Saia aqui
         # um item 0.00, que o governo recusava com [17] (empresa 53, mat 13).
@@ -38832,20 +38912,29 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
             f"Trabalhador {func.get('matricula')} sem nenhuma verba na folha "
             f"{ano_mes} -- não há S-1200 a enviar.")
 
-    dmdev_xml = f"""
+    _nr_insc_estab = _cnpj_estab_func(func, empresa)
+
+    def _um_dmdev(ide, itens):
+        return f"""
     <dmDev>
-      <ideDmDev>{_ide_dm_dev(mat_es, _ft_princ)}</ideDmDev>
+      <ideDmDev>{ide}</ideDmDev>
       <codCateg>{x(codcateg)}</codCateg>
       <infoPerApur>
         <ideEstabLot>
           <tpInsc>1</tpInsc>
-          <nrInsc>{x(_cnpj_estab_func(func, empresa))}</nrInsc>
+          <nrInsc>{x(_nr_insc_estab)}</nrInsc>
           <codLotacao>{x(cod_lotacao)}</codLotacao>
-          <remunPerApur>{matricula_xml}{ind_simples_xml}{_itens_todos}{info_ag_nocivo_xml}
+          <remunPerApur>{matricula_xml}{ind_simples_xml}{itens}{info_ag_nocivo_xml}
           </remunPerApur>
         </ideEstabLot>
       </infoPerApur>
     </dmDev>"""
+
+    dmdev_xml = ""
+    if _itens_todos.strip():
+        dmdev_xml += _um_dmdev(_ide_dm_dev(mat_es, _ft_princ), _itens_todos)
+    if _itens_adto.strip():
+        dmdev_xml += _um_dmdev(_ide_dm_dev(mat_es, "Q"), _itens_adto)
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtRemun/v_S_01_03_00"
@@ -39162,7 +39251,7 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     # não cria S-1200 para a rescisão). O TSVE (S-2399) é o '3' — decidido no
     # envio pela categoria, via tp_pgto. F='4' fica como estava, fora do
     # escopo, e continua suspeito: férias é apurada em S-1200 (seria 1).
-    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '4', 'R': '2'}
+    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '4', 'R': '2', 'Q': '1'}
 
     # Retificação (mesma regra do S-1200): reenviar um evtPgtos já aceito como
     # original dá erro [106]. indRetif=2 exige o <nrRecibo> do evento original.
@@ -39195,9 +39284,13 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     _grupos    = []          # [(folha_tipo_representante, vrLiq_do_grupo)]
     _ft_juntas = None
     _vr_juntas = 0
+    # Data propria por bloco: o adiantamento quinzenal ("Q") vai na data dele.
+    _dt_por_ft = {}
     for _pg in pgtos:
         _t = str(_pg.get("folha_tipo") or folha_tipo or "N").upper()
         _v = int(_pg.get("valor_liquido") or 0)
+        if _pg.get("dtPgto"):
+            _dt_por_ft[_t] = str(_pg["dtPgto"])
         if _t in _TIPOS_FOLHA_JUNTAS:
             if _ft_juntas is None:
                 _ft_juntas = _t          # o ideDmDev é o da 1ª folha, como no S-1200
@@ -39219,7 +39312,7 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
         _ide_dmd_x  = str(ide_dm_dev) if ide_dm_dev else _ide_dm_dev(mat_es, _ft_pgto)
         info_pgto_xml += f"""
       <infoPgto>
-        <dtPgto>{x(dtPgto)}</dtPgto>
+        <dtPgto>{x(_dt_por_ft.get(_ft_pgto) or dtPgto)}</dtPgto>
         <tpPgto>{x(_tp_pgto_x)}</tpPgto>
         <perRef>{_am[:4] if _ft_pgto == '1' else per_apur}</perRef>
         <ideDmDev>{x(_ide_dmd_x)}</ideDmDev>
@@ -40690,12 +40783,16 @@ def api_esocial_s1005_enviar():
 _S1010_SUFIXOS = ("FOL", "FER", "13S", "RES")
 
 
-def _s1010_variantes(rubrica):
-    """Códigos das 4 variantes de uma rubrica: ['0016-FOL', '0016-FER', ...]."""
+def _s1010_variantes(rubrica, variante=None):
+    """Códigos das 4 variantes de uma rubrica: ['0016-FOL', '0016-FER', ...].
+    variante 'ADT' (adiantamento quinzenal com demonstrativo proprio): so
+    '0161-ADT' — e a remessa dessa variante leva so ela."""
     try:
         cod = int(rubrica.get("cod_rubr") or 0)
     except Exception:
         cod = 0
+    if str(variante or "").upper() == "ADT":
+        return [f"{cod:04d}-ADT"]
     return [f"{cod:04d}-{suf}" for suf in _S1010_SUFIXOS]
 
 
@@ -40727,6 +40824,15 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     dsc_rubr  = x((rubrica.get('dsc_rubr') or '')[:100])
     nat_rubr  = str(rubrica.get('es03_nat_rubr') or '').strip()
     tp_rubr   = str(rubrica.get('tp_rubr') or '1').strip()
+    # Rubricas do demonstrativo proprio do adiantamento quinzenal (ver
+    # _adto_dmdev_proprio): 0160-ADT = desconto de adiantamentos (9200),
+    # 0161-ADT..0164-ADT = o adiantamento pago, como PROVENTO (5501). O
+    # tab_rubrica nao muda: o calculo da folha continua igual.
+    if cod_rubr.endswith('-ADT'):
+        if cod_rubr.startswith('0160'):
+            tp_rubr, nat_rubr = '2', '9200'
+        else:
+            tp_rubr, nat_rubr = '1', '5501'
     def _inc(v): s = str(v or '').strip(); return s.zfill(2) if s.isdigit() else '00'
     def _inc_irrf_cod(v):
         # Tabela 21 (IRRF) NÃO tem o código '00' — o "não incide" é '09'.
@@ -41183,7 +41289,7 @@ def api_esocial_s1010_xml():
     xmls = []
     _idx = 0
     for rub in rubricas:
-        for cod_fmt in _s1010_variantes(rub):
+        for cod_fmt in _s1010_variantes(rub, params.get("variante")):
             _idx += 1
             xmls.append(_gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op,
                                                 ini_valid, fim_valid, _idx,
@@ -41348,7 +41454,7 @@ def api_esocial_s1010_enviar():
     xmls_crus = []
     cods_enviados = []
     for rub in rubricas:
-        for cod_fmt in _s1010_variantes(rub):
+        for cod_fmt in _s1010_variantes(rub, params.get("variante")):
             idx = len(xmls_crus) + 1
             try:
                 xml_str = _gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op,
@@ -47968,20 +48074,22 @@ def _s1010_declaradas(id_empresa):
         # O codigo da rubrica vem do PARAMS: a tela /esocial_s1010 NAO preenche
         # a coluna matricula. So os registros antigos, vindos da migracao do
         # Desktop, e que trazem o codigo ali — por isso o fallback.
-        cod, ini = "", ""
+        cod, ini, var = "", "", ""
         obs = str(r.get("observacao_erro") or "").split("|")[0]
         if obs.startswith("PARAMS:"):
             try:
                 _p  = _json.loads(obs[7:])
                 cod = str(_p.get("cod_rubr") or "").strip()
                 ini = str(_p.get("ini") or "")
+                var = str(_p.get("variante") or "").strip().upper()
             except Exception:
                 pass
         if not cod:
             cod = str(r.get("matricula") or "").strip()
         if not cod.isdigit():
             continue
-        cod = str(int(cod))
+        # A remessa da variante "-ADT" declara so ela: chave "161ADT".
+        cod = str(int(cod)) + var
         if cod not in out or (ini and ini < out[cod]):
             out[cod] = ini
     return out
@@ -48230,14 +48338,24 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     if _s1010_check_dispensado(id_empresa, ano_mes):
         return []
     try:
-        mov = _mov_da_folha(id_empresa, ano_mes, folha_tipo, campos="cod_verba")
+        mov = _mov_da_folha(id_empresa, ano_mes, folha_tipo,
+                            campos="cod_verba, folha_tipo")
     except Exception as e:
         print(f"[S1010 check] erro ao ler tab_mov: {e}")
         return []
 
-    usadas = sorted({int(m["cod_verba"]) for m in mov
-                     if str(m.get("cod_verba") or "").strip().isdigit()
-                     and int(m["cod_verba"]) < 9900})
+    # Adiantamento quinzenal com demonstrativo proprio: na folha N as verbas
+    # 160-164 vao com o codigo "-ADT", que e outra rubrica no S-1010.
+    _adt = _adto_dmdev_proprio(id_empresa, ano_mes)
+    usadas = set()
+    for m in mov:
+        _c = str(m.get("cod_verba") or "").strip()
+        if not _c.isdigit() or int(_c) >= 9900:
+            continue
+        _var = ("ADT" if _adt and int(_c) in VERBAS_ADTO_DMDEV
+                and str(m.get("folha_tipo") or "N").upper() == "N" else "")
+        usadas.add((int(_c), _var))
+    usadas = sorted(usadas)
     if not usadas:
         return []
 
@@ -48249,11 +48367,11 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     comp = f"{_am[:4]}-{_am[4:6]}"
 
     faltando = []
-    for cod in usadas:
-        ini = declaradas.get(str(cod))
+    for cod, var in usadas:
+        ini = declaradas.get(str(cod) + var)
         if ini is not None and (not ini or ini <= comp):
             continue
-        faltando.append(cod)
+        faltando.append((cod, var))
     if not faltando:
         return []
 
@@ -48261,12 +48379,20 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     try:
         rb = (supabase.table("tab_rubrica")
               .select("cod_rubr, dsc_rubr")
-              .in_("cod_rubr", faltando)
+              .in_("cod_rubr", sorted({c for c, _v in faltando}))
               .execute().data or [])
         nomes = {int(x["cod_rubr"]): str(x.get("dsc_rubr") or "") for x in rb}
     except Exception:
         pass
-    return [{"cod_rubr": c, "dsc_rubr": nomes.get(c, f"Verba {c:04d}")} for c in faltando]
+    out = []
+    for c, var in faltando:
+        _d = nomes.get(c, f"Verba {c:04d}")
+        if var:
+            out.append({"cod_rubr": c, "variante": var,
+                        "dsc_rubr": f"{_d} (-{var})"})
+        else:
+            out.append({"cod_rubr": c, "dsc_rubr": _d})
+    return out
 
 
 def _lotacoes_folha_sem_s1020(id_empresa, ano_mes, folha_tipo=None):
@@ -48346,17 +48472,19 @@ def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1")
     ja_tem = set()
     try:
         for r in _esocial_rows_layout(id_empresa, "1010", "matricula, observacao_erro"):
-            cod = ""
+            cod, var = "", ""
             obs = str(r.get("observacao_erro") or "").split("|")[0]
             if obs.startswith("PARAMS:"):
                 try:
-                    cod = str(_json.loads(obs[7:]).get("cod_rubr") or "").strip()
+                    _pp = _json.loads(obs[7:])
+                    cod = str(_pp.get("cod_rubr") or "").strip()
+                    var = str(_pp.get("variante") or "").strip().upper()
                 except Exception:
                     cod = ""
             if not cod:
                 cod = str(r.get("matricula") or "").strip()
             if cod.isdigit():
-                ja_tem.add(int(cod))
+                ja_tem.add((int(cod), var))
     except Exception as e:
         # Nao dando para conferir, e melhor nao criar nada do que duplicar.
         print(f"[S1010 auto] falha ao ler remessas existentes: {e}")
@@ -48365,11 +48493,15 @@ def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1")
     agora = _agora_brasilia()
     criadas = 0
     for v in verbas:
-        if int(v["cod_rubr"]) in ja_tem:
+        _var = str(v.get("variante") or "").upper()
+        if (int(v["cod_rubr"]), _var) in ja_tem:
             continue
-        p = _json.dumps({"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
-                         "cod_rubr": int(v["cod_rubr"]),
-                         "dsc_rubr": v["dsc_rubr"]}, ensure_ascii=False)
+        _pd = {"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
+               "cod_rubr": int(v["cod_rubr"]),
+               "dsc_rubr": v["dsc_rubr"]}
+        if _var:
+            _pd["variante"] = _var
+        p = _json.dumps(_pd, ensure_ascii=False)
         try:
             supabase.table("tab_esocial").insert({
                 "id_cliente":      id_cliente,
@@ -49682,12 +49814,23 @@ def esocial_s1210():
         pass
 
     dtpgto_default = ""
+    dtpgto_adto_default = ""
+    mostra_dt_adto = False
     try:
         _ref = f_anomes or (periodos_disp[0]["valor"] if periodos_disp else "")
         if _ref:
             _am2 = str(int(_ref)).zfill(6)
             _yr, _mo = int(_am2[:4]), int(_am2[4:6])
             dtpgto_default = _ultimo_dia_util(_yr, _mo).strftime("%Y-%m-%d")
+            dtpgto_adto_default = _dt_pgto_adto_padrao(_yr, _mo).strftime("%Y-%m-%d")
+            # So aparece na empresa com adiantamento quinzenal no modelo novo.
+            if _adto_dmdev_proprio(_get_id_empresa(), int(_am2)):
+                _qq = (supabase.table("tab_mov").select("id")
+                       .eq("id_empresa", _get_id_empresa()).eq("folha", int(_am2))
+                       .eq("folha_tipo", "N")
+                       .in_("cod_verba", list(VERBAS_ADTO_QUINZENAL))
+                       .limit(1).execute().data)
+                mostra_dt_adto = bool(_qq)
     except Exception:
         pass
 
@@ -49721,6 +49864,8 @@ def esocial_s1210():
         periodos_disp=periodos_disp,
         TP_FOLHA=_TP_FOLHA,
         dtpgto_default=dtpgto_default,
+        dtpgto_adto_default=dtpgto_adto_default,
+        mostra_dt_adto=mostra_dt_adto,
         anomes_atual=anomes_atual,
         folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
@@ -49927,6 +50072,46 @@ def _s1210_enviar_impl():
     _pgtos = [{"folha_tipo": t,
                "valor_liquido": int((_tot_por_folha.get(t) or {}).get("valor_liquido") or 0)}
               for t in _tipos_pgto]
+
+    # Adiantamento quinzenal com demonstrativo proprio (ver
+    # _adto_dmdev_proprio): o pagamento dele e outro <infoPgto>, com o valor
+    # das 161-164 da folha N e a data do adiantamento (tela; senao dia 20).
+    # O liquido da folha N ja vem com a 160 descontada.
+    if (not is_resc and _ft_row in _TIPOS_FOLHA_JUNTAS
+            and _adto_dmdev_proprio(id_empresa, ano_mes)):
+        try:
+            _qa = (supabase.table("tab_mov").select("cod_verba, valor")
+                   .eq("id_empresa", id_empresa).eq("matricula", matricula)
+                   .eq("folha", int(ano_mes)).eq("folha_tipo", "N")
+                   .eq("situacao", "A")
+                   .in_("cod_verba", list(VERBAS_ADTO_QUINZENAL)))
+            if session.get("id_cliente"):
+                _qa = _qa.eq("id_cliente", session.get("id_cliente"))
+            _vr_adto = sum(int(r.get("valor") or 0) for r in (_qa.execute().data or []))
+        except Exception as e:
+            return jsonify({"ok": False, "msg": f"Erro ao ler o adiantamento quinzenal: {e}"})
+        if _vr_adto > 0:
+            _dt_adto_tela = str(data.get("dtPgtoAdto") or "").strip()
+            if _dt_adto_tela:
+                try:
+                    from datetime import date as _date_cls2
+                    _da = _date_cls2.fromisoformat(_dt_adto_tela[:10])
+                except Exception:
+                    return jsonify({"ok": False, "msg":
+                        f"Data do adiantamento inválida: {_dt_adto_tela}"})
+                if (_da.year, _da.month) != (_ano, _mes):
+                    return jsonify({"ok": False, "msg":
+                        f"A Data do Adiantamento ({_da.strftime('%d/%m/%Y')}) precisa "
+                        f"estar dentro do período do S-1210 ({_mes:02d}/{_ano})."})
+            else:
+                _da = _dt_pgto_adto_padrao(_ano, _mes)
+            _pgtos.append({"folha_tipo": "Q", "valor_liquido": _vr_adto,
+                           "dtPgto": _da.strftime("%Y-%m-%d")})
+            # Saiu no mes (so a 161 na folha N, sem tab_total): o S-1200 dele
+            # so tem o dmDev do adiantamento, e o <infoPgto> do mensal apontaria
+            # para um demonstrativo que nao existe.
+            if _ft_row not in _tot_por_folha:
+                _pgtos = [pg for pg in _pgtos if pg["folha_tipo"] == "Q"]
 
     # 4a. Dependentes IRRF do funcionario (para <infoIRComplem> no S-1210)
     deps_irrf = []
