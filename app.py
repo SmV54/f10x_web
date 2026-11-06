@@ -62056,6 +62056,12 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                                 "dsc": ri_ad.get("dsc") or f"Verba {cod_ad:04d}",
                                 "val": val_ad})
         adiant_list.sort(key=lambda x: x["cod"])
+        # Um adiantamento so (normalmente a 0161): a linha so repete o valor da
+        # 0160, que ja esta nos descontos — sai. Com dois ou mais (0161 + 0162...)
+        # a linha fica, para o funcionario ver de que se compoe a 0160
+        # (SMV 06/11/2026).
+        if len(adiant_list) == 1:
+            adiant_list = []
 
         all_funcs.append({
             "mat":mat,"nome":fi["nome"],"funcao":fi["funcao"],
