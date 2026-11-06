@@ -13050,7 +13050,7 @@ SUPORTE_TELAS = {
     "/calc_ferias":                               "Ferias",
     "/memoria_ferias":                            "Ferias",
     "/recibo_ferias":                             "Ferias",
-    "/aviso_ferias":                              "Ferias",
+    "/aviso_ferias":                              "Aviso de Ferias",
     "/cad_cancelar_ferias":                       "Ferias",
     "/lista_ferias":                              "Ferias",
     "/rel_ferias_vencidas":                       "Ferias",

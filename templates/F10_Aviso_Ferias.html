@@ -176,7 +176,7 @@ td.aquis { font-size: 11px; color: #64748b; font-family: var(--mono); }
     <div class="pg-header">
         <a class="btn-voltar" href="/menu">&#8592; Menu</a>
         <div>
-            <div class="pg-titulo">📨 Aviso de Férias</div>
+            <div class="pg-titulo">📢 Aviso de Férias</div>
             <div class="pg-subtitulo">
                 {% if anomes_fmt %}Funcionários com férias iniciando em {{ anomes_fmt }}
                 {% else %}Selecione uma Folha Ativa para visualizar{% endif %}
@@ -343,7 +343,7 @@ document.addEventListener('DOMContentLoaded', atualizarSelecao);
 function iniciarTour() {
     const temFunc = !!document.querySelector('.chk-func');
     const passos = [
-        { element: '.topo', popover: { title: '📨 Aviso de Férias',
+        { element: '.topo', popover: { title: '📢 Aviso de Férias',
             description: 'Emite o Aviso de Férias em PDF dos funcionários com férias iniciando no mês da folha ativa: períodos aquisitivo e de gozo, data do retorno, data do pagamento e assinaturas.',
             side: 'bottom', align: 'start' } },
         { element: '#card-lista', popover: { title: '👥 Seleção de funcionários',
