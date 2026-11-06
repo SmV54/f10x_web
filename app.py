@@ -158,7 +158,8 @@ _DESATIVADA_POST_LIBERADO = {
     "/api/usuario/incluir", "/api/usuario/alterar", "/api/usuario/situacao",
     "/incluir_funcao_cliente", "/alterar_funcao_cliente", "/excluir_funcao_cliente",
     "/api/meu_contrato/gravar", "/api/meu_contrato/excluir", "/meu_contrato/previa",
-    "/api/recibo_ferias_pdf", "/simular_ferias_pdf", "/api/simular_rescisao",
+    "/api/recibo_ferias_pdf", "/api/aviso_ferias_pdf",
+    "/simular_ferias_pdf", "/api/simular_rescisao",
     "/api/seguro_desemprego/arquivo",
     "/api/esocial_consulta_tabela", "/api/esocial_verificacao/consultar",
     "/api/esocial_verificacao/upload", "/api/esocial_reconsultar_generico",
@@ -13049,6 +13050,7 @@ SUPORTE_TELAS = {
     "/calc_ferias":                               "Ferias",
     "/memoria_ferias":                            "Ferias",
     "/recibo_ferias":                             "Ferias",
+    "/aviso_ferias":                              "Ferias",
     "/cad_cancelar_ferias":                       "Ferias",
     "/lista_ferias":                              "Ferias",
     "/rel_ferias_vencidas":                       "Ferias",
@@ -67523,6 +67525,326 @@ def api_recibo_ferias_pdf():
     resp = make_response(buf.read())
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = 'inline; filename="Recibo_Ferias.pdf"'
+    return resp
+
+
+# =========================================================
+# AVISO DE FÉRIAS — TELA DE SELEÇÃO
+# =========================================================
+# Mesma regra do Desktop (SR_Imprimir.Imprimir_Ferias_Aviso): entram as férias
+# com início de gozo no mês da folha ativa. A lista é a mesma do Recibo de
+# Férias, mas o aviso não depende do cálculo — basta as férias lançadas.
+@app.route("/aviso_ferias")
+def aviso_ferias():
+    if not session.get("logado"):
+        return redirect("/")
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    funcionarios = []
+    erro_msg     = None
+
+    if not anomes or len(anomes) != 6:
+        erro_msg = "Nenhuma Folha Ativa definida. Selecione um mês/ano antes de continuar."
+    else:
+        try:
+            eventos = (supabase.table("tab_eventos")
+                       .select("matricula, data1i, data1f, ref1, ref2, data2i, data2f")
+                       .eq("id_cliente", id_cliente)
+                       .eq("id_empresa", id_empresa)
+                       .eq("op1", 3)
+                       .gte("data1i", anomes + "01")
+                       .lte("data1i", anomes + "31")
+                       .order("matricula")
+                       .execute().data or [])
+            if eventos:
+                mats = list({e["matricula"] for e in eventos})
+                cads = (supabase.table("tab_cad")
+                        .select("matricula, nome, nomer, codcateg")
+                        .eq("id_cliente", id_cliente)
+                        .eq("id_empresa", id_empresa)
+                        .in_("matricula", mats)
+                        .execute().data or [])
+                nomes = {c["matricula"]: (c.get("nome") or c.get("nomer") or "").strip()
+                         for c in cads}
+                sem_ferias = {c["matricula"] for c in cads
+                              if not _categoria_tem_ferias(c.get("codcateg"))}
+
+                def _f8(s):
+                    s = str(s or "")
+                    return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+                for ev in eventos:
+                    mat = ev["matricula"]
+                    if mat in sem_ferias:
+                        continue
+                    d_i, d_f = _data8(ev.get("data1i")), _data8(ev.get("data1f"))
+                    dias = int(ev.get("ref1") or 0)
+                    if not dias and d_i and d_f:
+                        dias = (d_f - d_i).days + 1
+                    funcionarios.append({
+                        "matricula":  mat,
+                        "mat_fmt":    str(mat).zfill(6),
+                        "nome":       nomes.get(mat, "—"),
+                        "data1i_fmt": _f8(ev.get("data1i")),
+                        "data1f_fmt": _f8(ev.get("data1f")),
+                        "data2i_fmt": _f8(ev.get("data2i")),
+                        "data2f_fmt": _f8(ev.get("data2f")),
+                        "dias":       dias,
+                        "abono":      int(ev.get("ref2") or 0),
+                    })
+        except Exception as e:
+            erro_msg = f"Erro ao consultar férias: {e}"
+
+    anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""
+    return render_template(
+        "F10_Aviso_Ferias.html",
+        empresa      = session.get("empresa_info", ""),
+        nome         = session.get("nome", ""),
+        versao       = ler_versao(),
+        funcionarios = funcionarios,
+        erro_msg     = erro_msg,
+        anomes       = anomes,
+        anomes_fmt   = anomes_fmt,
+    )
+
+
+def _aviso_ferias_data_pgto(d_inicio, voltar_fim_semana):
+    """Data limite do pagamento: 2 dias antes do início do gozo (CLT art. 145).
+
+    Igual ao Desktop: com a opção marcada, sábado volta 2 dias (quinta) e
+    domingo volta 2 dias (sexta)."""
+    d = d_inicio - timedelta(days=2)
+    if voltar_fim_semana and d.weekday() in (5, 6):
+        d = d - timedelta(days=2)
+    return d
+
+
+# =========================================================
+# AVISO DE FÉRIAS — PDF
+# =========================================================
+@app.route("/api/aviso_ferias_pdf", methods=["POST"])
+def api_aviso_ferias_pdf():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+
+    from xml.sax.saxutils import escape as _x
+    from reportlab.platypus import PageBreak, KeepTogether
+
+    data       = request.get_json(force=True) or {}
+    mats_req   = [int(m) for m in data.get("matriculas", [])
+                  if str(m).strip().lstrip("-").isdigit()]
+    voltar_fds = bool(data.get("voltar_fim_semana"))
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    if not anomes or len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa não definida."}), 400
+    if not mats_req:
+        return jsonify({"ok": False, "msg": "Nenhuma matrícula selecionada."}), 400
+
+    try:
+        eventos = (supabase.table("tab_eventos")
+                   .select("matricula, data1i, data1f, ref1, ref2, data2i, data2f")
+                   .eq("id_cliente", id_cliente)
+                   .eq("id_empresa", id_empresa)
+                   .eq("op1", 3)
+                   .gte("data1i", anomes + "01")
+                   .lte("data1i", anomes + "31")
+                   .in_("matricula", mats_req)
+                   .order("matricula")
+                   .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar férias: {e}"}), 500
+    if not eventos:
+        return jsonify({"ok": False, "msg": "Nenhuma férias encontrada neste mês."}), 404
+
+    try:
+        cads = (supabase.table("tab_cad")
+                .select("matricula, nome, nomer, cpf, dtadm, cbofuncao, nmcargo")
+                .eq("id_cliente", id_cliente)
+                .eq("id_empresa", id_empresa)
+                .in_("matricula", list({ev["matricula"] for ev in eventos}))
+                .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"}), 500
+    cad_map = {c["matricula"]: c for c in cads}
+
+    # Função: nome do cargo digitado vence; em branco, o nome da função pelo
+    # CBO (mesma regra da Ficha de Registro e do Contrato de Experiência).
+    _cbos = {str(c.get("cbofuncao") or "").strip() for c in cads
+             if not str(c.get("nmcargo") or "").strip() and c.get("cbofuncao")}
+    funcao_cbo = {}
+    if _cbos:
+        try:
+            for f in (supabase.table("tab_funcao_cli")
+                      .select("cbo_codigo, nome_resumido")
+                      .eq("id_cliente", id_cliente).eq("situacao", "A")
+                      .in_("cbo_codigo", list(_cbos)).execute().data or []):
+                funcao_cbo.setdefault(str(f.get("cbo_codigo") or "").strip(),
+                                      str(f.get("nome_resumido") or "").strip())
+        except Exception:
+            pass
+
+    papel = _empregador_papel(id_cliente, id_empresa)
+
+    def _fd(d):
+        return d.strftime("%d/%m/%Y") if d else "—"
+
+    def _fmt_cpf(s):
+        s = somente_numeros(str(s or ""))
+        return f"{s[:3]}.{s[3:6]}.{s[6:9]}-{s[9:]}" if len(s) == 11 else (s or "—")
+
+    from reportlab.lib.enums import TA_JUSTIFY
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2.2*cm, rightMargin=2.2*cm,
+                            topMargin=1.8*cm, bottomMargin=1.8*cm,
+                            title="Aviso de Férias")
+    LW = A4[0] - 4.4*cm
+    PRETO = colors.black
+    CINZA = colors.HexColor("#555555")
+    BORDA = colors.HexColor("#aaaaaa")
+
+    st_tit  = ParagraphStyle("at", fontName="Helvetica-Bold", fontSize=14,
+                             alignment=TA_CENTER, spaceBefore=6, spaceAfter=16)
+    st_emp  = ParagraphStyle("ae", fontName="Helvetica-Bold", fontSize=10,
+                             alignment=TA_CENTER, spaceAfter=1)
+    st_sub  = ParagraphStyle("as", fontName="Helvetica", fontSize=8,
+                             alignment=TA_CENTER, textColor=CINZA, spaceAfter=1)
+    st_lbl  = ParagraphStyle("al", fontName="Helvetica-Bold", fontSize=8)
+    st_val  = ParagraphStyle("av", fontName="Helvetica", fontSize=9)
+    st_txt  = ParagraphStyle("ax", fontName="Helvetica", fontSize=10.5,
+                             leading=15, alignment=TA_JUSTIFY, spaceAfter=10)
+    st_per  = ParagraphStyle("ap", fontName="Helvetica", fontSize=10.5, leading=15)
+    st_ass  = ParagraphStyle("aa", fontName="Helvetica", fontSize=9,
+                             alignment=TA_CENTER, leading=12)
+
+    story = []
+    for i, ev in enumerate(eventos):
+        mat = ev["matricula"]
+        cad = cad_map.get(mat, {})
+        nome = (cad.get("nome") or cad.get("nomer") or "—").strip()
+        funcao = (str(cad.get("nmcargo") or "").strip()
+                  or funcao_cbo.get(str(cad.get("cbofuncao") or "").strip(), "")
+                  or "—")
+
+        d_ini  = _data8(ev.get("data1i"))
+        d_fim  = _data8(ev.get("data1f"))
+        d_aqi  = _data8(ev.get("data2i"))
+        d_aqf  = _data8(ev.get("data2f"))
+        dias   = int(ev.get("ref1") or 0)
+        if not dias and d_ini and d_fim:
+            dias = (d_fim - d_ini).days + 1
+        abono  = int(ev.get("ref2") or 0)
+        d_ret  = d_fim + timedelta(days=1) if d_fim else None
+        d_pgto = _aviso_ferias_data_pgto(d_ini, voltar_fds) if d_ini else None
+
+        if i:
+            story.append(PageBreak())
+
+        # ── cabeçalho: empregador ──
+        story.append(Paragraph(_x(papel["razao"]), st_emp))
+        if papel["cnpj"]:
+            story.append(Paragraph(f"CNPJ: {_x(papel['cnpj'])}", st_sub))
+        if papel["endereco"] and papel["endereco"] != "—":
+            story.append(Paragraph(_x(papel["endereco"]), st_sub))
+        story.append(HRFlowable(width=LW, thickness=1, color=PRETO,
+                                spaceBefore=6, spaceAfter=4))
+        story.append(Paragraph("AVISO DE FÉRIAS", st_tit))
+
+        # ── dados do funcionário ──
+        CL = 2.3*cm
+        CV = LW/2 - CL
+        tf = Table([
+            [Paragraph("Funcionário:", st_lbl), Paragraph(f"<b>{_x(nome)}</b>", st_val),
+             Paragraph("Matrícula:", st_lbl), Paragraph(f"<b>{str(mat).zfill(6)}</b>", st_val)],
+            [Paragraph("CPF:", st_lbl), Paragraph(_fmt_cpf(cad.get("cpf")), st_val),
+             Paragraph("Admissão:", st_lbl), Paragraph(_fd(_data8(cad.get("dtadm"))), st_val)],
+            [Paragraph("Função:", st_lbl), Paragraph(_x(funcao), st_val), "", ""],
+        ], colWidths=[CL, CV, CL, CV])
+        tf.setStyle(TableStyle([
+            ("TOPPADDING",    (0,0),(-1,-1), 4),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ("LEFTPADDING",   (0,0),(-1,-1), 2),
+            ("LINEABOVE",     (0,0),(-1,0),  0.5, BORDA),
+            ("LINEBELOW",     (0,0),(-1,-1), 0.3, BORDA),
+        ]))
+        story.append(tf)
+        story.append(Spacer(1, 22))
+
+        # ── texto (o mesmo do Desktop) ──
+        story.append(Paragraph(
+            "Pela presente, comunicamos-lhe, nos termos da legislação em vigor, "
+            "a concessão de férias de acordo com o demonstrativo abaixo:", st_txt))
+        story.append(Spacer(1, 6))
+
+        linhas = [
+            ["Período Aquisitivo:", f"{_fd(d_aqi)}  a  {_fd(d_aqf)}"],
+            ["Período das Férias:", f"{_fd(d_ini)}  a  {_fd(d_fim)}   ({dias} dias)"],
+        ]
+        if abono:
+            linhas.append(["Abono Pecuniário:", f"{abono} dias"])
+        linhas.append(["Data do Retorno:", _fd(d_ret)])
+        tp = Table([[Paragraph(f"<b>{a}</b>", st_per), Paragraph(b, st_per)]
+                    for a, b in linhas],
+                   colWidths=[4.6*cm, LW - 5.6*cm], hAlign="CENTER")
+        tp.setStyle(TableStyle([
+            ("TOPPADDING",    (0,0),(-1,-1), 5),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+            ("BOX",           (0,0),(-1,-1), 0.5, BORDA),
+            ("LINEBELOW",     (0,0),(-1,-2), 0.3, BORDA),
+            ("LEFTPADDING",   (0,0),(-1,-1), 10),
+        ]))
+        story.append(tp)
+        story.append(Spacer(1, 20))
+
+        # O Desktop imprime aqui "perdeu N dias por FALTAS", lendo o ref1 como
+        # dias perdidos. No web o ref1 é o gozo, e férias fracionadas ou
+        # coletivas também ficam abaixo de 30 dias — não dá para deduzir a
+        # perda pela conta, então a observação ficou de fora.
+        story.append(Paragraph(
+            "A remuneração correspondente às férias e, se for o caso, ao abono "
+            f"pecuniário, será paga até o dia <b>{_fd(d_pgto)}</b>.", st_txt))
+        story.append(Paragraph(
+            "A anotação destas Férias estará em breve na sua CTPS Digital.", st_txt))
+        story.append(Spacer(1, 30))
+
+        cidade = papel["cidade"] if papel["cidade"] != "—" else ""
+        story.append(Paragraph(
+            f"{_x(cidade)}{'/' + _x(papel['uf']) if cidade and papel['uf'] else ''}"
+            f"{', ' if cidade else ''}_____ de ____________________ de ________",
+            ParagraphStyle("ad", fontName="Helvetica", fontSize=10,
+                           alignment=TA_RIGHT)))
+        story.append(Spacer(1, 50))
+
+        ass = Table([
+            ["_" * 36, "", "_" * 36],
+            [Paragraph(_x(papel["razao"][:45]), st_ass), "",
+             Paragraph(_x(nome), st_ass)],
+            [Paragraph("Empregador", st_ass), "",
+             Paragraph("Ciente — Funcionário", st_ass)],
+        ], colWidths=[LW*0.45, LW*0.10, LW*0.45])
+        ass.setStyle(TableStyle([
+            ("ALIGN",         (0,0),(-1,-1), "CENTER"),
+            ("TOPPADDING",    (0,0),(-1,-1), 2),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+            ("LEFTPADDING",   (0,0),(-1,-1), 0),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+        ]))
+        story.append(KeepTogether([ass]))
+
+    doc.build(story)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="Aviso_Ferias_{anomes[:4]}-{anomes[4:]}.pdf"')
     return resp
 
 
