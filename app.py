@@ -55618,6 +55618,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(etapa_tbl)
             if not is_intermitente:
                 mmVmm[_cod_sal_mes] = l["sal_mes"]
+                # Quantidade da verba do salário = 30 dias (mês comercial) para
+                # o mensalista que trabalhou o mês todo — igual à 0002, que já
+                # grava os dias trabalhados. Se o salário for zerado adiante
+                # (proporcional, férias de 30 dias...), a linha não é gravada.
+                if l.get("tipo") == "Mensalista":
+                    mmQmm[_cod_sal_mes] = 30
 
             # ── etapa 2 — admissão no mês ────────────────
             dias_antes_admissao = 0
@@ -56356,6 +56362,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     for s in vsb.split(","):
                         try: c = int(s.strip())
                         except ValueError: continue
+                        if c in VERBAS_SALARIO_BASE:
+                            continue      # a base já é o salário (ver a constante)
                         v   = int(mmVmm_in.get(c, 0))
                         dsc = (rubricas_info_in.get(c) or {}).get("dsc") or f"{c:04d}"
                         soma += v
@@ -56614,6 +56622,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                             for _s in vsb_h.split(","):
                                 try: _c = int(_s.strip())
                                 except ValueError: continue
+                                if _c in VERBAS_SALARIO_BASE:
+                                    continue      # a base já é o salário
                                 _v   = int(mmVmm.get(_c, 0))
                                 _dsc = (rubricas_info.get(_c) or {}).get("dsc") or f"{_c:04d}"
                                 soma_sb_h += _v
@@ -56656,6 +56666,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                             for _s in vsb_d.split(","):
                                 try: _c = int(_s.strip())
                                 except ValueError: continue
+                                if _c in VERBAS_SALARIO_BASE:
+                                    continue      # a base já é o salário
                                 _v   = int(mmVmm.get(_c, 0))
                                 _dsc = (rubricas_info.get(_c) or {}).get("dsc") or f"{_c:04d}"
                                 soma_sb_d += _v
@@ -63692,6 +63704,12 @@ def calcular_folha_etapa1_pdf():
             elems.append(val_tbl)
             if not is_intermitente:
                 mmVmm[_cod_sal_mes] = l["sal_mes"]
+                # Quantidade da verba do salário = 30 dias (mês comercial) para
+                # o mensalista que trabalhou o mês todo — igual à 0002, que já
+                # grava os dias trabalhados. Se o salário for zerado adiante
+                # (proporcional, férias de 30 dias...), a linha não é gravada.
+                if l.get("tipo") == "Mensalista":
+                    mmQmm[_cod_sal_mes] = 30
 
             # ── etapa 2 — admissão no mês ────────────────
             dias_antes_admissao = 0
@@ -78932,6 +78950,14 @@ def _sal_mes_adiant13(f):
         except Exception:
             return 0
     return vr
+
+
+# Verbas que SÃO o salário (empregado, proporcional, pró-labore, bolsa).
+# No "soma na base" (verbas_somabase) da rubrica elas não entram: a base do
+# salário-hora/dia já é o salário, e somá-lo de novo dobra a verba. Foi o caso
+# da hora extra 60% (1000) do cliente 73, cadastrada com '1,31': a HE saía em
+# dobro no tab_mov, na Folha de Pagamento e no Resumo (SMV 06/11/2026).
+VERBAS_SALARIO_BASE = {1, 2, 6, 7, 16, 86}
 
 
 def _verba_salario(categ_n):
