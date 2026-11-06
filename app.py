@@ -587,9 +587,9 @@ def _fmt_cod_rubr(c, ftipo):
       R = Rescisão          -> "-RES"
       demais (N)            -> "-FOL"
     """
-    # Q = demonstrativo do adiantamento quinzenal (ver _adto_dmdev_proprio)
-    sufixo = {'F': 'FER', '1': '13S', 'A': '13S', 'R': 'RES',
-              'Q': 'ADT'}.get(str(ftipo), 'FOL')
+    # Q = demonstrativo do adiantamento quinzenal (ver _adto_dmdev_proprio):
+    # mesma rubrica da folha, "-FOL".
+    sufixo = {'F': 'FER', '1': '13S', 'A': '13S', 'R': 'RES'}.get(str(ftipo), 'FOL')
     s = str(c or '').strip()
     try:
         return f"{int(s):04d}-{sufixo}"
@@ -38396,15 +38396,37 @@ _IDE_DMDEV_SUF = {"N": "00", "A": "13", "1": "14", "F": "02", "R": "03",
 #   * dmDev mensal com a 160 como desconto, natureza 9200 (desconto de
 #     adiantamentos), e sem a 161-164;
 #   * S-1210 com um <infoPgto> para cada um, o do adiantamento na data dele.
-# As rubricas do modelo novo sao codigos PROPRIOS no S-1010, "0160-ADT" e
-# "0161-ADT".."0164-ADT", declarados por inclusao. As "-FOL" ja declaradas
-# (desconto, 5501) ficam como estao: os S-1200 de 07 a 09/2026, ja aceitos,
-# continuam apontando para elas, inclusive numa retificacao.
+# Os codigos continuam os mesmos, 0160-FOL e 0161-FOL..0164-FOL (decisao do
+# usuario: nada de codigo novo). O que muda e o S-1010 deles, com DUAS
+# validades: ate o mes anterior ao inicio, desconto 5501 (como os S-1200 de
+# 07 a 09/2026 foram aceitos — e como uma retificacao deles tem de sair); a
+# partir do inicio, 0160-FOL desconto 9200 e 0161-FOL..0164-FOL PROVENTO 5501.
+# Onde a rubrica ja estava declarada, isso e feito em dois eventos, nesta
+# ordem: alteracao com <novaValidade> fechando o periodo antigo (adto "fecha")
+# e inclusao do periodo novo (adto "abre") — so -FOL; -FER/-13S/-RES ficam.
+# Onde nao estava, a inclusao normal ja sai com os dados novos (o gerador do
+# S-1010 decide pela validade, ver _gerar_xml_s1010_evento).
 # Comeca em 10/2026; nas empresas que ja tinham S-1200 de 10/2026 aceito no
 # modelo antigo (9 e 77, em 06/11/2026), em 11/2026 — decisao do usuario.
 ADTO_DMDEV_PROPRIO_DESDE    = 202610
 ADTO_DMDEV_PROPRIO_EXCECOES = {9: 202611, 77: 202611}
-VERBAS_ADTO_DMDEV = (160, 161, 162, 163, 164)   # vao com o sufixo "-ADT"
+VERBAS_ADTO_DMDEV = (160, 161, 162, 163, 164)
+
+
+def _adto_ini_novo(id_empresa):
+    """Inicio do modelo novo da empresa no formato do S-1010 ('AAAA-MM')."""
+    try:
+        am = ADTO_DMDEV_PROPRIO_EXCECOES.get(int(id_empresa or 0),
+                                             ADTO_DMDEV_PROPRIO_DESDE)
+    except (TypeError, ValueError):
+        am = ADTO_DMDEV_PROPRIO_DESDE
+    return f"{str(am)[:4]}-{str(am)[4:6]}"
+
+
+def _mes_anterior_aaaa_mm(aaaa_mm):
+    a, m = int(aaaa_mm[:4]), int(aaaa_mm[5:7])
+    a, m = (a - 1, 12) if m == 1 else (a, m - 1)
+    return f"{a:04d}-{m:02d}"
 
 
 def _adto_dmdev_proprio(id_empresa, ano_mes):
@@ -38551,12 +38573,10 @@ def _folhas_da_remessa(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
             continue
         if _adt and t == "N":
             # Modelo novo: a 161-164 sai para o dmDev proprio ("Q") e a 160
-            # fica no mensal, as duas com o codigo "-ADT".
+            # fica no mensal.
             adto  = [i for i in itens
                      if int(str(i.get("cod_verba") or 0) or 0) in VERBAS_ADTO_QUINZENAL]
-            resto = [dict(i, sufixo="ADT")
-                     if int(str(i.get("cod_verba") or 0) or 0) == 160 else i
-                     for i in itens
+            resto = [i for i in itens
                      if int(str(i.get("cod_verba") or 0) or 0) not in VERBAS_ADTO_QUINZENAL]
             if resto:
                 saida.append({"folha_tipo": "N", "mov_items": resto})
@@ -38848,11 +38868,6 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
             val = int(item.get('valor') or 0)
             if cod and val != 0:
                 _cod_fmt = _fmt_cod_rubr(cod, ftipo)
-                if item.get('sufixo'):            # 0160-ADT no dmDev mensal
-                    try:
-                        _cod_fmt = f"{int(cod):04d}-{item['sufixo']}"
-                    except ValueError:
-                        pass
                 # <descFolha> — obrigatório nas rubricas de natureza 9253
                 # (Empréstimos Consignados - desconto), do Programa Crédito do
                 # Trabalhador. Sem ele o evento volta com [8] "Grupo 'Informações
@@ -40785,19 +40800,19 @@ _S1010_SUFIXOS = ("FOL", "FER", "13S", "RES")
 
 def _s1010_variantes(rubrica, variante=None):
     """Códigos das 4 variantes de uma rubrica: ['0016-FOL', '0016-FER', ...].
-    variante 'ADT' (adiantamento quinzenal com demonstrativo proprio): so
-    '0161-ADT' — e a remessa dessa variante leva so ela."""
+    variante 'FOL' (troca de validade do adiantamento quinzenal, ver
+    _adto_dmdev_proprio): so '0161-FOL' — a remessa leva so ela."""
     try:
         cod = int(rubrica.get("cod_rubr") or 0)
     except Exception:
         cod = 0
-    if str(variante or "").upper() == "ADT":
-        return [f"{cod:04d}-ADT"]
+    if str(variante or "").upper() in _S1010_SUFIXOS:
+        return [f"{cod:04d}-{str(variante).upper()}"]
     return [f"{cod:04d}-{suf}" for suf in _S1010_SUFIXOS]
 
 
 def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1,
-                            cod_rubr_fmt=None):
+                            cod_rubr_fmt=None, nova_validade=None):
     """Gera o XML de um evtTabRubrica para uma única rubrica.
     tp_op: 'inclusao' ou 'alteracao'
     nr_seq: sequência do evento no lote (inteiro)
@@ -40824,12 +40839,20 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     dsc_rubr  = x((rubrica.get('dsc_rubr') or '')[:100])
     nat_rubr  = str(rubrica.get('es03_nat_rubr') or '').strip()
     tp_rubr   = str(rubrica.get('tp_rubr') or '1').strip()
-    # Rubricas do demonstrativo proprio do adiantamento quinzenal (ver
-    # _adto_dmdev_proprio): 0160-ADT = desconto de adiantamentos (9200),
-    # 0161-ADT..0164-ADT = o adiantamento pago, como PROVENTO (5501). O
-    # tab_rubrica nao muda: o calculo da folha continua igual.
-    if cod_rubr.endswith('-ADT'):
-        if cod_rubr.startswith('0160'):
+    # Adiantamento quinzenal com demonstrativo proprio (ver
+    # _adto_dmdev_proprio): na validade que comeca no modelo novo, 0160-FOL =
+    # desconto de adiantamentos (9200) e 0161-FOL..0164-FOL = o adiantamento
+    # pago, como PROVENTO (5501). Validade anterior (o "fecha") sai como o
+    # tab_rubrica: desconto, 5501. O tab_rubrica nao muda: o calculo da folha
+    # continua igual.
+    try:
+        _cod4 = int(cod_rubr[:4]) if cod_rubr.endswith('-FOL') else 0
+        _am_ini = int(str(ini_valid or '').replace('-', '')[:6] or 0)
+    except ValueError:
+        _cod4, _am_ini = 0, 0
+    if (_cod4 in VERBAS_ADTO_DMDEV and _am_ini
+            and _adto_dmdev_proprio(empresa.get('id_empresa'), _am_ini)):
+        if _cod4 == 160:
             tp_rubr, nat_rubr = '2', '9200'
         else:
             tp_rubr, nat_rubr = '1', '5501'
@@ -40853,6 +40876,14 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     if inc_fgts not in ('00', '11', '12', '21', '31', '91', '92', '93'):
         inc_fgts = '00'
     inc_sind  = _inc(rubrica.get('tpn_inc_pis'))
+    # <novaValidade> (so na alteracao): muda o periodo do registro — e assim
+    # que se fecha a validade antiga antes de incluir a nova.
+    nova_xml = ''
+    if tp_op == 'alteracao' and nova_validade and nova_validade[0]:
+        _nf = nova_validade[1] if len(nova_validade) > 1 else ''
+        _nf_xml = f"\n          <fimValid>{x(_nf)}</fimValid>" if _nf else ''
+        nova_xml = (f"\n        <novaValidade>\n          <iniValid>{x(nova_validade[0])}</iniValid>"
+                    f"{_nf_xml}\n        </novaValidade>")
 
     # fimValid em mes futuro volta com [980]: ver _fim_valid_passado.
     fim_valid = _fim_valid_passado(fim_valid)
@@ -40886,7 +40917,7 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
           <codIncCP>{inc_cp}</codIncCP>
           <codIncIRRF>{inc_irrf}</codIncIRRF>
           <codIncFGTS>{inc_fgts}</codIncFGTS>
-        </dadosRubrica>
+        </dadosRubrica>{nova_xml}
       </{tp_op}>
     </infoRubrica>
   </evtTabRubrica>
@@ -41293,7 +41324,8 @@ def api_esocial_s1010_xml():
             _idx += 1
             xmls.append(_gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op,
                                                 ini_valid, fim_valid, _idx,
-                                                cod_rubr_fmt=cod_fmt))
+                                                cod_rubr_fmt=cod_fmt,
+                                                nova_validade=_s1010_nova_validade(params)))
 
     combined = "\n<!-- ======== PRÓXIMO EVENTO ======== -->\n".join(xmls)
 
@@ -41399,7 +41431,23 @@ def api_esocial_s1010_enviar():
     # gravadas quando o campo era digitável. Sem isso, um registro criado com
     # validade futura continuaria sendo recusado com [980] "A data informada
     # deve ser ... anterior à data atual" a cada reenvio.
-    _ini_folha = _ini_valid_folha_atual()
+    # Excecao: as remessas da troca de validade do adiantamento quinzenal
+    # (adto "fecha"/"abre") tem validade certa — a do periodo antigo e a do
+    # inicio do modelo novo — e nao podem seguir a folha ativa.
+    _adto_split = str(params.get("adto") or "")
+    if _adto_split == "abre":
+        try:
+            for _r in _s1010_registros(id_empresa):
+                if (_r["cod"] == int(cod_rubr_reg) and _r["adto"] == "fecha"
+                        and not _r["aceito"]):
+                    return jsonify({"ok": False, "msg": (
+                        f"Envie primeiro a ALTERAÇÃO da rubrica {int(cod_rubr_reg):04d}-FOL "
+                        f"que fecha a validade antiga (registro {_r['id']}). Depois que "
+                        "ela tiver recibo, envie esta inclusão — antes disso o eSocial "
+                        "recusa por período conflitante.")})
+        except Exception as e:
+            print(f"[S-1010] id={id_reg}: falha ao conferir o 'fecha': {e}")
+    _ini_folha = None if _adto_split in ("fecha", "abre") else _ini_valid_folha_atual()
     if _ini_folha and _ini_folha != ini_valid:
         print(f"[S-1010] id={id_reg}: validade {ini_valid or '(vazia)'} -> {_ini_folha} (folha ativa)")
         ini_valid = _ini_folha
@@ -41459,7 +41507,8 @@ def api_esocial_s1010_enviar():
             try:
                 xml_str = _gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op,
                                                   ini_valid, fim_valid, idx,
-                                                  cod_rubr_fmt=cod_fmt)
+                                                  cod_rubr_fmt=cod_fmt,
+                                                  nova_validade=_s1010_nova_validade(params))
             except Exception as e:
                 msg = f"Erro ao gerar XML rubrica {cod_fmt}: {e}"
                 _xml_erro_save(_pref, 1, msg, e)
@@ -48046,6 +48095,45 @@ def _empresas_da_raiz(id_empresa):
     return irmas
 
 
+def _s1010_nova_validade(params):
+    """(ini, fim) da <novaValidade> gravada no PARAMS, ou None."""
+    if params and params.get("nova_ini"):
+        return (str(params.get("nova_ini")), str(params.get("nova_fim") or ""))
+    return None
+
+
+def _s1010_registros(id_empresa):
+    """Remessas S-1010 da raiz: [{id, cod, var, adto, ini, aceito}].
+    ini vem do PARAMS; sem ele (migradas do Desktop), do ano_mes."""
+    import json as _json
+    out = []
+    for _emp in _empresas_da_raiz(id_empresa):
+        for r in _esocial_rows_layout(_emp, "1010",
+                                      "id_esocial, matricula, recibo, observacao_erro, ano_mes"):
+            cod, ini, var, adto = "", "", "", ""
+            obs = str(r.get("observacao_erro") or "").split("|")[0]
+            if obs.startswith("PARAMS:"):
+                try:
+                    _p = _json.loads(obs[7:])
+                    cod = str(_p.get("cod_rubr") or "").strip()
+                    ini = str(_p.get("ini") or "")
+                    var = str(_p.get("variante") or "").strip().upper()
+                    adto = str(_p.get("adto") or "")
+                except Exception:
+                    pass
+            if not cod:
+                cod = str(r.get("matricula") or "").strip()
+            if not cod.isdigit():
+                continue
+            if not ini:
+                _am = str(r.get("ano_mes") or "")
+                ini = f"{_am[:4]}-{_am[4:6]}" if len(_am) == 6 else ""
+            out.append({"id": r.get("id_esocial"), "cod": int(cod), "var": var,
+                        "adto": adto, "ini": ini,
+                        "aceito": bool((r.get("recibo") or "").strip())})
+    return out
+
+
 def _s1010_declaradas(id_empresa):
     """Rubricas com S-1010 ACEITO -> {cod_rubr: menor ini_valid}.
 
@@ -48088,7 +48176,7 @@ def _s1010_declaradas(id_empresa):
             cod = str(r.get("matricula") or "").strip()
         if not cod.isdigit():
             continue
-        # A remessa da variante "-ADT" declara so ela: chave "161ADT".
+        # Remessa de uma variante so (troca de validade -FOL): chave "161FOL".
         cod = str(int(cod)) + var
         if cod not in out or (ini and ini < out[cod]):
             out[cod] = ini
@@ -48345,16 +48433,18 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
         return []
 
     # Adiantamento quinzenal com demonstrativo proprio: na folha N as verbas
-    # 160-164 vao com o codigo "-ADT", que e outra rubrica no S-1010.
+    # 160-164 precisam do 0160-FOL..0164-FOL na validade NOVA (ver
+    # _adto_dmdev_proprio) — marcadas "NOVO" aqui.
     _adt = _adto_dmdev_proprio(id_empresa, ano_mes)
     usadas = set()
     for m in mov:
         _c = str(m.get("cod_verba") or "").strip()
         if not _c.isdigit() or int(_c) >= 9900:
             continue
-        _var = ("ADT" if _adt and int(_c) in VERBAS_ADTO_DMDEV
+        _var = ("NOVO" if _adt and int(_c) in VERBAS_ADTO_DMDEV
                 and str(m.get("folha_tipo") or "N").upper() == "N" else "")
         usadas.add((int(_c), _var))
+    # a mesma verba fora da folha N continua pedindo a declaracao normal
     usadas = sorted(usadas)
     if not usadas:
         return []
@@ -48366,12 +48456,28 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     _am = str(ano_mes)
     comp = f"{_am[:4]}-{_am[4:6]}"
 
+    _regs = None
+    _ini_novo = _adto_ini_novo(id_empresa)
     faltando = []
     for cod, var in usadas:
-        ini = declaradas.get(str(cod) + var)
+        if var == "NOVO":
+            if _regs is None:
+                try:
+                    _regs = _s1010_registros(id_empresa)
+                except Exception as e:
+                    print(f"[S1010 check] erro ao ler remessas: {e}")
+                    return []
+            _cands = [r for r in _regs if r["cod"] == cod and r["aceito"]
+                      and r["var"] in ("", "FOL") and r["adto"] != "fecha"]
+            if any(r["ini"] and _ini_novo <= r["ini"] <= comp for r in _cands):
+                continue
+            _velhos = sorted(r["ini"] for r in _cands if r["ini"] and r["ini"] < _ini_novo)
+            faltando.append((cod, "NOVO", _velhos[0] if _velhos else ""))
+            continue
+        ini = declaradas.get(str(cod))
         if ini is not None and (not ini or ini <= comp):
             continue
-        faltando.append((cod, var))
+        faltando.append((cod, "", ""))
     if not faltando:
         return []
 
@@ -48379,17 +48485,19 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     try:
         rb = (supabase.table("tab_rubrica")
               .select("cod_rubr, dsc_rubr")
-              .in_("cod_rubr", sorted({c for c, _v in faltando}))
+              .in_("cod_rubr", sorted({c for c, _v, _o in faltando}))
               .execute().data or [])
         nomes = {int(x["cod_rubr"]): str(x.get("dsc_rubr") or "") for x in rb}
     except Exception:
         pass
     out = []
-    for c, var in faltando:
+    for c, var, ini_old in faltando:
         _d = nomes.get(c, f"Verba {c:04d}")
-        if var:
-            out.append({"cod_rubr": c, "variante": var,
-                        "dsc_rubr": f"{_d} (-{var})"})
+        if var == "NOVO" and ini_old:
+            # Ja declarada no modelo antigo: troca de validade (fecha + abre).
+            out.append({"cod_rubr": c, "adto": "abre", "ini_novo": _ini_novo,
+                        "ini_old": ini_old, "base_dsc": _d,
+                        "dsc_rubr": f"{_d} (-FOL nova validade {_ini_novo[5:]}/{_ini_novo[:4]})"})
         else:
             out.append({"cod_rubr": c, "dsc_rubr": _d})
     return out
@@ -48484,7 +48592,7 @@ def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1")
             if not cod:
                 cod = str(r.get("matricula") or "").strip()
             if cod.isdigit():
-                ja_tem.add((int(cod), var))
+                ja_tem.add((int(cod), var, str((_pp if var else {}).get("adto") or "")))
     except Exception as e:
         # Nao dando para conferir, e melhor nao criar nada do que duplicar.
         print(f"[S1010 auto] falha ao ler remessas existentes: {e}")
@@ -48493,15 +48601,46 @@ def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1")
     agora = _agora_brasilia()
     criadas = 0
     for v in verbas:
-        _var = str(v.get("variante") or "").upper()
-        if (int(v["cod_rubr"]), _var) in ja_tem:
+        if v.get("adto") == "abre":
+            # Troca de validade do adiantamento quinzenal (so -FOL): alteracao
+            # que fecha o periodo antigo + inclusao do novo, nesta ordem.
+            _c = int(v["cod_rubr"])
+            _ini_n = v["ini_novo"]
+            _fim_v = _mes_anterior_aaaa_mm(_ini_n)
+            _pares = []
+            if (_c, "FOL", "fecha") not in ja_tem:
+                _pares.append(("A", v["ini_old"], {
+                    "ini": v["ini_old"], "fim": "", "nova_ini": v["ini_old"],
+                    "nova_fim": _fim_v, "tpAmb": str(tpAmb), "cod_rubr": _c,
+                    "dsc_rubr": f"{v['base_dsc']} (fecha em {_fim_v[5:]}/{_fim_v[:4]})",
+                    "variante": "FOL", "adto": "fecha"}))
+            if (_c, "FOL", "abre") not in ja_tem:
+                _pares.append(("I", _ini_n, {
+                    "ini": _ini_n, "fim": "", "tpAmb": str(tpAmb), "cod_rubr": _c,
+                    "dsc_rubr": f"{v['base_dsc']} (nova a partir de {_ini_n[5:]}/{_ini_n[:4]})",
+                    "variante": "FOL", "adto": "abre"}))
+            for _op, _ini_r, _pd in _pares:
+                try:
+                    supabase.table("tab_esocial").insert({
+                        "id_cliente":      id_cliente,
+                        "id_empresa":      id_empresa,
+                        "data_cad":        agora.strftime("%Y%m%d"),
+                        "hora_cad":        agora.strftime("%H%M"),
+                        "layout":          "1010",
+                        "ano_mes":         int(_ini_r.replace("-", "")),
+                        "folha_tipo":      "I",
+                        "operacao":        _op,
+                        "observacao_erro": "PARAMS:" + _json.dumps(_pd, ensure_ascii=False),
+                    }).execute()
+                    criadas += 1
+                except Exception as e:
+                    print(f"[S1010 auto] falha ao criar {_c:04d}-FOL ({_pd['adto']}): {e}")
             continue
-        _pd = {"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
-               "cod_rubr": int(v["cod_rubr"]),
-               "dsc_rubr": v["dsc_rubr"]}
-        if _var:
-            _pd["variante"] = _var
-        p = _json.dumps(_pd, ensure_ascii=False)
+        if (int(v["cod_rubr"]), "", "") in ja_tem:
+            continue
+        p = _json.dumps({"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
+                         "cod_rubr": int(v["cod_rubr"]),
+                         "dsc_rubr": v["dsc_rubr"]}, ensure_ascii=False)
         try:
             supabase.table("tab_esocial").insert({
                 "id_cliente":      id_cliente,
