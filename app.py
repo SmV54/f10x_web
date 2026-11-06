@@ -59758,7 +59758,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     func_info = {}
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,centrocusto,filial,codcateg")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .execute())
@@ -59772,7 +59772,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "nome":   nome,
                 "dtadm":  str(f.get("dtadm")      or ""),
                 "sal":    int(f.get("vrsalfx")     or 0),
-                "funcao": f"CBO {cbo}" if cbo else "—",
+                "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {cbo}" if cbo else "—"),
                 "cc":     str(f.get("centrocusto") or "000"),
                 "filial": str(f.get("filial")      or ""),
                 "cat":    int(f.get("codcateg")     or 0),
@@ -59792,7 +59792,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,"
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,"
                           "centrocusto,filial,codcateg")
                   .eq("id_empresa", id_empresa)
                   .in_("matricula", _sem_nome)
@@ -59806,7 +59806,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                     "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
                     "dtadm":  str(f.get("dtadm") or ""),
                     "sal":    int(f.get("vrsalfx") or 0),
-                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {_cbo}" if _cbo else "—"),
                     "cc":     str(f.get("centrocusto") or "000"),
                     "filial": str(f.get("filial") or ""),
                     "cat":    int(f.get("codcateg") or 0),
@@ -60205,7 +60205,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     _resc_mov, _resc_tot = _resc_para_folha(id_empresa, anomes, id_cliente, _dem_mes, adiant_data)
 
     func_info = {}
-    _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg"
+    _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,centrocusto,filial,codcateg"
     try:
         r = (supabase.table("tab_cad")
              .select(_cols_cad)
@@ -60218,7 +60218,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 continue
             nome  = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
             cbo   = str(f.get("cbofuncao") or "").strip()
-            cargo = f"CBO {cbo}" if cbo else "—"
+            cargo = str(f.get("nmcargo") or "").strip() or (f"CBO {cbo}" if cbo else "—")
             func_info[mat] = {
                 "nome":   nome,
                 "dtadm":  str(f.get("dtadm")      or ""),
@@ -60254,7 +60254,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     "dtadm":  str(f.get("dtadm")      or ""),
                     "sal":    int(f.get("vrsalfx")     or 0),
                     "unid":   "M",
-                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {_cbo}" if _cbo else "—"),
                     "cc":     str(f.get("centrocusto") or "000"),
                     "filial": str(f.get("filial")      or ""),
                     "cat":    int(f.get("codcateg")    or 0),
@@ -61912,7 +61912,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     func_info = {}
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,centrocusto,filial,codcateg")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .execute())
@@ -61926,7 +61926,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 "nome":   nome,
                 "dtadm":  str(f.get("dtadm")      or ""),
                 "sal":    int(f.get("vrsalfx")     or 0),
-                "funcao": f"CBO {cbo}" if cbo else "—",
+                "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {cbo}" if cbo else "—"),
                 "cc":     str(f.get("centrocusto") or "000"),
                 "filial": str(f.get("filial")      or ""),
                 "cat":    int(f.get("codcateg")     or 0),
@@ -61942,7 +61942,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,"
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,"
                           "centrocusto,filial,codcateg")
                   .eq("id_empresa", id_empresa)
                   .in_("matricula", _sem_nome)
@@ -61956,7 +61956,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
                     "dtadm":  str(f.get("dtadm")      or ""),
                     "sal":    int(f.get("vrsalfx")     or 0),
-                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {_cbo}" if _cbo else "—"),
                     "cc":     str(f.get("centrocusto") or "000"),
                     "filial": str(f.get("filial")      or ""),
                     "cat":    int(f.get("codcateg")    or 0),
@@ -63165,7 +63165,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     func_info = {}
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .execute())
@@ -63179,7 +63179,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 "nome":   nome,
                 "dtadm":  str(f.get("dtadm")  or ""),
                 "sal":    int(f.get("vrsalfx") or 0),
-                "funcao": f"CBO {cbo}" if cbo else "—",
+                "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {cbo}" if cbo else "—"),
             }
     except Exception:
         pass
@@ -63190,7 +63190,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao")
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo")
                   .eq("id_empresa", id_empresa)
                   .in_("matricula", _sem_nome)
                   .execute())
@@ -63203,7 +63203,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
                     "dtadm":  str(f.get("dtadm")  or ""),
                     "sal":    int(f.get("vrsalfx") or 0),
-                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "funcao": str(f.get("nmcargo") or "").strip() or (f"CBO {_cbo}" if _cbo else "—"),
                 }
         except Exception:
             pass
