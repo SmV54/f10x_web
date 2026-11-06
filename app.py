@@ -13090,6 +13090,7 @@ SUPORTE_TELAS = {
     "/calcular_adiantamento_13":   "Decimo Terceiro Salario",
     "/calcular_13_final":          "Decimo Terceiro Salario",
     "/visualizar_calculo":         "Visualizar Calculo",
+    "/visualizar_calc_ferias":     "Visualizar Calculo de Ferias",
     "/memoria_calculo":            "Calculo da Folha",
     "/calcular_folha_individual":  "Calculo da Folha",
     # card 7 — Relatórios
