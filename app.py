@@ -54288,10 +54288,23 @@ def _dias_afast(di_raw, df_raw):
 # e o funcionario nao veria a que numero de dias o valor se refere.
 #   0002 = salario proporcional (qtd = dias trabalhados, mmQmm[2])
 #   0009 = atestado medico       (qtd = dias de atestado, mmQmm[9])
+#   0001/0006/0007/0016/0086 = verba do salario (_verba_salario): o calculo
+#          grava 30 dias para o mensalista (SMV 06/11/2026, cliente 73: o
+#          contracheque nao mostrava os 30 dias da 0001)
 # A 0132 (FALTAS EM DIAS) NAO entra aqui: ja e unid_verba='D' e o _fqtd a
 # formata sozinho. Ate 05/08/2026 as faltas caiam na 0139 (que e unid 'V'),
 # e a 0139 so estava nesta lista para contornar essa escolha errada.
-_VERBAS_QTD_DIAS = {2, 9}
+_VERBAS_QTD_DIAS = {1, 2, 6, 7, 9, 16, 86}
+
+
+def _mostra_qtd_dias(cod, qtd):
+    """A qtd desta verba de valor sai como "N dias"? Nas verbas do salario so
+    ate 31 (o 30 do calculo): as folhas importadas do S-1200 gravaram a qtd x100
+    (3000 = 30,00) e sairiam como "3000 dias"."""
+    cod = int(cod or 0)
+    if cod not in _VERBAS_QTD_DIAS or not qtd or qtd <= 0:
+        return False
+    return cod in (2, 9) or qtd <= 31
 
 
 def _split_afast_mes(di_raw_orig, df_raw, dt_ini_c, dt_fim_c, atestado_acum=0):
@@ -59940,7 +59953,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         if unid == "D" and qtd > 0:
             return f"{qtd} dia{'s' if qtd != 1 else ''}"
         # Verba de valor cuja qtd e em dias (ver _VERBAS_QTD_DIAS)
-        if int(cod or 0) in _VERBAS_QTD_DIAS and qtd > 0:
+        if _mostra_qtd_dias(cod, qtd):
             return f"{qtd} dia{'s' if qtd != 1 else ''}"
         return ""
 
@@ -60475,7 +60488,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 elif v["unid"] == "D" and v["qtd"] > 0:
                     qtd_txt = f"{v['qtd']} dia{'s' if v['qtd'] != 1 else ''}"
                 # Verba de valor cuja qtd e em dias (ver _VERBAS_QTD_DIAS)
-                elif int(v["cod"] or 0) in _VERBAS_QTD_DIAS and v["qtd"] > 0:
+                elif _mostra_qtd_dias(v["cod"], v["qtd"]):
                     qtd_txt = f"{v['qtd']} dia{'s' if v['qtd'] != 1 else ''}"
                 else:
                     qtd_txt = ""
@@ -60621,7 +60634,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                         vi_qtd_txt = f"{_vi_qtd // 60}h{_vi_qtd % 60:02d}"
                     elif vi.get("unid") == "D" and _vi_qtd > 0:
                         vi_qtd_txt = f"{_vi_qtd} dia{'s' if _vi_qtd != 1 else ''}"
-                    elif int(vi.get("cod") or 0) in _VERBAS_QTD_DIAS and _vi_qtd > 0:
+                    elif _mostra_qtd_dias(vi.get("cod"), _vi_qtd):
                         vi_qtd_txt = f"{_vi_qtd} dia{'s' if _vi_qtd != 1 else ''}"
                     else:
                         vi_qtd_txt = ""
@@ -61835,7 +61848,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         if unid == "D" and qtd > 0:
             return f"{qtd} dia{'s' if qtd != 1 else ''}"
         # Verba de valor cuja qtd e em dias (ver _VERBAS_QTD_DIAS)
-        if int(cod or 0) in _VERBAS_QTD_DIAS and qtd > 0:
+        if _mostra_qtd_dias(cod, qtd):
             return f"{qtd} dia{'s' if qtd != 1 else ''}"
         return ""
 
