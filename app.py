@@ -59871,7 +59871,11 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         # PAGO na quinzena vem das 161-164, em adiant_list.
         adiant_desc_val = sum(agg.get(c, {}).get("val", 0)
                               for c in VERBAS_DESC_ADIANTAMENTO)
-        base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
+        # Desconto com incidencia CP 11 (atraso, falta, repouso, suspensao)
+        # REDUZ a base, como no calculo (SMV 06/11/2026: empresa 79, mat 9,
+        # 10/2026 — o relatorio mostrava so os proventos).
+        base_inss = max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
+                               for v in verbas if v["icp"] == "11"))
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
@@ -60309,7 +60313,11 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             liquido = 0
 
         inss_val  = agg.get(101, {}).get("val", 0)
-        base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
+        # Desconto com incidencia CP 11 (atraso, falta, repouso, suspensao)
+        # REDUZ a base, como no calculo (SMV 06/11/2026: empresa 79, mat 9,
+        # 10/2026 — o relatorio mostrava so os proventos).
+        base_inss = max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
+                               for v in verbas if v["icp"] == "11"))
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
@@ -61988,7 +61996,11 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
         inss_val  = agg.get(101,{}).get("val",0)
-        base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
+        # Desconto com incidencia CP 11 (atraso, falta, repouso, suspensao)
+        # REDUZ a base, como no calculo (SMV 06/11/2026: empresa 79, mat 9,
+        # 10/2026 — o relatorio mostrava so os proventos).
+        base_inss = max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
+                               for v in verbas if v["icp"] == "11"))
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
@@ -64766,8 +64778,12 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     emp_base_cp   = {}   # {matricula: base INSS (inc_cp=11) em centavos}
     emp_inss      = {}   # {matricula: INSS retido (rubrica 101) em centavos}
     emp_inss102   = {}   # {matricula: INSS pró-labore (rubrica 102) em centavos}
-    # Mesma regra do base_inss abaixo (só proventos com inc_cp 11, fora as
-    # informativas), por pessoa — para repartir a base por estabelecimento.
+    # Base INSS por pessoa: proventos com inc_cp 11 MENOS os descontos com
+    # inc_cp 11 (atraso, falta, repouso, suspensão), fora as informativas — a
+    # base do cálculo. Antes o Resumo somava só os proventos (empresa 79,
+    # 10/2026: 65.785,01 sem abater faltas e suspensões). Por pessoa e com
+    # piso zero, para quem tem mais desconto que provento não abater a base
+    # dos outros; serve também para repartir por estabelecimento.
     emp_base_cp_prov = {}
     # Adiantamento quinzenal (SMV 06/11/2026): as 161-164 são o REGISTRO do
     # adiantamento já pago, e a 160 é o desconto dele na folha. Quem tem a 160
@@ -64804,8 +64820,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
             emp_base_cp[mat] = (emp_base_cp.get(mat, 0)
                                 + (val if rb_cod.get("tp") == "1" else -val))
-            if rb_cod.get("tp") == "1" and cod <= 9900:
-                emp_base_cp_prov[mat] = emp_base_cp_prov.get(mat, 0) + val
+            if cod <= 9900:
+                emp_base_cp_prov[mat] = (emp_base_cp_prov.get(mat, 0)
+                                         + (val if rb_cod.get("tp") == "1" else -val))
         # 101 = INSS do empregado; 102 = INSS do contribuinte individual
         # (pró-labore). Cada um alimenta o seu quadro.
         if cod == 101:
@@ -64831,7 +64848,6 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         if rb["tp"] == "1":
             proventos.append(linha)
             total_prov += val
-            if rb["inc_cp"]   == "11": base_inss += val
             if rb["inc_irrf"] == "11": base_irrf += val
             if rb["inc_fgts"] in _cods_inc_fgts(anomes_tipo): base_fgts += val
         else:
@@ -64894,7 +64910,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
 
     # O quadro "INSS — Empregado" soma só categorias < 700. O que for CI
     # (diretor/sócio, pró-labore) sai para o quadro próprio.
-    base_inss_ci = sum(v for m, v in emp_base_cp.items() if m in mats_ci)
+    base_inss    = sum(max(0, v) for v in emp_base_cp_prov.values())
+    base_inss_ci = sum(max(0, v) for m, v in emp_base_cp_prov.items() if m in mats_ci)
     # O retido do CI vem da rubrica 102 (INSS Cont. Individual); a 101, se
     # houver, também é dele e sai do quadro do empregado.
     inss_ci_101  = sum(v for m, v in emp_inss.items()    if m in mats_ci)
@@ -64964,8 +64981,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         _est  = estabs.get(_cod)
         # Mesma conta do base_inss / base_inss_ci, só com as pessoas do grupo:
         # somando os grupos dá exatamente a base da folha.
-        _b_ci  = sum(v for m, v in emp_base_cp.items() if m in mats_ci and m in _mats)
-        _b_emp = sum(v for m, v in emp_base_cp_prov.items() if m in _mats) - _b_ci
+        _b_ci  = sum(max(0, v) for m, v in emp_base_cp_prov.items()
+                     if m in mats_ci and m in _mats)
+        _b_emp = sum(max(0, v) for m, v in emp_base_cp_prov.items() if m in _mats) - _b_ci
         if not varios_estabs:
             _b_emp, _b_ci = base_inss, base_inss_ci
         _pat = (_inss_patronal_perc(id_empresa, anomes, origem="resumo_folha",
