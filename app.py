@@ -61779,10 +61779,24 @@ def recibo_pensao_pdf():
 # CONTRACHEQUE — CONFIGURAÇÃO + PDF
 # =========================================================
 
+# Clientes que querem o contracheque com "Razao Social - Nome Fantasia" no
+# cabecalho (SMV 06/11/2026: cliente 73 pediu; so ele).
+CONTRACHEQUE_COM_FANTASIA = {73}
+
+
 def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                               empresa_nm, cnpj_fmt, modo="1",
                               matriculas_sel=None, com_assinatura=True,
                               com_dissidio=False):
+    if int(id_cliente or 0) in CONTRACHEQUE_COM_FANTASIA:
+        try:
+            _fant = str(((supabase.table("tab_empresa").select("nome_fantasia")
+                          .eq("id_empresa", id_empresa).limit(1).execute().data
+                          or [{}])[0].get("nome_fantasia")) or "").strip()
+            if _fant and _fant.upper() not in str(empresa_nm or "").upper():
+                empresa_nm = f"{str(empresa_nm or '').strip()} - {_fant}"
+        except Exception as e:
+            print(f"[contracheque] nome fantasia: {e}")
     from reportlab.pdfgen.canvas import Canvas
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
