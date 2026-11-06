@@ -58726,6 +58726,26 @@ def rel_nverbas_pdf():
     return resp
 
 
+def _vis_soma_base(ri, ft, vals_ft, rubricas_info):
+    """(soma, texto) das verbas do "soma na base" da rubrica, com os valores do
+    mês do funcionário. As verbas do próprio salário ficam de fora, como no
+    cálculo da folha (VERBAS_SALARIO_BASE)."""
+    soma, txt = 0, ""
+    for _s in str(ri.get("vsb") or "").split(","):
+        try:
+            c = int(_s.strip())
+        except ValueError:
+            continue
+        if c in VERBAS_SALARIO_BASE:
+            continue
+        v = int(vals_ft.get((ft, c), 0))
+        if v:
+            soma += v
+            dsc = (rubricas_info.get(c) or {}).get("dsc") or ""
+            txt += f" + {_fmt_brl(v)} ({c:04d} {dsc})".rstrip()
+    return soma, txt
+
+
 @app.route("/visualizar_calculo")
 def visualizar_calculo():
     if not session.get("logado"):
@@ -58818,7 +58838,7 @@ def api_visualizar_calculo_dados():
     try:
         for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
             r_rub = (supabase.table("tab_rubrica")
-                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp")
+                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, verbas_somabase")
                      .eq("id_cliente", cli_id)
                      .execute())
             for row in (r_rub.data or []):
@@ -58829,6 +58849,7 @@ def api_visualizar_calculo_dados():
                         "dsc":    str(row.get("dsc_rubr")   or ""),
                         "unid":   str(row.get("unid_verba") or "V"),
                         "inc_cp": str(row.get("tpn_inc_cp") or ""),
+                        "vsb":    str(row.get("verbas_somabase") or "").strip(),
                     }
     except Exception:
         pass
@@ -58842,6 +58863,7 @@ def api_visualizar_calculo_dados():
     dtadms       = {}
     sal_hora_map = {}
     sal_mes_map  = {}
+    qhm_map      = {}
     codcateg_map = {}
     try:
         for l in (_calc_etapa1_dados(id_empresa) or []):
@@ -58850,6 +58872,7 @@ def api_visualizar_calculo_dados():
             dtadms[mat]       = str(l.get("dtadm") or "")
             sal_hora_map[mat] = float(l.get("sal_hora") or 0)
             sal_mes_map[mat]  = float(l.get("sal_mes")  or 0)
+            qhm_map[mat]      = int(l.get("qtdhrsmes") or 0)
             codcateg_map[mat] = str(l.get("codcateg") or "")
     except Exception:
         pass
@@ -58874,6 +58897,7 @@ def api_visualizar_calculo_dados():
                 dtadms.setdefault(m, str(f.get("dtadm") or ""))
                 sal_hora_map.setdefault(m, sh)
                 sal_mes_map.setdefault(m, sm)
+                qhm_map.setdefault(m, qhm)
                 codcateg_map.setdefault(m, str(f.get("codcateg") or ""))
         except Exception:
             pass
@@ -59029,6 +59053,12 @@ def api_visualizar_calculo_dados():
     for mat in sorted(mats):
         # agrupa verbas por folha_tipo
         agg = {}
+        # Valores do mês deste funcionário, por folha e verba — a base das
+        # verbas em hora/dia sai deles, como no cálculo (mmVmm).
+        _vals_ft = {}
+        for v in mov_data.get(mat, []):
+            _k = (str(v.get("folha_tipo") or "N"), int(v.get("cod_verba") or 0))
+            _vals_ft[_k] = _vals_ft.get(_k, 0) + int(v.get("valor") or 0)
         for v in mov_data.get(mat, []):
             cod  = int(v.get("cod_verba")  or 0)
             val  = float(v.get("valor")    or 0)
@@ -59042,18 +59072,45 @@ def api_visualizar_calculo_dados():
                 # Mesma conta da folha e da rescisão: horas × salário-hora ×
                 # (1 + percentual da rubrica). Sem o percentual a hora extra
                 # 100% aparecia pela metade aqui (SMV 02/10/2026).
+                # "Soma na base" da rubrica (SMV 06/11/2026): as verbas
+                # listadas ampliam a base do salário-hora, sem as verbas do
+                # próprio salário — a mesma regra do cálculo da folha.
                 sh  = sal_hora_map.get(mat, 0)
                 pct_v = _pct_rubricas(id_cliente).get(cod, 0)
+                _sb, _obs_sb = _vis_soma_base(ri, ft, _vals_ft, rubricas_info)
+                _qhm = qhm_map.get(mat, 0)
+                if _sb > 0 and _qhm > 0:
+                    _base = int(sal_mes_map.get(mat, 0)) + _sb
+                    sh = _sal_hora_exato(_base, "M", _qhm)
+                    _obs_sb = (f"base {_fmt_brl(int(sal_mes_map.get(mat, 0)))}{_obs_sb}"
+                               f" / {_qhm}h  |  ")
+                else:
+                    _obs_sb = ""
                 val = round(qtd / 60 * sh * (1 + pct_v / 100), 4)
-                formula = (f"{_horas_conv(qtd)} × {_sal_hora_txt(sh)}/h{_mult_txt(pct_v)}"
+                formula = (f"{_obs_sb}{_horas_conv(qtd)} × {_sal_hora_txt(sh)}/h{_mult_txt(pct_v)}"
                            f"  =  {_fmt_brl(int(round(val)))}")
-            # Verba D: recalcula valor = qtd_dias × sal_dia
+            # Verba D: qtd_dias × sal_dia × (1 + percentual), como no cálculo:
+            # com "soma na base", dia = (salário + verbas listadas) / dias do
+            # mês; sem ela, dia = (salário + insalubridade + periculosidade) /
+            # dias do mês — a base da falta (0132) e do repouso (0139).
             elif ri.get("unid") == "D" and qtd > 0:
                 sm  = sal_mes_map.get(mat, 0)
-                sal_dia = round(sm / dias_mes_folha, 4) if dias_mes_folha else 0
-                val = round(qtd * sal_dia, 4)
-                formula = (f"{qtd} {'dia' if qtd == 1 else 'dias'}"
-                           f" × {_fmt_brl(int(round(sal_dia)))}/dia"
+                pct_d = _pct_rubricas(id_cliente).get(cod, 0)
+                _sb, _obs_sb = _vis_soma_base(ri, ft, _vals_ft, rubricas_info)
+                if _sb > 0 and dias_mes_folha:
+                    sal_dia = int((int(sm) + _sb) / dias_mes_folha)
+                    _obs_sb = f"base {_fmt_brl(int(sm))}{_obs_sb} / {dias_mes_folha}d  |  "
+                else:
+                    _adic = _vals_ft.get((ft, 30), 0) + _vals_ft.get((ft, 31), 0)
+                    sal_dia = round((sm + _adic) / dias_mes_folha, 4) if dias_mes_folha else 0
+                    _obs_sb = (f"base {_fmt_brl(int(sm))} + {_fmt_brl(_adic)} (adicionais)"
+                               f" / {dias_mes_folha}d  |  ") if _adic else ""
+                if cod in (132, 139) and str(orig) == "C":
+                    val = float(int(sal_dia * qtd))          # mesma conta da etapa 5
+                else:
+                    val = float(int(qtd * sal_dia * (1 + pct_d / 100)))
+                formula = (f"{_obs_sb}{qtd} {'dia' if qtd == 1 else 'dias'}"
+                           f" × {_fmt_brl(int(round(sal_dia)))}/dia{_mult_txt(pct_d)}"
                            f"  =  {_fmt_brl(int(round(val)))}")
             else:
                 _orig_lbl = {"M": "Lançamento manual", "C": "Calculado automaticamente", "F": "Movimento fixo"}
