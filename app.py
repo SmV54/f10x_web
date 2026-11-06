@@ -64445,11 +64445,27 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # Mesma regra do base_inss abaixo (só proventos com inc_cp 11, fora as
     # informativas), por pessoa — para repartir a base por estabelecimento.
     emp_base_cp_prov = {}
+    # Adiantamento quinzenal (SMV 06/11/2026): as 161-164 são o REGISTRO do
+    # adiantamento já pago, e a 160 é o desconto dele na folha. Quem tem a 160
+    # teria o mesmo valor abatido duas vezes — empresa 79, 10/2026: 16.148,79
+    # na 160 e de novo na 161, líquido do Resumo 20.721,89 em vez de 36.870,68.
+    # Mesma regra da ETAPA 1140 do cálculo e do S-1200 (_mov_agregado_folha):
+    # as 161-164 vão para as informativas. Vale também para quem tem SÓ a 161
+    # na folha N, sem cálculo (saiu no mês — o adiantamento é acertado na
+    # rescisão): empresas 53, 32 e 42 em 10/2026, a 161 abatia o líquido de
+    # gente que nem está na folha. Quem é calculado sempre tem a 160, que é
+    # quem desconta.
+    adto_info = {}
     for rec in mov_rows:
         cod = int(rec.get("cod_verba") or 0)
         val = int(rec.get("valor")     or 0)
         mat = rec.get("matricula")
         todas_mats.add(mat)
+        if cod in VERBAS_ADTO_QUINZENAL:
+            a = adto_info.setdefault(cod, {"valor": 0, "mats": set()})
+            a["valor"] += val
+            a["mats"].add(mat)
+            continue
         if cod not in totais:
             totais[cod] = {"valor": 0, "mats": set()}
         totais[cod]["valor"] += val
@@ -64497,6 +64513,16 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         else:
             descontos.append(linha)
             total_desc += val
+
+    # Adiantamento já pago (161-164): aparece, mas fora dos totais — o desconto
+    # dele é a 160, que está nos descontos (ou a rescisão, para quem saiu).
+    for cod, agg in sorted(adto_info.items()):
+        rb = rubr_map.get(cod, {})
+        informativas.append({
+            "cod": f"{cod:04d}",
+            "dsc": f"{rb.get('dsc') or 'ADIANTAMENTO QUINZENAL'} (já pago — fora dos totais)",
+            "tp": rb.get("tp") or "2", "valor_c": agg["valor"],
+            "valor_fmt": _fmt_brl(agg["valor"]), "n_funcs": len(agg["mats"])})
 
     # Cliente 0030 em 07/2026: o adiantamento quinzenal abate a base do IRRF
     # (ver IRRF_ABATE_ADTO). O laço acima remonta a base somando os proventos,
