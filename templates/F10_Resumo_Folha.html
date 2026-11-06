@@ -103,7 +103,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .trib-aliq span { font-family: var(--mono); color: #64748b; font-weight: 600; }
 
 /* ── BARRA DE AÇÕES ── */
-.barra-acoes { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.barra-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .btn-voltar {
   background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155;
   font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 6px;
@@ -121,6 +121,11 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .btn-pdf:hover { background: #b91c1c; }
 .rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+.tipos-folha { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-left:8px; }
+.tipos-label { font-size:12px; font-weight:600; color:#334155; }
+.tipo-chip { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#334155;
+             background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:4px 8px; cursor:pointer; }
+.tipo-chip input { margin:0; cursor:pointer; }
 .rel-subtitulo { font-size: 12px; color: #64748b; margin-bottom: 20px; }
 </style>
 <link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
@@ -153,7 +158,13 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
   <div class="barra-acoes">
     <a class="btn-voltar" href="/relatorios">&#8592; Voltar</a>
-    <a class="btn-pdf" href="/resumo_folha_pdf" target="_blank">&#128438; Imprimir em PDF</a>
+    <a class="btn-pdf" id="btnPdf" href="/resumo_folha_pdf?tipos={{ tipos_sel|join(',') }}" target="_blank">&#128438; Imprimir em PDF</a>
+    <div class="tipos-folha">
+      <span class="tipos-label">Tipo da Folha:</span>
+      {% for t in tipos_disp %}
+      <label class="tipo-chip"><input type="checkbox" class="chk-tipo" value="{{ t.tp }}" {% if t.tp in tipos_sel %}checked{% endif %} onchange="aplicarTipos()"> {{ t.nome }}</label>
+      {% endfor %}
+    </div>
   </div>
 
   <!-- ── PROVENTOS ── -->
@@ -453,5 +464,12 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
 </div>
 <script src="/static/f10_dialog.js"></script>
+<script>
+// Tipo da Folha: recarrega o Resumo com os tipos marcados (nenhum = todos).
+function aplicarTipos() {
+  const tps = Array.from(document.querySelectorAll('.chk-tipo:checked')).map(c => c.value);
+  window.location.href = '/resumo_folha?tipos=' + encodeURIComponent(tps.join(','));
+}
+</script>
 </body>
 </html>

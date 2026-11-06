@@ -64665,9 +64665,11 @@ def _estabs_da_folha(id_empresa, anomes, anomes_tipo, mats):
     fil_da_mat = {}
     if mats:
         try:
+            _tps = ([anomes_tipo] if isinstance(anomes_tipo, str)
+                    else list(anomes_tipo or ["N"]))
             r_tf = (supabase.table("tab_total").select("matricula,filial")
                     .eq("id_empresa", id_empresa).eq("folha", int(anomes))
-                    .eq("folha_tipo", anomes_tipo)
+                    .in_("folha_tipo", _tps)
                     .in_("matricula", list(mats)).execute())
             for row in (r_tf.data or []):
                 if _fil6(row.get("filial")):
@@ -64710,8 +64712,26 @@ def _estabs_da_folha(id_empresa, anomes, anomes_tipo, mats):
 # =========================================================
 # RESUMO DA FOLHA
 # =========================================================
+# Tipos de folha que o Resumo pode juntar, na ordem da tela.
+RESUMO_TIPOS_FOLHA = ("N", "F", "R", "A", "1")
+
+
+def _resumo_tipos_da_req(req_args):
+    """Tipos escolhidos na tela (?tipos=N,R). Padrao: todos."""
+    raw = str(req_args.get("tipos") or "").upper()
+    tps = [t for t in RESUMO_TIPOS_FOLHA if t in raw.split(",")]
+    return tps or list(RESUMO_TIPOS_FOLHA)
+
+
 def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
-    """Retorna dict com todos os dados agregados do resumo da folha."""
+    """Retorna dict com todos os dados agregados do resumo da folha.
+
+    anomes_tipo: um tipo ('N') ou uma lista deles (['N', 'F', 'R'...]) — o
+    Resumo junta as folhas escolhidas na tela (SMV 06/11/2026). Cada linha do
+    tab_mov usa as incidencias do SEU tipo: a rescisao (R) usa as tpr_*, como
+    o calculo da rescisao; as demais, as tpn_*."""
+    tipos = ([str(anomes_tipo or "N").upper()[:1]] if isinstance(anomes_tipo, str)
+             else [str(t).upper()[:1] for t in (anomes_tipo or ["N"])])
     # ── Rubricas ──
     # Não filtra situacao: rubricas inativas que tenham movimento no período
     # também precisam ter nome correto. Quando há vários registros para o mesmo
@@ -64724,7 +64744,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         while True:
             try:
                 r_rubr = (supabase.table("tab_rubrica")
-                          .select("cod_rubr,dsc_rubr,tp_rubr,tpn_inc_cp,tpn_inc_irrf,tpn_inc_fgts")
+                          .select("cod_rubr,dsc_rubr,tp_rubr,tpn_inc_cp,tpn_inc_irrf,tpn_inc_fgts,"
+                                  "tpr_inc_cp,tpr_inc_irrf,tpr_inc_fgts")
                           .eq("id_cliente", cli_id)
                           .range(offset, offset + page_sz - 1)
                           .execute())
@@ -64741,6 +64762,13 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                     "inc_cp":   str(rb.get("tpn_inc_cp")   or ""),
                     "inc_irrf": str(rb.get("tpn_inc_irrf") or ""),
                     "inc_fgts": str(rb.get("tpn_inc_fgts") or ""),
+                    # rescisao: incidencias proprias; em branco vale a da folha
+                    # normal — e o que o calculo da rescisao gravou no
+                    # tab_total (empresa 29, 10/2026: o saldo de salario 0010
+                    # so tem a tpn e esta na base do INSS e do FGTS).
+                    "inc_cp_R":   str(rb.get("tpr_inc_cp")   or rb.get("tpn_inc_cp")   or ""),
+                    "inc_irrf_R": str(rb.get("tpr_inc_irrf") or rb.get("tpn_inc_irrf") or ""),
+                    "inc_fgts_R": str(rb.get("tpr_inc_fgts") or rb.get("tpn_inc_fgts") or ""),
                 }
             if len(rows) < page_sz:
                 break
@@ -64759,18 +64787,41 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # mais na lista, e sim o TOTAL do resumo (INSS, FGTS, líquido) inchado com
     # valores de outra empresa, que é pior por ser invisível.
     _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
+    # Paginado: o PostgREST devolve no maximo 1000 linhas por chamada e a
+    # folha grande (ou varios tipos juntos) passa disso — cortava em silencio.
+    mov_rows = []
     try:
-        r_mov = (supabase.table("tab_mov")
-                 .select("cod_verba,valor,matricula")
-                 .eq("id_empresa", id_empresa)
-                 .eq("folha", int(anomes))
-                 .eq("folha_tipo", anomes_tipo)
-                 .eq("situacao", "A")
-                 .execute())
-        mov_rows = [r for r in (r_mov.data or [])
-                    if int(r.get("matricula") or 0) not in _mats_fora]
-    except Exception:
+        _off = 0
+        while True:
+            _ch = (supabase.table("tab_mov")
+                   .select("cod_verba,valor,matricula,folha_tipo")
+                   .eq("id_empresa", id_empresa)
+                   .eq("folha", int(anomes))
+                   .in_("folha_tipo", tipos)
+                   .eq("situacao", "A")
+                   .order("id")
+                   .range(_off, _off + 999)
+                   .execute().data or [])
+            mov_rows.extend(r for r in _ch
+                            if int(r.get("matricula") or 0) not in _mats_fora)
+            if len(_ch) < 1000:
+                break
+            _off += 1000
+    except Exception as e:
+        print(f"[resumo_folha] falha ao ler tab_mov: {e}")
         mov_rows = []
+
+    def _inc(rb, ft, campo):
+        """Incidencia da rubrica no tipo de folha da linha."""
+        if ft == "R":
+            return rb.get(campo + "_R", "")
+        return rb.get(campo, "")
+
+    # Quem tem a 160 em cada folha: nela as 161-164 sao so o registro do
+    # adiantamento pago (ver adto_info abaixo).
+    _com_160 = {(str(r.get("folha_tipo") or "N").upper(), r.get("matricula"))
+                for r in mov_rows if int(r.get("cod_verba") or 0) == 160}
+    base_irrf = 0
 
     totais = {}
     todas_mats = set()
@@ -64795,13 +64846,16 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # rescisão): empresas 53, 32 e 42 em 10/2026, a 161 abatia o líquido de
     # gente que nem está na folha. Quem é calculado sempre tem a 160, que é
     # quem desconta.
+    # Na RESCISAO a 161 sem a 160 e o proprio desconto do adiantamento (o
+    # acerto de quem saiu) e fica nos descontos; com a 160 junto, e registro.
     adto_info = {}
     for rec in mov_rows:
         cod = int(rec.get("cod_verba") or 0)
         val = int(rec.get("valor")     or 0)
         mat = rec.get("matricula")
+        ft  = str(rec.get("folha_tipo") or "N").upper()
         todas_mats.add(mat)
-        if cod in VERBAS_ADTO_QUINZENAL:
+        if cod in VERBAS_ADTO_QUINZENAL and (ft == "N" or (ft, mat) in _com_160):
             a = adto_info.setdefault(cod, {"valor": 0, "mats": set()})
             a["valor"] += val
             a["mats"].add(mat)
@@ -64811,12 +64865,17 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         totais[cod]["valor"] += val
         totais[cod]["mats"].add(mat)
         rb_cod = rubr_map.get(cod, {})
-        # Códigos que incidem, por tipo de folha — ver _cods_inc_fgts.
-        if rb_cod.get("inc_fgts") in _cods_inc_fgts(anomes_tipo):
+        if rb_cod.get("tp", "1") == "1" and cod <= 9900 and _inc(rb_cod, ft, "inc_irrf") == "11":
+            base_irrf += val
+        # Códigos que incidem, por tipo de folha — ver _cods_inc_fgts. Na
+        # rescisao o FGTS do 13º proporcional (12) vai na mesma base, como no
+        # tab_total da rescisao.
+        _cods_fg = (("S", "11", "12") if ft == "R" else _cods_inc_fgts(ft))
+        if _inc(rb_cod, ft, "inc_fgts") in _cods_fg:
             # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
             emp_fgts_base[mat] = (emp_fgts_base.get(mat, 0)
                                   + (val if rb_cod.get("tp") == "1" else -val))
-        if rb_cod.get("inc_cp") == "11":
+        if _inc(rb_cod, ft, "inc_cp") == "11":
             # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
             emp_base_cp[mat] = (emp_base_cp.get(mat, 0)
                                 + (val if rb_cod.get("tp") == "1" else -val))
@@ -64833,7 +64892,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     proventos = []
     descontos = []
     informativas = []        # cod > 9900 — não entram nos totais
-    total_prov = total_desc = base_inss = base_irrf = base_fgts = 0
+    total_prov = total_desc = base_inss = base_fgts = 0
 
     for cod, agg in sorted(totais.items()):
         val     = agg["valor"]
@@ -64848,8 +64907,6 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         if rb["tp"] == "1":
             proventos.append(linha)
             total_prov += val
-            if rb["inc_irrf"] == "11": base_irrf += val
-            if rb["inc_fgts"] in _cods_inc_fgts(anomes_tipo): base_fgts += val
         else:
             descontos.append(linha)
             total_desc += val
@@ -64869,10 +64926,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # e as 161-164 não passam por ele — são desconto, e no cálculo nem chegam
     # a virar verba da folha. Sem este abatimento o Resumo mostraria uma base
     # maior do que a gravada no tab_total, e os dois relatórios brigariam.
-    if _irrf_abate_adto(id_cliente, anomes):
+    if _irrf_abate_adto(id_cliente, anomes) and "N" in tipos:
         base_irrf = max(0, base_irrf - sum(
-            _irrf_adto_por_mat(id_empresa, id_cliente, anomes,
-                               _folha_tipo_mov_de(anomes_tipo)).values()))
+            _irrf_adto_por_mat(id_empresa, id_cliente, anomes, "N").values()))
 
     liquido  = total_prov - total_desc
     inss_val = totais.get(101, {}).get("valor", 0)
@@ -64939,7 +64995,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     #
     # Por ESTABELECIMENTO: cada filial com FPAS/FAP próprios tem os seus
     # terceiros e o seu RAT × FAP — ver _estabs_da_folha.
-    estab_da_mat, estabs = _estabs_da_folha(id_empresa, anomes, anomes_tipo, todas_mats)
+    estab_da_mat, estabs = _estabs_da_folha(id_empresa, anomes, tipos, todas_mats)
     grupos = {}   # {codigo do estabelecimento ('' = empresa): set(matriculas)}
     for _m in todas_mats:
         grupos.setdefault(estab_da_mat.get(_m, ""), set()).add(_m)
@@ -65027,11 +65083,17 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         })
 
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else anomes
-    tipo_desc  = _folha_tipo_label(anomes_tipo)
+    if len(tipos) == len(RESUMO_TIPOS_FOLHA):
+        tipo_desc = "Todas as folhas"
+    else:
+        tipo_desc = " + ".join(_folha_tipo_label(t) for t in tipos)
 
     return {
         "anomes_fmt":       anomes_fmt,
         "tipo_desc":        tipo_desc,
+        "tipos_sel":        tipos,
+        "tipos_disp":       [{"tp": t, "nome": _folha_tipo_label(t)}
+                             for t in RESUMO_TIPOS_FOLHA],
         "n_funcionarios":   len(todas_mats),
         "proventos":        proventos,
         "descontos":        descontos,
@@ -65091,7 +65153,8 @@ def resumo_folha():
     if not anomes or not id_empresa:
         return redirect("/menu")
 
-    d = _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo)
+    d = _resumo_folha_dados(id_empresa, id_cliente, anomes,
+                            _resumo_tipos_da_req(request.args))
     return render_template(
         "F10_Resumo_Folha.html",
         versao   = ler_versao(),
@@ -65114,7 +65177,8 @@ def resumo_folha_pdf():
         return "Folha ativa não definida.", 400
 
     cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
-    d = _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo)
+    d = _resumo_folha_dados(id_empresa, id_cliente, anomes,
+                            _resumo_tipos_da_req(request.args))
 
     # ── ReportLab ──
     buf  = io.BytesIO()
