@@ -229,8 +229,9 @@ def montar_dps(d):
 _C14N = "http://www.w3.org/2001/10/xml-exc-c14n#"
 
 
-def assinar_dps(xml_str, pfx_bytes, senha):
+def assinar_dps(xml_str, pfx_bytes, senha, inf_tag="infDPS"):
     """Assina o DPS com o A1 (pfx), XMLDSig envelopada referenciando #<Id do infDPS>.
+    inf_tag: o elemento assinado — infPedReg no pedido de evento (cancelamento).
 
     A Signature é gerada SEM prefixo de namespace (namespace dsig como default),
     porque o Sefin Nacional rejeita qualquer prefixo (erro E1228). Por isso a
@@ -248,9 +249,9 @@ def assinar_dps(xml_str, pfx_bytes, senha):
     pk, cert, _chain = pkcs12.load_key_and_certificates(pfx_bytes, sen)
 
     root = etree.fromstring(xml_str.encode("utf-8"))
-    inf = root.find(f"{{{NS_NFSE}}}infDPS")
+    inf = root.find(f"{{{NS_NFSE}}}{inf_tag}")
     if inf is None:
-        raise ValueError("infDPS não encontrado no DPS.")
+        raise ValueError(f"{inf_tag} não encontrado no XML.")
     ref_id = inf.get("Id")
 
     def DS(tag):
@@ -295,6 +296,40 @@ def assinar_dps(xml_str, pfx_bytes, senha):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Cancelamento: pedido de registro do evento 101101
+# ─────────────────────────────────────────────────────────────────────────
+XSD_EVENTO = "pedRegEvento_v1.01.xsd"
+CANC_MOTIVOS = {"1": "Erro na Emissão", "2": "Serviço não Prestado", "9": "Outros"}
+
+
+def montar_cancelamento(ambiente, chave, cnpj_autor, c_motivo, x_motivo, ver_aplic="Folha10-1.0"):
+    """XML (sem assinatura) do pedido de cancelamento da NFS-e. Id = PRE + chave + 101101."""
+    from lxml import etree
+    chave = so_digitos(chave)
+    if len(chave) != 50:
+        raise ValueError("Chave de acesso deve ter 50 dígitos.")
+
+    root = etree.Element(f"{{{NS_NFSE}}}pedRegEvento", nsmap={None: NS_NFSE})
+    root.set("versao", "1.01")
+    inf = etree.SubElement(root, f"{{{NS_NFSE}}}infPedReg")
+    inf.set("Id", f"PRE{chave}101101")
+
+    def E(pai, tag, txt):
+        etree.SubElement(pai, f"{{{NS_NFSE}}}{tag}").text = txt
+
+    E(inf, "tpAmb", str(int(ambiente)))
+    E(inf, "verAplic", ver_aplic)
+    E(inf, "dhEvento", datetime.now(TZ_BR).strftime("%Y-%m-%dT%H:%M:%S-03:00"))
+    E(inf, "CNPJAutor", so_digitos(cnpj_autor))
+    E(inf, "chNFSe", chave)
+    ev = etree.SubElement(inf, f"{{{NS_NFSE}}}e101101")
+    E(ev, "xDesc", "Cancelamento de NFS-e")
+    E(ev, "cMotivo", str(c_motivo))
+    E(ev, "xMotivo", _txt(x_motivo))
+    return etree.tostring(root, encoding="unicode")
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Validação contra o XSD oficial
 # ─────────────────────────────────────────────────────────────────────────
 def _xsd_sanitizado_dir(xsd_dir):
@@ -326,14 +361,14 @@ def _xsd_sanitizado_dir(xsd_dir):
     return fixed
 
 
-def validar_xsd(xml_str, xsd_dir=None):
-    """Valida o XML do DPS contra o DPS_v1.01.xsd. Retorna (ok:bool, erros:list[str])."""
+def validar_xsd(xml_str, xsd_dir=None, xsd="DPS_v1.01.xsd"):
+    """Valida o XML contra o XSD oficial (o DPS, por padrão). Retorna (ok:bool, erros:list[str])."""
     from lxml import etree
     xsd_dir = xsd_dir or XSD_DIR
-    if not os.path.exists(os.path.join(xsd_dir, "DPS_v1.01.xsd")):
+    if not os.path.exists(os.path.join(xsd_dir, xsd)):
         return True, [f"(XSD não encontrado em {xsd_dir} — validação pulada)"]
     fixed = _xsd_sanitizado_dir(xsd_dir)
-    schema = etree.XMLSchema(etree.parse(os.path.join(fixed, "DPS_v1.01.xsd")))
+    schema = etree.XMLSchema(etree.parse(os.path.join(fixed, xsd)))
     doc = etree.fromstring(xml_str.encode("utf-8"))
     ok = schema.validate(doc)
     erros = [f"linha {e.line}: {e.message}" for e in schema.error_log]

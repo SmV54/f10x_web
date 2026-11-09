@@ -74169,6 +74169,11 @@ def _nfse_gravar_log(caminho, **kw):
 
 def _nfse_post(url, dps_b64, pfx_bytes, senha):
     """POST do DPS (mTLS) no Sefin. Retorna (http_status, dict_json)."""
+    return _nfse_post_json(url, {"dpsXmlGZipB64": dps_b64}, pfx_bytes, senha)
+
+
+def _nfse_post_json(url, corpo, pfx_bytes, senha):
+    """POST (mTLS) no Sefin com o certificado do emitente. Retorna (http_status, dict_json)."""
     import tempfile, os as _os, json as _json
     from cryptography.hazmat.primitives.serialization import (
         pkcs12, Encoding, PrivateFormat, NoEncryption)
@@ -74182,7 +74187,7 @@ def _nfse_post(url, dps_b64, pfx_bytes, senha):
         cf.close()
         kf.write(pk.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()))
         kf.close()
-        resp = requests.post(url, json={"dpsXmlGZipB64": dps_b64},
+        resp = requests.post(url, json=corpo,
                              cert=(cf.name, kf.name), verify=False, timeout=90,
                              headers={"Content-Type": "application/json",
                                       "Accept": "application/json"})
@@ -74588,6 +74593,106 @@ def api_admin_nf_pdf():
     disp = 'attachment' if baixar else 'inline'
     return Response(pdf, mimetype='application/pdf',
                     headers={'Content-Disposition': f'{disp}; filename="NFSe_{chave}.pdf"'})
+
+
+@app.route('/api/admin_nf/cancelar', methods=['POST'])
+def api_admin_nf_cancelar():
+    """Cancela a NFS-e no Sefin Nacional (evento 101101) e marca CANCELADA no log.
+
+    O ambiente vem do registro da nota, nunca da tela. A cobrança (tabCOB2026)
+    não é mexida: quem decide o que fazer com ela é o escritório.
+    """
+    if not session.get('logado'):
+        return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
+    if not _pode_admin():
+        return jsonify({'ok': False, 'msg': 'Acesso restrito.'}), 403
+    import nfse_nacional as nfx
+    import pyodbc
+
+    data = request.get_json(force=True) or {}
+    chave = _re_digits(data.get('chave', ''))
+    c_motivo = str(data.get('c_motivo') or '').strip()
+    x_motivo = " ".join(str(data.get('x_motivo') or '').split())
+    if len(chave) != 50:
+        return jsonify({'ok': False, 'msg': 'Chave da nota inválida.'})
+    if c_motivo not in nfx.CANC_MOTIVOS:
+        return jsonify({'ok': False, 'msg': 'Escolha o motivo do cancelamento.'})
+    if not 15 <= len(x_motivo) <= 255:
+        return jsonify({'ok': False, 'msg': 'Descreva o motivo com 15 a 255 caracteres.'})
+
+    caminho = _arquivo_nf()
+    if not caminho:
+        return jsonify({'ok': False, 'msg': 'Arquivo TABNF não encontrado.'})
+    _dsn = f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+    conn = pyodbc.connect(_dsn)
+    try:
+        linha = conn.cursor().execute(
+            "SELECT Id, Ambiente, CodCLI, NumNFSe FROM tabNFSe_Log "
+            "WHERE ChaveAcesso=? AND Status='EMITIDA'", chave).fetchone()
+    finally:
+        conn.close()
+    if not linha:
+        return jsonify({'ok': False, 'msg': 'Nota não encontrada como Emitida.'})
+    id_log, ambiente, cod, numero = int(linha[0]), int(linha[1]), linha[2], linha[3]
+
+    try:
+        pfx_bytes, senha = _nfse_cert_emitente()
+        xml = nfx.montar_cancelamento(ambiente, chave, NFSE_EMITENTE["cnpj"], c_motivo, x_motivo)
+        xml_ass = nfx.assinar_dps(xml, pfx_bytes, senha, inf_tag="infPedReg")
+        ok_xsd, erros_xsd = nfx.validar_xsd(xml_ass, xsd=nfx.XSD_EVENTO)
+        if not ok_xsd:
+            return jsonify({'ok': False, 'msg': 'Pedido reprovado na validação XSD.',
+                            'erros': erros_xsd[:5]})
+        status, resp = _nfse_post_json(
+            f"{NFSE_URLS.get(ambiente, NFSE_URLS[2])}/{chave}/eventos",
+            {"pedidoRegistroEventoXmlGZipB64": nfx.compactar_gzip_b64(xml_ass)},
+            pfx_bytes, senha)
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Falha ao cancelar: {ex}'})
+
+    # Nos eventos o Sefin responde em 'erro', com as chaves em minúsculas (E0822).
+    erros = resp.get('erro') or resp.get('erros') or resp.get('Erros') or []
+    if isinstance(erros, dict):
+        erros = [erros]
+    if erros or status >= 400:
+        msgs = [f"{x.get('codigo') or x.get('Codigo') or ''}: "
+                f"{x.get('descricao') or x.get('Descricao') or ''}" for x in erros] or [f"HTTP {status}"]
+        return jsonify({'ok': False, 'msg': 'Cancelamento recusado pelo Sefin.', 'erros': msgs})
+
+    # Aceito pelo governo daqui em diante: falha local não pode virar "não cancelou".
+    aviso = ''
+    try:
+        import gzip as _gz
+        ev_b64 = resp.get('eventoXmlGZipB64')
+        if ev_b64:
+            pasta_xml = os.path.join(os.path.dirname(caminho), "NFSe_XML")
+            os.makedirs(pasta_xml, exist_ok=True)
+            with open(os.path.join(pasta_xml, f"{chave}_cancelamento.xml"), "w", encoding="utf-8") as f:
+                f.write(_gz.decompress(base64.b64decode(ev_b64)).decode('utf-8'))
+    except Exception:
+        pass
+    txt = (f"Cancelada em {_agora_brasilia().strftime('%d/%m/%Y %H:%M')} - "
+           f"{nfx.CANC_MOTIVOS[c_motivo]}: {x_motivo}")
+    try:
+        conn = pyodbc.connect(_dsn)
+        try:
+            conn.cursor().execute("UPDATE tabNFSe_Log SET Status='CANCELADA', Mensagem=? WHERE Id=?",
+                                  txt[:1000], id_log)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as ex:
+        aviso = f' Mas não foi possível marcar a nota na lista: {ex}'
+    try:
+        supabase.table("tab_log").insert({
+            "id_cliente": None, "id_empresa": None,
+            "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_CANCEL",
+            "observacao": f"NFS-e amb={ambiente} n={numero} cod={cod} chave={chave} mot={c_motivo}"[:200],
+            "ano_mes": None, "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
+        }).execute()
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'msg': f'NFS-e cancelada no Sefin.{aviso}'})
 
 
 @app.route('/api/admin_nf/whatsapp', methods=['POST'])

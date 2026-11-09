@@ -94,12 +94,32 @@ tbody tr:hover { background: #f8fbff; }
 .b-emitida  { background: #dcfce7; color: #15803d; }
 .b-rejeitada{ background: #fee2e2; color: #b91c1c; }
 .b-erro     { background: #fef3c7; color: #92400e; }
+.b-cancelada{ background: #e2e8f0; color: #475569; }
+.link-cancelar { color: #b91c1c; border-color: #fecaca; }
+.link-cancelar:hover { background: #fef2f2; }
+.modal-fundo { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; z-index: 500; padding: 16px; }
+.modal-fundo.aberto { display: flex; }
+.modal { background: var(--surface); border-radius: 12px; width: 100%; max-width: 480px; padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.modal h3 { font-size: 16px; color: var(--text-head); margin-bottom: 10px; }
+.modal-dados { font-size: 13px; line-height: 1.6; margin-bottom: 10px; }
+.modal-aviso { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; border-radius: 8px; padding: 9px 11px; font-size: 12px; margin-bottom: 12px; }
+.modal label { display: block; font-size: 11px; font-weight: 600; margin: 10px 0 4px; }
+.modal select, .modal textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: var(--sans); }
+.modal textarea { height: 76px; resize: vertical; }
+.modal-cont { font-size: 11px; color: #64748b; text-align: right; margin-top: 3px; }
+.modal-erro { color: #b91c1c; font-size: 12px; margin-top: 8px; }
+.modal-botoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal-botoes button { border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.btn-voltar-modal { background: #e5e7eb; color: #111827; }
+.btn-confirma { background: #b91c1c; color: #fff; }
+.btn-confirma:disabled { opacity: .5; cursor: default; }
 .b-amb2 { background: #e0e7ff; color: #4338ca; }
 .b-amb1 { background: #fce7f3; color: #be185d; }
 
 .link-xml {
     font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
     border: 1px solid #c3d9f8; border-radius: 6px; padding: 3px 8px; white-space: nowrap;
+    display: inline-block; margin: 2px 0;
 }
 .link-xml:hover { background: #eaf2fd; }
 
@@ -145,6 +165,7 @@ tbody tr:hover { background: #f8fbff; }
         <div class="filtros" id="filtros">
             <div class="chip ativo" data-f="all" onclick="setFiltro(this)">Todas</div>
             <div class="chip" data-f="EMITIDA" onclick="setFiltro(this)">Emitidas</div>
+            <div class="chip" data-f="CANCELADA" onclick="setFiltro(this)">Canceladas</div>
             <div class="chip" data-f="REJEITADO" onclick="setFiltro(this)">Rejeitadas</div>
             <div class="chip" data-f="restrita" onclick="setFiltro(this)">Restrita</div>
             <div class="chip" data-f="producao" onclick="setFiltro(this)">Produção</div>
@@ -175,6 +196,29 @@ tbody tr:hover { background: #f8fbff; }
         </div>
     </div>
     <div class="rodape-cont" id="rodape"></div>
+</div>
+
+<div class="modal-fundo" id="modalCancelar">
+    <div class="modal">
+        <h3>Cancelar NFS-e</h3>
+        <div class="modal-dados" id="cancDados"></div>
+        <div class="modal-aviso" id="cancAviso"></div>
+        <label for="cancCodigo">Motivo</label>
+        <select id="cancCodigo">
+            <option value="">Escolha…</option>
+            <option value="1">Erro na Emissão</option>
+            <option value="2">Serviço não Prestado</option>
+            <option value="9">Outros</option>
+        </select>
+        <label for="cancTexto">Descrição do motivo (mínimo 15 caracteres)</label>
+        <textarea id="cancTexto" maxlength="255" oninput="contarMotivo()"></textarea>
+        <div class="modal-cont" id="cancCont">0 de 255</div>
+        <div class="modal-erro" id="cancErro"></div>
+        <div class="modal-botoes">
+            <button class="btn-voltar-modal" onclick="fecharCancelar()">Voltar</button>
+            <button class="btn-confirma" id="cancBotao" onclick="confirmarCancelar()">Cancelar a nota</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -224,6 +268,7 @@ function passaFiltro(r) {
     if (filtro === 'restrita') return r.ambiente === 2;
     if (filtro === 'producao') return r.ambiente === 1;
     if (filtro === 'EMITIDA') return r.status === 'EMITIDA';
+    if (filtro === 'CANCELADA') return r.status === 'CANCELADA';
     if (filtro === 'REJEITADO') return r.status === 'REJEITADO' || String(r.status).indexOf('ERRO') === 0;
     return true;
 }
@@ -238,11 +283,13 @@ function render() {
 
     // totais
     const emit = REGS.filter(r => r.status === 'EMITIDA');
+    const canc = REGS.filter(r => r.status === 'CANCELADA').length;
     const totVal = emit.reduce((s, r) => s + Number(r.valor||0), 0);
     document.getElementById('totCards').innerHTML =
         `<div class="tot-card"><div class="tot-num">${REGS.length}</div><div class="tot-lbl">Registros</div></div>
          <div class="tot-card"><div class="tot-num">${emit.length}</div><div class="tot-lbl">Emitidas</div></div>
-         <div class="tot-card"><div class="tot-num">${REGS.length - emit.length}</div><div class="tot-lbl">Rejeitadas/Erro</div></div>
+         <div class="tot-card"><div class="tot-num">${canc}</div><div class="tot-lbl">Canceladas</div></div>
+         <div class="tot-card"><div class="tot-num">${REGS.length - emit.length - canc}</div><div class="tot-lbl">Rejeitadas/Erro</div></div>
          <div class="tot-card"><div class="tot-num" style="font-size:16px;">${fmtBRL(totVal)}</div><div class="tot-lbl">Total emitido</div></div>`;
 
     const tb = document.getElementById('tbody');
@@ -260,11 +307,14 @@ function render() {
                 : '<span class="badge b-amb2">Restrita</span>';
             let stBadge;
             if (r.status === 'EMITIDA') stBadge = '<span class="badge b-emitida">Emitida</span>';
+            else if (r.status === 'CANCELADA') stBadge = '<span class="badge b-cancelada">Cancelada</span>';
             else if (r.status === 'REJEITADO') stBadge = '<span class="badge b-rejeitada">Rejeitada</span>';
             else stBadge = `<span class="badge b-erro">${esc(r.status)}</span>`;
 
             const chaveOuMsg = r.status === 'EMITIDA'
                 ? `<span class="col-chave">${esc(r.chave)}</span>`
+                : r.status === 'CANCELADA'
+                ? `<span class="col-chave">${esc(r.chave)}</span><div style="font-size:12px;color:#475569;margin-top:3px;">${esc(r.mensagem)}</div>`
                 : `<span style="color:#b91c1c;font-size:12px;">${esc(r.mensagem)}</span>`;
 
             const waAcao = temWa(r.celular)
@@ -274,7 +324,11 @@ function render() {
             const xml = (r.status === 'EMITIDA' && r.tem_xml)
                 ? `<a class="link-xml" href="/api/admin_nf/pdf?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Abrir DANFSE em PDF">PDF</a>
                    <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Ver XML">XML</a>
-                   ${waAcao}`
+                   ${waAcao}
+                   <a class="link-xml link-cancelar" href="#" title="Cancelar esta NFS-e"
+                      onclick="abrirCancelar('${esc(r.chave)}');return false;">Cancelar</a>`
+                : (r.status === 'CANCELADA' && r.tem_xml)
+                ? `<a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Ver XML">XML</a>`
                 : '—';
 
             return `<tr>
@@ -315,6 +369,63 @@ function enviarWaConsulta(chave, cod, el) {
     .catch(ex => {
         if (el) { el.dataset.enviando = ''; el.innerHTML = '📲 WhatsApp'; el.style.pointerEvents = ''; }
         alert('Erro de comunicação: ' + String(ex));
+    });
+}
+
+let cancChave = '';
+
+function abrirCancelar(chave) {
+    const r = REGS.find(x => x.chave === chave);
+    if (!r) return;
+    cancChave = chave;
+    document.getElementById('cancDados').innerHTML =
+        `<b>NFS-e nº ${esc(r.numero || '—')}</b> · ${esc(r.cliente || ('cód ' + r.cod))}<br>
+         Competência ${esc(r.competencia)} · ${fmtBRL(r.valor)}`;
+    document.getElementById('cancAviso').textContent = r.ambiente === 1
+        ? 'PRODUÇÃO: o cancelamento vale no governo e não pode ser desfeito.'
+        : 'Ambiente de teste (Restrita): não tem valor fiscal.';
+    document.getElementById('cancCodigo').value = '';
+    document.getElementById('cancTexto').value = '';
+    document.getElementById('cancErro').textContent = '';
+    document.getElementById('cancBotao').disabled = false;
+    contarMotivo();
+    document.getElementById('modalCancelar').classList.add('aberto');
+}
+
+function fecharCancelar() {
+    document.getElementById('modalCancelar').classList.remove('aberto');
+}
+
+function contarMotivo() {
+    document.getElementById('cancCont').textContent =
+        document.getElementById('cancTexto').value.trim().length + ' de 255';
+}
+
+function confirmarCancelar() {
+    const c = document.getElementById('cancCodigo').value;
+    const t = document.getElementById('cancTexto').value.trim();
+    const erro = document.getElementById('cancErro');
+    const botao = document.getElementById('cancBotao');
+    if (!c) { erro.textContent = 'Escolha o motivo.'; return; }
+    if (t.length < 15) { erro.textContent = 'Descreva o motivo com pelo menos 15 caracteres.'; return; }
+    erro.textContent = '';
+    botao.disabled = true;
+    botao.textContent = 'Cancelando…';
+    fetch('/api/admin_nf/cancelar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave: cancChave, c_motivo: c, x_motivo: t }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        botao.textContent = 'Cancelar a nota';
+        if (d.ok) { fecharCancelar(); carregar(); return; }
+        botao.disabled = false;
+        erro.textContent = (d.msg || 'Não foi possível cancelar.') + (d.erros ? ' ' + d.erros.join(' | ') : '');
+    })
+    .catch(ex => {
+        botao.textContent = 'Cancelar a nota';
+        botao.disabled = false;
+        erro.textContent = 'Erro de comunicação: ' + String(ex);
     });
 }
 
