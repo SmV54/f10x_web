@@ -10511,6 +10511,18 @@ def _calc_rescisao_nucleo(body, sim=None):
         # vezes), mas o valor continua somando no aviso, 13o e ferias.
         ul_mes_r   = dict(_ul_val_r.get(mat, {}))
         _cods_man  = {int(_r.get("cod_verba") or 0) for _r in manual_mov.get(mat, [])}
+        # Digitada MAIOR que o ultimo lancamento e o valor novo da verba (SMV
+        # 09/11/2026, cliente 30, empresa 30 mat 18: 1005 de 780,00 para 820,00
+        # no mes da saida, sem folha normal): passa a ser a base. Digitada menor
+        # e o proporcional do saldo (quebra de caixa 1003 de 35,66) e nao reduz.
+        _ul_digit = {}
+        for _r in manual_mov.get(mat, []):
+            _c_ul = int(_r.get("cod_verba") or 0)
+            if _c_ul in _ul_dsc_r:
+                _ul_digit[_c_ul] = _ul_digit.get(_c_ul, 0) + int(_r.get("valor") or 0)
+        for _c_ul, _v_ul in _ul_digit.items():
+            if _v_ul > ul_mes_r.get(_c_ul, 0):
+                ul_mes_r[_c_ul] = _v_ul
         ul_auto_r  = {c: v for c, v in ul_mes_r.items() if c not in _cods_man}
         ul_total   = sum(ul_mes_r.values())
         sal_mes_ad  = sal_mes + adic_total + ul_total   # remuneracao mensal cheia
