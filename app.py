@@ -74595,12 +74595,43 @@ def api_admin_nf_pdf():
                     headers={'Content-Disposition': f'{disp}; filename="NFSe_{chave}.pdf"'})
 
 
+def _cobranca_cancelar(numero, cod, valor):
+    """Marca a NF como cancelada na tabCOB2026, no padrão do escritório: Valor 0,
+    *** CANCELADA ***, Extrato 9999 e Pagamento_Data 20000101.
+
+    NF_Numero acompanha o número da NFS-e; cliente e valor são conferidos antes
+    para nunca zerar a linha errada. NF com pagamento registrado não é alterada:
+    o pagamento real se perderia. Retorna (ok, detalhe)."""
+    import pyodbc
+    alvo = _cobranca_arquivo(None)
+    if not os.path.isfile(alvo):
+        return False, "arquivo da cobrança não encontrado nesta máquina"
+    nf = str(int(numero)).zfill(5)
+    conn = pyodbc.connect(f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={alvo};')
+    try:
+        cur = conn.cursor()
+        row = cur.execute("SELECT Cliente_Codigo, Valor, Pagamento_Data FROM tabCOB2026 "
+                          "WHERE NF_Numero=?", nf).fetchone()
+        if not row:
+            return False, f"NF {nf} não encontrada"
+        if int(row[0] or 0) != int(cod) or int(row[1] or 0) != int(round(float(valor) * 100)):
+            return False, f"a NF {nf} está com outro cliente ou valor"
+        if str(row[2] or "").strip():
+            return False, f"a NF {nf} já tem pagamento em {row[2]}"
+        cur.execute("UPDATE tabCOB2026 SET Valor=0, Cliente_RazaoSocial='*** CANCELADA ***', "
+                    "Extrato=9999, Pagamento_Data='20000101' WHERE NF_Numero=?", nf)
+        conn.commit()
+        return True, nf
+    finally:
+        conn.close()
+
+
 @app.route('/api/admin_nf/cancelar', methods=['POST'])
 def api_admin_nf_cancelar():
-    """Cancela a NFS-e no Sefin Nacional (evento 101101) e marca CANCELADA no log.
+    """Cancela a NFS-e no Sefin Nacional (evento 101101), marca CANCELADA no log
+    e, em produção, atualiza a cobrança (tabCOB2026).
 
-    O ambiente vem do registro da nota, nunca da tela. A cobrança (tabCOB2026)
-    não é mexida: quem decide o que fazer com ela é o escritório.
+    O ambiente vem do registro da nota, nunca da tela.
     """
     if not session.get('logado'):
         return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
@@ -74627,13 +74658,13 @@ def api_admin_nf_cancelar():
     conn = pyodbc.connect(_dsn)
     try:
         linha = conn.cursor().execute(
-            "SELECT Id, Ambiente, CodCLI, NumNFSe FROM tabNFSe_Log "
+            "SELECT Id, Ambiente, CodCLI, NumNFSe, Valor FROM tabNFSe_Log "
             "WHERE ChaveAcesso=? AND Status='EMITIDA'", chave).fetchone()
     finally:
         conn.close()
     if not linha:
         return jsonify({'ok': False, 'msg': 'Nota não encontrada como Emitida.'})
-    id_log, ambiente, cod, numero = int(linha[0]), int(linha[1]), linha[2], linha[3]
+    id_log, ambiente, cod, numero, valor_nf = int(linha[0]), int(linha[1]), linha[2], linha[3], linha[4]
 
     try:
         pfx_bytes, senha = _nfse_cert_emitente()
@@ -74683,16 +74714,26 @@ def api_admin_nf_cancelar():
             conn.close()
     except Exception as ex:
         aviso = f' Mas não foi possível marcar a nota na lista: {ex}'
+
+    cob_status = ''
+    if ambiente == 1:
+        try:
+            ok_cob, det_cob = _cobranca_cancelar(numero or chave[23:36], cod, valor_nf)
+        except Exception as ex:
+            ok_cob, det_cob = False, f'{type(ex).__name__}: {ex}'[:150]
+        cob_status = f'OK nf={det_cob}' if ok_cob else f'FALHA: {det_cob}'
+        if not ok_cob:
+            aviso += f' A cobrança NÃO foi atualizada ({det_cob}): ajuste a tabCOB2026 à mão.'
     try:
         supabase.table("tab_log").insert({
             "id_cliente": None, "id_empresa": None,
             "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_CANCEL",
-            "observacao": f"NFS-e amb={ambiente} n={numero} cod={cod} chave={chave} mot={c_motivo}"[:200],
+            "observacao": f"NFS-e amb={ambiente} n={numero} cod={cod} chave={chave} mot={c_motivo} cob[{cob_status}]"[:200],
             "ano_mes": None, "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
         }).execute()
     except Exception:
         pass
-    return jsonify({'ok': True, 'msg': f'NFS-e cancelada no Sefin.{aviso}'})
+    return jsonify({'ok': True, 'msg': f'NFS-e cancelada no Sefin.{aviso}', 'aviso': bool(aviso)})
 
 
 @app.route('/api/admin_nf/whatsapp', methods=['POST'])

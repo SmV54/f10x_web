@@ -418,7 +418,7 @@ function confirmarCancelar() {
     .then(r => r.json())
     .then(d => {
         botao.textContent = 'Cancelar a nota';
-        if (d.ok) { fecharCancelar(); carregar(); return; }
+        if (d.ok) { fecharCancelar(); carregar(); if (d.aviso) alert(d.msg); return; }
         botao.disabled = false;
         erro.textContent = (d.msg || 'Não foi possível cancelar.') + (d.erros ? ' ' + d.erros.join(' | ') : '');
     })
