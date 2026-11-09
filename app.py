@@ -12,6 +12,8 @@ import hashlib
 import hmac
 import random
 import smtplib
+import ssl
+import certifi
 import requests
 from datetime import datetime, timedelta, date, timezone
 
@@ -12827,7 +12829,11 @@ def _enviar_email_texto(destinatario, assunto, corpo):
         # timeout=10s evita travar o request quando o SMTP nao responde
         # (ja causou worker SIGKILL no fallback de email da api_pix_qr).
         servidor = smtplib.SMTP(SMTP_SERVIDOR, SMTP_PORTA, timeout=10)
-        servidor.starttls()
+        # sem context o smtplib nao confere o certificado do servidor; certifi garante a
+        # lista de autoridades mesmo onde o sistema nao tem nenhuma
+        _ctx_tls = ssl.create_default_context()
+        _ctx_tls.load_verify_locations(certifi.where())
+        servidor.starttls(context=_ctx_tls)
         servidor.login(EMAIL_REMETENTE, EMAIL_SENHA_APP)
         servidor.send_message(msg)
         servidor.quit()
