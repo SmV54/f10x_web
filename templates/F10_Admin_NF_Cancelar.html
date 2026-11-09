@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Cancelar NFS-e</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy: #a0d9be; --navy-line: #70c4a0; --accent: #2a7de1; --text-head: #1e293b;
+    --text-sub: #374151; --bg: #f0f2f6; --surface: #ffffff; --border: #dde3ec;
+    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { min-height: 100%; font-family: var(--sans); background: var(--bg); color: var(--text-sub); }
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line); padding: 0 28px;
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0 24px;
+    min-height: 72px; position: sticky; top: 0; z-index: 100;
+}
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80; border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700; color: #dcfce7;
+    letter-spacing: 0.14em; white-space: nowrap;
+}
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); white-space: nowrap; text-decoration: none;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+.wrap { max-width: 620px; margin: 0 auto; padding: 24px 18px 60px; }
+.cartao { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 16px; }
+label { display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+input, select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font-size: 14px; font-family: var(--sans); outline: none; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { height: 76px; resize: vertical; font-size: 13px; }
+.linha-busca { display: flex; gap: 8px; }
+.linha-busca input { flex: 1; font-family: var(--mono); font-size: 16px; }
+button.acao { border: none; border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.btn-buscar { background: var(--accent); color: #fff; }
+.btn-cancelar { background: #b91c1c; color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+
+.dados { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; font-size: 13px; margin-bottom: 14px; }
+.dados dt { color: #64748b; }
+.dados dd { color: #0f172a; font-weight: 600; overflow-wrap: anywhere; }
+.dados dd.chave { font-family: var(--mono); font-size: 11px; font-weight: 400; }
+.msg { border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }
+.msg-erro { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.msg-ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.msg-aviso { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.campo { margin-top: 12px; }
+.cont { font-size: 11px; color: #64748b; text-align: right; margin-top: 3px; }
+.rodape { display: flex; justify-content: flex-end; margin-top: 14px; }
+.oculto { display: none; }
+@media (max-width: 560px) {
+    .topo { grid-template-columns: 1fr auto; padding: 10px 16px; }
+    .topo-titulo { grid-column: 1 / -1; order: 3; margin-top: 6px; }
+}
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">Cancelar NFS-e<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <a class="btn-voltar" href="/menu">↪ Menu</a>
+    </div>
+</div>
+
+<div class="wrap">
+    <div class="cartao">
+        <label for="numero">Número da NFS-e</label>
+        <div class="linha-busca">
+            <input type="text" id="numero" inputmode="numeric" maxlength="13" autocomplete="off"
+                   oninput="this.value=this.value.replace(/\D/g,'')"
+                   onkeydown="if(event.key==='Enter')buscar()">
+            <button class="acao btn-buscar" id="btnBuscar" onclick="buscar()">Buscar</button>
+        </div>
+        <div id="msgBusca"></div>
+    </div>
+
+    <div class="cartao oculto" id="cartaoNota">
+        <dl class="dados" id="dados"></dl>
+        <div id="areaCancelar" class="oculto">
+            <div class="msg msg-erro" style="margin-top:0;">PRODUÇÃO: o cancelamento vale no governo e não pode ser desfeito.</div>
+            <div class="campo">
+                <label for="codigo">Motivo</label>
+                <select id="codigo">
+                    <option value="">Escolha…</option>
+                    <option value="1">Erro na Emissão</option>
+                    <option value="2">Serviço não Prestado</option>
+                    <option value="9">Outros</option>
+                </select>
+            </div>
+            <div class="campo">
+                <label for="texto">Descrição do motivo (mínimo 15 caracteres)</label>
+                <textarea id="texto" maxlength="255" oninput="contar()"></textarea>
+                <div class="cont" id="cont">0 de 255</div>
+            </div>
+            <div class="rodape">
+                <button class="acao btn-cancelar" id="btnCancelar" onclick="cancelar()">Cancelar a nota</button>
+            </div>
+        </div>
+        <div id="msgNota"></div>
+    </div>
+</div>
+
+<script>
+let nota = null;
+const el = id => document.getElementById(id);
+
+function esc(s) {
+    return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtBRL(v) {
+    return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function aviso(alvo, texto, tipo) {
+    el(alvo).innerHTML = texto ? `<div class="msg msg-${tipo}">${esc(texto)}</div>` : '';
+}
+function contar() {
+    el('cont').textContent = el('texto').value.trim().length + ' de 255';
+}
+function numeroNota(r) {
+    return r.numero || parseInt(r.chave.substring(23, 36), 10);
+}
+
+function buscar() {
+    const n = el('numero').value.trim();
+    nota = null;
+    el('cartaoNota').classList.add('oculto');
+    aviso('msgBusca', '', '');
+    aviso('msgNota', '', '');
+    if (!n) { aviso('msgBusca', 'Informe o número da NFS-e.', 'erro'); return; }
+    el('btnBuscar').disabled = true;
+    fetch('/api/admin_nf/por_numero?numero=' + encodeURIComponent(n))
+        .then(r => r.json())
+        .then(d => {
+            el('btnBuscar').disabled = false;
+            if (!d.ok) { aviso('msgBusca', d.msg || 'Nota não encontrada.', 'erro'); return; }
+            mostrar(d.nota);
+        })
+        .catch(ex => {
+            el('btnBuscar').disabled = false;
+            aviso('msgBusca', 'Erro de comunicação: ' + String(ex), 'erro');
+        });
+}
+
+function mostrar(r) {
+    nota = r;
+    const emitida = r.status === 'EMITIDA';
+    el('dados').innerHTML =
+        `<dt>NFS-e nº</dt><dd>${esc(numeroNota(r))}</dd>
+         <dt>Cliente</dt><dd>${esc(r.cliente || 'cód ' + r.cod)}</dd>
+         <dt>Código</dt><dd>${esc(r.cod)}</dd>
+         <dt>Competência</dt><dd>${esc(r.competencia)}</dd>
+         <dt>Valor</dt><dd>${fmtBRL(r.valor)}</dd>
+         <dt>Emitida em</dt><dd>${esc(r.data_hora)}</dd>
+         <dt>Chave</dt><dd class="chave">${esc(r.chave)}</dd>`;
+    el('codigo').value = '';
+    el('texto').value = '';
+    contar();
+    el('btnCancelar').disabled = false;
+    el('btnCancelar').textContent = 'Cancelar a nota';
+    el('areaCancelar').classList.toggle('oculto', !emitida);
+    if (!emitida) aviso('msgNota', 'Esta nota já está cancelada. ' + (r.mensagem || ''), 'aviso');
+    el('cartaoNota').classList.remove('oculto');
+}
+
+function cancelar() {
+    if (!nota) return;
+    const c = el('codigo').value;
+    const t = el('texto').value.trim();
+    if (!c) { aviso('msgNota', 'Escolha o motivo.', 'erro'); return; }
+    if (t.length < 15) { aviso('msgNota', 'Descreva o motivo com pelo menos 15 caracteres.', 'erro'); return; }
+    aviso('msgNota', '', '');
+    const b = el('btnCancelar');
+    b.disabled = true;
+    b.textContent = 'Cancelando…';
+    fetch('/api/admin_nf/cancelar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave: nota.chave, c_motivo: c, x_motivo: t }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        b.textContent = 'Cancelar a nota';
+        if (d.ok) {
+            el('areaCancelar').classList.add('oculto');
+            aviso('msgNota', d.msg, d.aviso ? 'aviso' : 'ok');
+            return;
+        }
+        b.disabled = false;
+        aviso('msgNota', (d.msg || 'Não foi possível cancelar.') + (d.erros ? ' ' + d.erros.join(' | ') : ''), 'erro');
+    })
+    .catch(ex => {
+        b.textContent = 'Cancelar a nota';
+        b.disabled = false;
+        aviso('msgNota', 'Erro de comunicação: ' + String(ex), 'erro');
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => el('numero').focus());
+</script>
+</body>
+</html>

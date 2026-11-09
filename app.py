@@ -74810,6 +74810,45 @@ def admin_nf_consulta():
                            nome=session.get('nome', ''))
 
 
+@app.route('/admin_nf_cancelar')
+def admin_nf_cancelar():
+    if not session.get('logado'):
+        return redirect('/')
+    if not _pode_admin():
+        return redirect('/menu')
+    return render_template('F10_Admin_NF_Cancelar.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''))
+
+
+@app.route('/api/admin_nf/por_numero')
+def api_admin_nf_por_numero():
+    """Acha a NFS-e de PRODUÇÃO pelo número, para o card Cancelar NFS-e."""
+    if not session.get('logado'):
+        return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
+    if not _pode_admin():
+        return jsonify({'ok': False, 'msg': 'Acesso restrito.'}), 403
+    numero = _re_digits(request.args.get('numero', ''))
+    if not numero or len(numero) > 13:
+        return jsonify({'ok': False, 'msg': 'Informe o número da NFS-e.'})
+    caminho = _arquivo_nf()
+    if not caminho:
+        return jsonify({'ok': False, 'msg': 'Arquivo TABNF não encontrado.'})
+    try:
+        regs = _nfse_listar_emitidas(caminho)
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+    # Na chave, o número da nota fica nas posições 23 a 35 (notas sem NumNFSe no log).
+    achados = [r for r in regs
+               if r['ambiente'] == 1 and r['status'] in ('EMITIDA', 'CANCELADA')
+               and len(r['chave']) == 50
+               and int(r['numero'] or r['chave'][23:36]) == int(numero)]
+    if not achados:
+        return jsonify({'ok': False, 'msg': f'NFS-e nº {int(numero)} não encontrada em produção.'})
+    achados.sort(key=lambda r: r['status'] != 'EMITIDA')
+    return jsonify({'ok': True, 'nota': achados[0]})
+
+
 @app.route('/admin_nf')
 def admin_nf():
     if not session.get('logado'):
