@@ -268,9 +268,9 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
                                 <span class="lock" title="Fórmula global — não pode ser alterada nem excluída">🔒</span>
                             {% else %}
                                 <button class="btn-acao" title="Editar"
-                                    onclick="abrirEditar({{ f.id }}, '{{ f.numero }}', {{ f.nome|tojson }}, {{ f.formula|tojson }})">✏️</button>
+                                    onclick="abrirEditar({{ f.id }}, '{{ f.numero }}', {{ f.nome|tojson|forceescape }}, {{ f.formula|tojson|forceescape }})">✏️</button>
                                 <button class="btn-acao excluir" title="Excluir"
-                                    onclick="excluirFormula({{ f.id }}, {{ f.nome|tojson }})">🗑</button>
+                                    onclick="excluirFormula({{ f.id }}, {{ f.nome|tojson|forceescape }})">🗑</button>
                             {% endif %}
                         </td>
                     </tr>

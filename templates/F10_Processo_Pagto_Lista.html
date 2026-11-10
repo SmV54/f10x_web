@@ -175,7 +175,7 @@ tbody tr:hover td { background: #f8fafc; }
                             {% if p.status == 'enviado' %}
                             <button class="btn-mini perigo" title="Gera a remessa S-3500 para tirar o evento do eSocial" onclick="excluirEsocial({{ p.id }})">Excluir do eSocial</button>
                             {% else %}
-                            <button class="btn-mini perigo" onclick="excluir({{ p.id }}, {{ p.mes_fmt|tojson }})">Excluir</button>
+                            <button class="btn-mini perigo" onclick="excluir({{ p.id }}, {{ p.mes_fmt|tojson|forceescape }})">Excluir</button>
                             {% endif %}
                         </div>
                     </td>

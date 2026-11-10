@@ -134,15 +134,18 @@ tbody tr.inativo td { color: #94a3b8; }
                 <td>
                     <div class="acoes">
                     {% if sou_titular %}
+                        {# Nome, celular e e-mail vão em data-*: o tojson põe aspas duplas,
+                           que cortavam o onclick="..." e o botão não fazia nada. #}
                         <button class="btn-mini"
-                                onclick="abrirEdicao({{ u.id_usuario }}, {{ u.nome|tojson }}, {{ (u.celular or '')|tojson }}, {{ (u.email or '')|tojson }})">
+                                data-nome="{{ u.nome }}" data-cel="{{ u.celular or '' }}" data-email="{{ u.email or '' }}"
+                                onclick="abrirEdicao({{ u.id_usuario }}, this.dataset.nome, this.dataset.cel, this.dataset.email)">
                             Alterar
                         </button>
                         {% if not u.eh_titular %}
                             {% if u.ativo %}
-                            <button class="btn-mini perigo" onclick="mudarSituacao({{ u.id_usuario }}, false, {{ u.nome|tojson }})">Desativar</button>
+                            <button class="btn-mini perigo" data-nome="{{ u.nome }}" onclick="mudarSituacao({{ u.id_usuario }}, false, this.dataset.nome)">Desativar</button>
                             {% else %}
-                            <button class="btn-mini" onclick="mudarSituacao({{ u.id_usuario }}, true, {{ u.nome|tojson }})">Reativar</button>
+                            <button class="btn-mini" data-nome="{{ u.nome }}" onclick="mudarSituacao({{ u.id_usuario }}, true, this.dataset.nome)">Reativar</button>
                             {% endif %}
                         {% endif %}
                     {% endif %}
