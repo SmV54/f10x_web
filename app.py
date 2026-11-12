@@ -56962,6 +56962,17 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # ── etapa 9 — lançamentos manuais (tab_mov) ────────
             mov_func = tab_mov_dict.get(matr, [])
+            # Verbas que o sistema calcula (INSS, IRRF, arredondamento) mas que
+            # foram DIGITADAS no movimento: o digitado vale também nos totais
+            # e no tab_total. Antes o tab_mov ficava com o digitado e o
+            # tab_total com o calculado — líquido do relatório diferente do
+            # tab_total (empresa 72, 07/2026, folhas anteriores).
+            _man_sis = {}
+            for _r_ms in mov_func:
+                _c_ms = int(_r_ms.get("cod_verba") or 0)
+                if _c_ms in (101, 102, 120, 501, 509):
+                    _man_sis[_c_ms] = _man_sis.get(_c_ms, 0) + int(_r_ms.get("valor") or 0)
+            _man_sis_lin = []
             ORIG_LABEL = {"M": "Manual", "C": "Calculado", "F": "Mov.Fixo"}
             TIPO_FOLHA = {"N": "Normal", "F": "Ferias", "R": "Rescisao"}
             tm_rows  = [[Paragraph("ETAPA 1090 - LANCAMENTOS DO MES", st_etapa), "", ""]]
@@ -57353,6 +57364,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _base_inss_cons, tabela_legais)
             # Desconta o INSS das ferias como adiantamento; o restante e o desconto da folha
             inss_val = max(0, _inss_total - _fer_inss_retido) if _fer_inss_base else _inss_total
+            _inss_cod_ms = 102 if is_domestico else 101
+            if _inss_cod_ms in _man_sis:
+                _man_sis_lin.append(
+                    f"V{_inss_cod_ms:04d} INSS digitada no movimento: "
+                    f"{_fmt_brl(_man_sis[_inss_cod_ms])}   (calculado {_fmt_brl(inss_val)})"
+                    f"   »   vale o digitado")
+                inss_val = _man_sis[_inss_cod_ms]
             if is_domestico:
                 mmVmm[102] = inss_val
             else:
@@ -57491,6 +57509,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         _rc = (_ra * 1000000 - _rb * int(base_irrf_bruta) + 500000) // 1000000
                         redutor_val = max(0, min(_rc, irrf_val_pre_redutor))
                         irrf_val    = irrf_val_pre_redutor - redutor_val
+            if 120 in _man_sis:
+                _man_sis_lin.append(
+                    f"V0120 IRRF digitada no movimento: {_fmt_brl(_man_sis[120])}"
+                    f"   (calculado {_fmt_brl(irrf_val)})   »   vale o digitado")
+                irrf_val = _man_sis[120]
             mmVmm[120] = irrf_val
 
             # ── etapa 11 — IRRF (tabela comparativa) ─────────────
@@ -57768,6 +57791,21 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
                 elems.append(_ad_tbl)
 
+            if _man_sis_lin:
+                _ms_tbl = Table([
+                    [Paragraph("ETAPA 1135 - VERBAS DO SISTEMA DIGITADAS NO MOVIMENTO", st_etapa)],
+                    *[[Paragraph(ln, st_detalhe)] for ln in _man_sis_lin],
+                ], colWidths=[17*cm])
+                _ms_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0),   10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0),   2),
+                    ("TOPPADDING",    (0, 1), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, -1),(0, -1),  4),
+                ]))
+                elems.append(_ms_tbl)
+
             # Remove 501/509 do mmVmm antes dos totais (re-runs não contaminam a base)
             if _arred_ativo:
                 mmVmm.pop(501, None)
@@ -57943,10 +57981,16 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr
             if _arred_desc_ativo:
                 _v509_val  = _arred_prev501.get(matr, 0)
+                _v509_calc = _v509_val
+                if 509 in _man_sis:
+                    _v509_val = _man_sis[509]
                 _liq_base  = total_prov - total_desc
                 _liq_ajust = _liq_base - _v509_val
                 _v501_val  = (_arredondar_para_cima(_liq_ajust, _arred_degrau_fol)
                               if _arred_ativo else 0)
+                _v501_calc = _v501_val
+                if 501 in _man_sis:
+                    _v501_val = _man_sis[501]
                 total_prov += _v501_val
                 total_desc += _v509_val
                 if _v509_val > 0:
@@ -57963,6 +58007,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _ar_linhas.append("Arredondamento da Folha desligado no cadastro — só o desconto da 509")
                 elif _liq_ajust > 0:
                     _ar_linhas.append(f"Líq. já múltiplo de {_fmt_brl(_arred_degrau_fol)} — V501 não lançada")
+                if 509 in _man_sis:
+                    _ar_linhas.append(f"V509 digitada no movimento: {_fmt_brl(_v509_val)}"
+                                      f"   (calculado {_fmt_brl(_v509_calc)})   »   vale o digitado")
+                if 501 in _man_sis:
+                    _ar_linhas.append(f"V501 digitada no movimento: {_fmt_brl(_v501_val)}"
+                                      f"   (calculado {_fmt_brl(_v501_calc)})   »   vale o digitado")
                 _ar_tit = (f"ETAPA 1160 - ARREDONDAMENTO (múltiplo de {_fmt_brl(_arred_degrau_fol)})"
                            if _arred_ativo else "ETAPA 1160 - DESCONTO DO ARREDONDAMENTO ANTERIOR")
                 _arred_tbl = Table([
