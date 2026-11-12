@@ -9267,6 +9267,53 @@ def _resc_para_folha(id_empresa, anomes, id_cliente, mats, adiant_data):
     return mov, tot
 
 
+def _ferias_para_folha(id_empresa, anomes, id_cliente, mats_fora=()):
+    """Verbas das ferias pagas no mes (tab_mov folha_tipo F), para o relatorio
+    da Folha Normal: {mat: linhas}. Como no Desktop, a folha mostra as verbas
+    das ferias e a linha 9998 "Desconto Liquido das Ferias ja Pagas", e o
+    liquido da folha continua o da folha N. Sem isto as ferias nao apareciam
+    (empresa 72, mat 2, 07/2026)."""
+    mov = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula,cod_verba,qtd,valor")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("folha", int(anomes)).eq("folha_tipo", "F"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            m = int(r.get("matricula") or 0)
+            if m and m not in mats_fora:
+                mov.setdefault(m, []).append(r)
+    except Exception as e:
+        print(f"[ferias na folha] empresa {id_empresa} {anomes}: {e}")
+    return mov
+
+
+def _ferias_verbas_folha(linhas, rubricas_info):
+    """(verbas, liquido) das ferias de um funcionario: verbas ate 9900, uma por
+    codigo, e o liquido delas - o valor da linha 9998."""
+    agg = {}
+    for v in linhas:
+        cod = int(v.get("cod_verba") or 0)
+        if not cod or cod > 9900 or cod in VERBAS_ADTO_QUINZENAL:
+            continue
+        ri = rubricas_info.get(cod, {"dsc": f"Verba {cod:04d}", "tp": "1",
+                                     "unid": "V", "icp": "", "ift": "", "iir": ""})
+        if cod in agg:
+            agg[cod]["val"] += int(v.get("valor") or 0)
+            agg[cod]["qtd"] += int(v.get("qtd") or 0)
+        else:
+            agg[cod] = {"cod": cod, "dsc": ri["dsc"], "tp": ri["tp"],
+                        "unid": ri["unid"], "icp": ri["icp"], "ift": ri["ift"],
+                        "iir": ri["iir"], "qtd": int(v.get("qtd") or 0),
+                        "val": int(v.get("valor") or 0), "ferias": True}
+    verbas = list(agg.values())
+    liq = (sum(v["val"] for v in verbas if v["tp"] == "1")
+           - sum(v["val"] for v in verbas if v["tp"] != "1"))
+    return verbas, liq
+
+
 def _desligado_limpar_folha_n(id_cliente, id_empresa, anomes, mat):
     """Tira da folha normal o que o calculo gravou para quem saiu neste mes.
 
@@ -59774,6 +59821,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     _dem_mes = (_demitidos_do_mes_folha(id_empresa, anomes)
                 if com_demitidos and folha_tipo_mov == "N" else {})
     _resc_mov, _resc_tot = _resc_para_folha(id_empresa, anomes, id_cliente, _dem_mes, adiant_data)
+    # Ferias do mes na Folha Normal (so' no relatorio, como os demitidos)
+    _fer_mov = (_ferias_para_folha(id_empresa, anomes, id_cliente, _mats_fora)
+                if com_demitidos and folha_tipo_mov == "N" else {})
 
     func_info = {}
     try:
@@ -59808,7 +59858,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     # Antes esta busca só rodava com `not func_info`, ou seja, quando NENHUM
     # ativo tinha sido lido — numa empresa com um ativo sequer ela nunca
     # acontecia, e é justamente aí que mora o desligado no meio da lista.
-    _sem_nome = [m for m in set(mov_data) | set(_dem_mes) if m not in func_info]
+    _sem_nome = [m for m in set(mov_data) | set(_dem_mes) | set(_fer_mov) if m not in func_info]
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
@@ -59858,7 +59908,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                  if folha_tipo_mov == "1" else {})
 
     cc_groups = {}
-    for mat in sorted(set(mov_data) | set(_dem_mes)):
+    for mat in sorted(set(mov_data) | set(_dem_mes) | set(_fer_mov)):
         # Desligado no mes: as verbas sao as da rescisao, e a linha 9999 tira o
         # liquido ja' pago nela: liquido zero, como no Desktop. Verba que tenha
         # ficado na folha N dele nao entra nos totais e aparece como aviso.
@@ -59867,7 +59917,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
                                   "funcao":"—","cc":"000","filial":""})
         agg = {}
-        for v in (_resc_mov.get(mat, []) if _demissao else mov_data[mat]):
+        for v in (_resc_mov.get(mat, []) if _demissao else mov_data.get(mat, [])):
             cod = int(v.get("cod_verba") or 0)
             val = int(v.get("valor")     or 0)
             qtd = int(v.get("qtd")       or 0)
@@ -59882,6 +59932,15 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         verbas_all  = sorted(agg.values(), key=lambda x: x["cod"])
         verbas      = [v for v in verbas_all if v["cod"] <= 9900]
         verbas_info = [v for v in verbas_all if v["cod"] >  9900]
+        # Ferias do mes: as verbas delas entram na folha e a 9998 desconta o
+        # liquido ja' pago nas ferias - o liquido da folha nao muda.
+        _fer_verbas, _fer_liq = _ferias_verbas_folha(_fer_mov.get(mat, []), rubricas_info)
+        if _fer_verbas:
+            verbas = sorted(verbas + _fer_verbas, key=lambda x: x["cod"])
+            if _fer_liq:
+                verbas.append({"cod": 9998, "dsc": "Desconto Líquido das Férias já Pagas",
+                               "tp": "2" if _fer_liq > 0 else "1", "unid": "V", "icp": "",
+                               "ift": "", "iir": "", "qtd": 0, "val": abs(_fer_liq)})
         tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
@@ -59909,13 +59968,14 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         # REDUZ a base, como no calculo (SMV 06/11/2026: empresa 79, mat 9,
         # 10/2026 — o relatorio mostrava so os proventos).
         base_inss = max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                               for v in verbas if v["icp"] == "11"))
+                               for v in verbas if v["icp"] == "11" and not v.get("ferias")))
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
         base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)))
+                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)
+                                and not v.get("ferias")))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -60223,9 +60283,12 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     _dem_mes = (_demitidos_do_mes_folha(id_empresa, anomes)
                 if folha_tipo_mov == "N" else {})
     _resc_mov, _resc_tot = _resc_para_folha(id_empresa, anomes, id_cliente, _dem_mes, adiant_data)
+    # Ferias do mes na Folha Normal - ver _ferias_para_folha
+    _fer_mov = (_ferias_para_folha(id_empresa, anomes, id_cliente, _mats_fora)
+                if folha_tipo_mov == "N" else {})
 
     func_info = {}
-    _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,centrocusto,filial,codcateg"
+    _cols_cad ="matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,nmcargo,centrocusto,filial,codcateg"
     try:
         r = (supabase.table("tab_cad")
              .select(_cols_cad)
@@ -60256,7 +60319,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     # sequer ela nunca acontecia, e e' justamente ai que mora o desligado no
     # meio da lista, saindo como "Matr. 000002" e sem funcao nem centro de
     # custo. Mesmo caso do GENILDO SOARES em 08/2026 na empresa 39.
-    _sem_nome = [m for m in set(mov_data) | set(_dem_mes) if m not in func_info]
+    _sem_nome = [m for m in set(mov_data) | set(_dem_mes) | set(_fer_mov) if m not in func_info]
     if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
@@ -60308,7 +60371,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     # ── MONTA POR CC ──────────────────────────────────────────────
     cc_groups = {}
-    for mat in sorted(set(mov_data) | set(_dem_mes)):
+    for mat in sorted(set(mov_data) | set(_dem_mes) | set(_fer_mov)):
         # Desligado no mes: as verbas sao as da rescisao, e a linha 9999 tira o
         # liquido ja' pago nela: liquido zero, como no Desktop. Verba que tenha
         # ficado na folha N dele nao entra nos totais e aparece como aviso.
@@ -60317,7 +60380,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
                                   "unid":"M","funcao":"—","cc":"000","filial":""})
         agg = {}
-        for v in (_resc_mov.get(mat, []) if _demissao else mov_data[mat]):
+        for v in (_resc_mov.get(mat, []) if _demissao else mov_data.get(mat, [])):
             cod = int(v.get("cod_verba") or 0)
             val = int(v.get("valor")     or 0)
             qtd = int(v.get("qtd")       or 0)
@@ -60333,6 +60396,14 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         verbas_all  = sorted(agg.values(), key=lambda x: x["cod"])
         verbas      = [v for v in verbas_all if v["cod"] <= 9900]
         verbas_info = [v for v in verbas_all if v["cod"] >  9900]
+        # Ferias do mes: verbas + 9998 (liquido ja' pago), como na tela
+        _fer_verbas, _fer_liq = _ferias_verbas_folha(_fer_mov.get(mat, []), rubricas_info)
+        if _fer_verbas:
+            verbas = sorted(verbas + _fer_verbas, key=lambda x: x["cod"])
+            if _fer_liq:
+                verbas.append({"cod": 9998, "dsc": "Desconto Líquido das Férias já Pagas",
+                               "tp": "2" if _fer_liq > 0 else "1", "unid": "V", "icp": "",
+                               "ift": "", "iir": "", "qtd": 0, "val": abs(_fer_liq)})
         tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
@@ -60351,13 +60422,14 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         # REDUZ a base, como no calculo (SMV 06/11/2026: empresa 79, mat 9,
         # 10/2026 — o relatorio mostrava so os proventos).
         base_inss = max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                               for v in verbas if v["icp"] == "11"))
+                               for v in verbas if v["icp"] == "11" and not v.get("ferias")))
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
         base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)))
+                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)
+                                and not v.get("ferias")))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
