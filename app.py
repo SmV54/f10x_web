@@ -13025,6 +13025,7 @@ SUPORTE_TELAS = {
     "/ponto_layout":               "Importar Ponto - Configurar o Layout",
     "/ponto_importar":             "Importar Ponto - Verificar e Importar o Arquivo",
     "/esocial_recibo_manual":      "Informar Recibo Manual",
+    "/esocial_recuperar_recibos_storage": "Recuperar Recibos do Storage",
     "/select_funcionario?contexto=aumento": "Como alterar salários",
     "/cad_aumento":                "Como alterar salários",
     "/rel_aumento":                "Como alterar salários",
