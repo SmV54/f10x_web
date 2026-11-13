@@ -38453,7 +38453,9 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
 # por trabalhador dentro do evento, e o S-1210 referencia exatamente este valor.
 # Padrão do legado: matrícula 6 dígitos + sufixo de 2. "00" (folha normal) é o
 # que já estava em produção — NÃO mudar, senão os S-1210 antigos deixam de casar.
-_IDE_DMDEV_SUF = {"N": "00", "A": "13", "1": "14", "F": "02", "R": "03",
+# F = "00" (SMV 13/11/2026): as ferias vao no MESMO demonstrativo da folha
+# mensal (ver _TIPOS_FOLHA_JUNTAS). O "02" nunca foi usado num S-1200 aceito.
+_IDE_DMDEV_SUF = {"N": "00", "A": "13", "1": "14", "F": "00", "R": "03",
                   "Q": "04"}
 
 # ── Adiantamento quinzenal com DEMONSTRATIVO PROPRIO (SMV 06/11/2026) ──────
@@ -38556,7 +38558,16 @@ def _tsve_resc_no_s1200(codcateg):
 # um ideDmDev só. A ordem importa: a primeira encontrada define o ideDmDev e o
 # <indApuracao>/<perApur> do evento (campos do ideEvento, valem para o evento
 # inteiro).
-_TIPOS_FOLHA_JUNTAS = ("N", "A")
+#
+# FERIAS (F) entram aqui desde 13/11/2026. Ate entao o S-1200 so lia N e A e
+# as verbas de ferias (tab_mov F, rubricas -FER) nunca iam para o eSocial —
+# empresa 72, mat 2, 07/2026: S-1200 aceito so com a folha N (liquido 78,00),
+# sem os 4.627,00 das ferias. O Desktop le o tab_mov do mes inteiro e poe as
+# verbas F no mesmo dmDev (matricula+"00"), cada uma com o sufixo -FER
+# (SR_eSocialSR.vb, Gravacao_eSocial_S1200_itensRemun), e o S-1210 paga o
+# liquido N + F nesse ideDmDev. No tab_total do web N e F tem bases proprias
+# (somadas dao o mes), entao a conferencia do S-5001/S-5003 tambem soma as tres.
+_TIPOS_FOLHA_JUNTAS = ("N", "A", "F")
 
 # Folhas que entram no MESMO S-1210 da competência (SMV 16/09/2026). Não é o
 # mesmo conjunto do _TIPOS_FOLHA_JUNTAS, e a diferença importa:
@@ -38570,7 +38581,7 @@ _TIPOS_FOLHA_JUNTAS = ("N", "A")
 #
 # Por isso a folha do 13º Final não gera S-1210 própria: o pagamento dela sai
 # no S-1210 da folha mensal da mesma competência.
-_TIPOS_PGTO_COMPETENCIA = ("N", "A", "1")
+_TIPOS_PGTO_COMPETENCIA = ("N", "A", "F", "1")
 
 
 def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo,
@@ -39334,7 +39345,8 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     # não cria S-1200 para a rescisão). O TSVE (S-2399) é o '3' — decidido no
     # envio pela categoria, via tp_pgto. F='4' fica como estava, fora do
     # escopo, e continua suspeito: férias é apurada em S-1200 (seria 1).
-    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '4', 'R': '2', 'Q': '1'}
+    # F passou a '1' em 13/11/2026: as ferias viajam no dmDev mensal do S-1200.
+    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '1', 'R': '2', 'Q': '1'}
 
     # Retificação (mesma regra do S-1200): reenviar um evtPgtos já aceito como
     # original dá erro [106]. indRetif=2 exige o <nrRecibo> do evento original.
@@ -49139,6 +49151,10 @@ def api_esocial_s1200_gerar_remessa():
             f"{mat:06d} {nome} não tem verbas calculadas na folha de {am_fmt}. "
             "Calcule a folha antes: o S-1200 é montado com o movimento gravado.")})
     folha_tipo = dmdevs[0]["folha_tipo"]
+    # Mes so de ferias (folha N vazia): a remessa continua sendo a da folha
+    # mensal — e a N que a validacao da folha e a Fila conhecem.
+    if folha_tipo == "F":
+        folha_tipo = "N"
 
     try:
         existentes = (supabase.table("tab_esocial")
@@ -52338,7 +52354,8 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
     # do 13º da mesma competência viajam no MESMO <dmDev> do S-1200, então o
     # gov devolve os dois somados num S-5001/S-5003 só. Comparar a mensal
     # sozinha contra esse total acusava diferença de FGTS em todo funcionário
-    # que teve adiantamento. _TIPOS_FOLHA_JUNTAS = ("N", "A").
+    # que teve adiantamento. _TIPOS_FOLHA_JUNTAS = ("N", "A", "F") — as ferias
+    # entram desde 13/11/2026, quando passaram a ir no S-1200.
     _tipos_verif = (list(_TIPOS_FOLHA_JUNTAS)
                     if str(folha_tipo or "N").upper() in _TIPOS_FOLHA_JUNTAS
                     else [folha_tipo])
