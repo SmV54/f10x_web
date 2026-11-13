@@ -165,7 +165,7 @@ _DESATIVADA_POST_LIBERADO = {
     "/api/seguro_desemprego/arquivo",
     "/api/esocial_consulta_tabela", "/api/esocial_verificacao/consultar",
     "/api/esocial_verificacao/upload", "/api/esocial_reconsultar_generico",
-    "/api/esocial_recuperar_recibos",
+    "/api/esocial_recuperar_recibos", "/api/esocial_recuperar_recibos_storage",
 }
 _DESATIVADA_POST_PREFIXO = ("/api/admin_", "/api/descompactar_xml/",
                             "/api/planilhas_xml/")
@@ -84441,6 +84441,373 @@ def api_recibo_manual_gravar():
                 f"id={id_reg} recibo={recibo} obs antes: {obs_antes}")[:300],
                ano_mes=row.get("ano_mes"), matricula=row.get("matricula"))
     return jsonify({"ok": True, "msg": "Recibo gravado.", "recibo": recibo})
+
+
+# =========================================================
+# eSocial — Recuperar Recibos do Storage (SMV 13/11/2026)
+# =========================================================
+# A remessa saiu, o governo aceitou e o retorno com o recibo ficou gravado no
+# Storage, mas a linha do tab_esocial nao recebeu o recibo (o processo caiu
+# entre a consulta e o update, a consulta curta estourou o tempo, um erro
+# engolido...). O "Informar Recibo Manual" resolve uma por uma, copiando do
+# portal; aqui o recibo sai do proprio XML de retorno, para todos os eventos.
+#
+# O elo entre a linha e o retorno e' o PROTOCOLO do lote: esta no _5_resposta
+# (ou _4_resposta) do envio e dentro de cada consulta — inclusive as do
+# Re-consultar, gravadas com a hora delas e nao com a do envio.
+#   1. a linha tem AGUARDANDO:<protocolo> -> o protocolo vem dela;
+#   2. senao, os envios da linha sao achados pelo nome do arquivo:
+#      - evento de trabalhador (S-1200, S-2200, S-2230...): mesma matricula, do
+#        dia anterior a criacao da linha ate 2 min depois da data_grava. Vale o
+#        envio ACEITO mais recente, e nao so' o ultimo: o caso classico e' o
+#        aceito sem recibo, reenviado depois e recusado por duplicidade [537];
+#      - S-1298/S-1299: a competencia faz o papel da matricula;
+#      - evento sem matricula (S-1000, S-1005, S-1010, S-1020...): so' o envio
+#        de 3 min antes a 2 min depois da data_grava (ela e' gravada logo apos
+#        o envio). Ali varios envios do mesmo evento sao de linhas diferentes
+#        (uma rubrica por linha, mandadas em sequencia): com mais de um envio
+#        na janela, nao da para saber qual e' o da linha, e nada e' gravado.
+#        Linha desses eventos com erro do governo ja gravado fica de fora.
+#      Nos periodicos o perApur do evento enviado tem de ser o da linha.
+# Com o protocolo:
+#   - consulta com TODOS os eventos 201 -> grava o recibo (o do 1o evento,
+#     como fazem as rotinas de envio);
+#   - consulta com evento recusado      -> so' informa, nao grava nada;
+#   - nenhuma consulta no Storage        -> a linha volta para AGUARDANDO com o
+#     protocolo, e o Re-consultar busca o recibo no governo.
+# Recibo que ja esta noutra linha nao e' usado de novo. Linha que nunca foi
+# transmitida (sem data_grava e sem AGUARDANDO) fica de fora: carimbar recibo
+# nela a faria parecer enviada. Esta rotina nao fala com o eSocial.
+_RECUP_RX_ARQ = re.compile(
+    r"^S(\d{4})([A-Za-z]?)_(.+)_(\d{8})_(\d{6})_(\d_resposta|\d_resultado_consulta|"
+    r"\d_consulta_\d+|reconsulta_\d+|1_evento)\.xml$", re.IGNORECASE)
+_RECUP_PERIODICOS = ("1200", "1210", "1298", "1299")
+_RECUP_JANELA_MIN = 3        # eventos sem matricula
+
+
+def _recup_params(obs):
+    """Parte PARAMS:... da observacao (S-1010/S-1020 guardam os dados ali)."""
+    return next((p for p in str(obs or "").split("|") if p.startswith("PARAMS:")), "")
+
+
+def _recup_plano(id_empresa, id_cliente):
+    """Monta o que a rotina faria em cada linha. Nao grava nada.
+    Devolve (plano, quantidade de linhas candidatas)."""
+    from datetime import datetime as _dtc
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    def _dt(s, fmt):
+        try:
+            return _dtc.strptime(s, fmt)
+        except Exception:
+            return None
+
+    # ── 1. linhas sem recibo (ou com retificacao aguardando) ──
+    rows, ini = [], 0
+    while True:
+        lote = (supabase.table("tab_esocial")
+                .select("id_esocial, layout, ano_mes, matricula, flag1, recibo, "
+                        "observacao_erro, data_cad, hora_cad, data_grava, hora_grava")
+                .eq("id_empresa", id_empresa).order("id_esocial")
+                .range(ini, ini + 999).execute().data or [])
+        rows += lote
+        if len(lote) < 1000:
+            break
+        ini += 1000
+    recibos_usados = {(r.get("recibo") or "").strip(): r["id_esocial"]
+                      for r in rows if (r.get("recibo") or "").strip()}
+    cands = []
+    for r in rows:
+        obs = str(r.get("observacao_erro") or "")
+        if obs.strip().upper() == "EXCLUIDO":
+            continue
+        m = re.search(r"AGUARDANDO:([0-9.]+)", obs)
+        prot = m.group(1) if m else ""
+        if (r.get("recibo") or "").strip() and not prot:
+            continue                       # resolvida
+        dg = str(r.get("data_grava") or "").strip()
+        grava = _dt(dg + str(r.get("hora_grava") or "0000").zfill(4), "%Y%m%d%H%M") \
+            if len(dg) == 8 else None
+        if not prot and not grava:
+            continue                       # nunca transmitida
+        lay = str(r.get("layout") or "")
+        mat = int(r.get("matricula") or 0)
+        am = str(r.get("ano_mes") or "")
+        cad = _dt(str(r.get("data_cad") or "") + str(r.get("hora_cad") or "0000").zfill(4),
+                  "%Y%m%d%H%M")
+        if lay in ("1298", "1299"):
+            chave = am
+        elif mat:
+            chave = mat
+        else:
+            chave = None                   # evento sem matricula
+            # Com erro do governo gravado, o retorno do envio dela ja foi lido
+            # (e nele so' ha o envio da janela): nada a recuperar. Sem este
+            # corte a empresa 40, com 275 S-1010 recusados, baixava 816 XMLs
+            # e passava dos 30 s do Render.
+            _resto = "|".join(p for p in obs.split("|")
+                              if p.strip() and not p.startswith("PARAMS:"))
+            if not prot and re.search(r"\[\d+\]", _resto):
+                continue
+        cands.append({
+            "row": r, "lay": lay, "mat": mat, "am": am, "prot": prot, "chave": chave,
+            "fase": (("R" if str(r.get("flag1") or "").upper()[:1] == "R" else "S")
+                     if lay == "2230" else ""),
+            "ini": ((cad or grava or _agora_brasilia().replace(tzinfo=None))
+                    - timedelta(days=1)) if chave is not None else
+                   ((grava - timedelta(minutes=_RECUP_JANELA_MIN)) if grava else None),
+            "fim": (grava + timedelta(seconds=119)) if grava else None,
+        })
+    if not cands:
+        return [], 0
+
+    # ── 2. pastas do Storage: do mes do 1o envio ate hoje (no maximo 12) ──
+    hoje = _agora_brasilia().replace(tzinfo=None)
+    inis = [c["ini"] for c in cands if c["ini"]]
+    mes = (min(inis) if inis else hoje).replace(day=1)
+    pastas = []
+    while (mes.year, mes.month) <= (hoje.year, hoje.month):
+        pastas.append(_xml_dir_rel(id_empresa, mes, id_cliente))
+        mes = (mes.replace(day=28) + timedelta(days=7)).replace(day=1)
+    pastas = pastas[-12:]
+    # O Render corta a requisicao em 30 s: pastas em paralelo e pagina de 1000
+    # (a de 100 levava 4,5 s numa pasta de 1157 arquivos).
+    with _TPE(max_workers=min(6, len(pastas) or 1)) as _ex:
+        listas = list(_ex.map(lambda p: (p, _storage_listar(p, pagina=1000) or []), pastas))
+
+    por_lay = {}
+    for c in cands:
+        por_lay.setdefault(c["lay"], []).append(c)
+
+    def _do_cand(c, a, envio):
+        """O arquivo a pode ser desta linha? envio=False: consulta avulsa."""
+        if a["layout"] != c["lay"] or (c["fase"] and a["fase"].upper() != c["fase"]):
+            return False
+        if c["chave"] is not None:
+            ch = a["chave"]
+            if isinstance(c["chave"], int):
+                if not ch.isdigit() or int(ch) != c["chave"]:
+                    return False
+            elif ch != c["chave"]:
+                return False
+            if a["t"] < c["ini"]:
+                return False
+            return (not envio) or c["fim"] is None or a["t"] <= c["fim"]
+        # sem matricula: so' os arquivos do envio da janela (estes eventos nao
+        # gravam reconsulta no Storage)
+        return bool(envio and c["ini"] and c["ini"] <= a["t"] <= c["fim"])
+
+    arqs = []
+    for p, itens in listas:
+        for it in itens:
+            m = _RECUP_RX_ARQ.match(it.get("name") or "")
+            if not m or m.group(1) not in por_lay:
+                continue
+            a = {"path": f"{p}/{it['name']}", "layout": m.group(1), "fase": m.group(2),
+                 "chave": m.group(3), "dt": m.group(4) + m.group(5),
+                 "t": _dt(m.group(4) + m.group(5), "%Y%m%d%H%M%S"),
+                 "tipo": m.group(6).lower()}
+            if a["t"] is None:
+                continue
+            # resposta do envio, consulta logo apos o envio e o evento tem o
+            # mesmo carimbo de hora: sao "do envio"; reconsulta tem hora propria
+            do_envio = a["tipo"] in ("1_evento",) or a["tipo"].endswith("resposta") \
+                or a["tipo"].startswith(("6_", "5_consulta"))
+            if any(_do_cand(c, a, do_envio) for c in por_lay[a["layout"]]):
+                arqs.append(a)
+
+    # ── 3. le respostas de envio e consultas (evento so' dos periodicos) ──
+    baixar = [a["path"] for a in arqs
+              if a["tipo"] != "1_evento" or a["layout"] in _RECUP_PERIODICOS]
+    xmls = _storage_baixar_varios(baixar) if baixar else {}
+    envios = []                    # [{"a": arquivo da resposta, "prot", "per"}]
+    per_do_grupo = {}              # (layout, fase, chave, dt) -> perApur AAAAMM
+    consultas = {}                 # protocolo -> {"ok": recibo} | {"erro": txt}
+    for a in sorted(arqs, key=lambda a: a["dt"]):
+        x = xmls.get(a["path"]) or ""
+        if not x:
+            continue
+        g = (a["layout"], a["fase"], a["chave"], a["dt"])
+        if a["tipo"] == "1_evento":
+            pm = re.search(r"<perApur>\s*([0-9-]+)\s*<", x)
+            if pm:
+                per_do_grupo[g] = pm.group(1).replace("-", "")
+            continue
+        pm = re.search(r"<(?:\w+:)?protocoloEnvio>\s*([0-9.]+)\s*<", x)
+        if not pm:
+            continue
+        prot = pm.group(1)
+        if "retornoEnvioLoteEventos" in x:
+            cd = re.search(r"<(?:\w+:)?cdResposta>\s*(\d+)", x)
+            if cd and cd.group(1) == "201":
+                envios.append({"a": a, "g": g, "prot": prot})
+            continue
+        res = _extrair_resultado_consulta(x)
+        if res.get("cdResposta") in ("101", "202") or not res.get("eventos"):
+            continue                       # ainda em processamento
+        evs = res["eventos"]
+        if all(e.get("cdResp", "") in ("", "201") and e.get("nrRec") for e in evs):
+            consultas[prot] = {"ok": evs[0]["nrRec"]}
+        elif "ok" not in consultas.get(prot, {}):
+            txt = " · ".join(oc for e in evs for oc in (e.get("ocorrs") or []))
+            consultas[prot] = {"erro": (txt or res.get("descResposta") or "recusado")[:200]}
+
+    # ── 4. decide linha a linha ──
+    plano, tomados = [], set()
+
+    def _livre(rec, id_es):
+        dono = recibos_usados.get(rec)
+        return rec not in tomados and (not dono or dono == id_es)
+
+    for c in cands:
+        r = c["row"]
+        item = {"id_esocial": r["id_esocial"], "layout": c["lay"], "matricula": c["mat"],
+                "ano_mes": c["am"], "recibo_atual": (r.get("recibo") or "").strip(),
+                "obs": str(r.get("observacao_erro") or ""), "protocolo": c["prot"]}
+        if c["prot"]:
+            prots = [c["prot"]]
+        else:
+            meus = [e for e in envios if _do_cand(c, e["a"], True)]
+            if c["lay"] in _RECUP_PERIODICOS:
+                meus = [e for e in meus if per_do_grupo.get(e["g"]) == c["am"]]
+            meus.sort(key=lambda e: e["a"]["dt"], reverse=True)
+            if c["chave"] is None and len(meus) > 1:
+                item.update(acao="nada", motivo=(
+                    f"{len(meus)} envios de S-{c['lay']} no mesmo horário desta remessa: "
+                    "não dá para saber qual é o dela. Confira no portal do eSocial."))
+                plano.append(item)
+                continue
+            prots = [e["prot"] for e in meus]
+        aceito = next((p for p in prots if "ok" in consultas.get(p, {})
+                       and _livre(consultas[p]["ok"], r["id_esocial"])), None)
+        if aceito:
+            rec = consultas[aceito]["ok"]
+            item["protocolo"] = aceito
+            if rec == item["recibo_atual"]:
+                item.update(acao="nada", motivo="O recibo já está gravado.")
+            else:
+                item.update(acao="recibo", recibo=rec)
+                tomados.add(rec)
+        elif not prots:
+            item.update(acao="nada", motivo="Nenhum envio com lote recebido no Storage "
+                                            "para esta remessa.")
+        else:
+            p0 = prots[0]
+            item["protocolo"] = p0
+            info = consultas.get(p0, {})
+            if "ok" in info:
+                item.update(acao="nada", motivo=f"O recibo {info['ok']} já está em "
+                                                "outra remessa.")
+            elif "erro" in info:
+                item.update(acao="nada", motivo="Recusado pelo eSocial: " + info["erro"])
+            elif c["prot"]:
+                item.update(acao="nada", motivo="Sem retorno no Storage: use o "
+                                                "Re-consultar da Fila.")
+            else:
+                item.update(acao="aguardando", motivo="Transmitida e nunca consultada: "
+                                                      "volta para Aguardando.")
+        plano.append(item)
+    return plano, len(cands)
+
+
+@app.route("/esocial_recuperar_recibos_storage")
+def esocial_recuperar_recibos_storage():
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template("F10_eSocial_Recuperar_Recibos.html", versao=ler_versao(),
+                           nome=session.get("nome", ""), empresa=session.get("empresa_info", ""),
+                           anomes_atual=str(session.get("anomes_atual") or ""))
+
+
+@app.route("/api/esocial_recuperar_recibos_storage", methods=["POST"])
+def api_esocial_recuperar_recibos_storage():
+    """{"gravar": false} mostra o que seria feito; {"gravar": true} grava.
+    O plano e' refeito aqui no gravar: nao vale o que a tela mostrou."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    gravar = bool((request.get_json(silent=True) or {}).get("gravar"))
+    try:
+        plano, n_cands = _recup_plano(id_empresa, id_cliente)
+    except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()
+        return jsonify({"ok": False, "msg": f"Erro ao ler as remessas/Storage: {e}"[:250]})
+
+    gravados = aguard = 0
+    erros = []
+    if gravar:
+        agora = _agora_brasilia()
+        for it in plano:
+            if it["acao"] not in ("recibo", "aguardando"):
+                continue
+            params = _recup_params(it["obs"])
+            if it["acao"] == "recibo":
+                upd = {"recibo": it["recibo"], "observacao_erro": params}
+                if it["recibo_atual"]:
+                    upd["recibo_ref"] = it["recibo_atual"]
+            else:
+                ag = f"AGUARDANDO:{it['protocolo']}"
+                upd = {"observacao_erro": f"{params}|{ag}" if params else ag}
+            try:
+                q = (supabase.table("tab_esocial").update(upd)
+                     .eq("id_esocial", it["id_esocial"]).eq("id_empresa", id_empresa))
+                # so' pega a linha se ela ainda estiver como foi lida
+                q = (q.eq("recibo", it["recibo_atual"]) if it["recibo_atual"]
+                     else q.or_("recibo.is.null,recibo.eq."))
+                if not (q.execute().data or []):
+                    it.update(acao="nada", motivo="A remessa mudou durante a rotina.")
+                    continue
+            except Exception as e:
+                erros.append(f"remessa {it['id_esocial']}: {e}"[:150])
+                continue
+            if it["acao"] == "recibo":
+                gravados += 1
+                it["feito"] = True
+                if it["layout"] == "2299":
+                    try:
+                        _s2299_aceito_limpa_s1200(id_empresa, it["matricula"])
+                    except Exception as e:
+                        print(f"[recuperar recibos] limpa S-1200 apos S-2299: {e}")
+                gravar_log("ESOC-RECIBO",
+                           (f"Recibo do Storage S-{it['layout']} {it['ano_mes']} "
+                            f"mat={it['matricula']} id={it['id_esocial']} "
+                            f"recibo={it['recibo']} prot={it['protocolo']}")[:300],
+                           ano_mes=it["ano_mes"] or None, matricula=it["matricula"] or None)
+            else:
+                aguard += 1
+                it["feito"] = True
+
+    itens = [{
+        "id_esocial": it["id_esocial"], "layout": it["layout"],
+        "matricula":  it["matricula"],
+        "competencia": (f"{it['ano_mes'][4:6]}/{it['ano_mes'][:4]}"
+                        if len(it["ano_mes"]) == 6 else ""),
+        "acao": it["acao"], "recibo": it.get("recibo", ""),
+        "protocolo": it["protocolo"], "motivo": it.get("motivo", ""),
+        "feito": bool(it.get("feito")),
+    } for it in plano]
+    itens.sort(key=lambda i: ({"recibo": 0, "aguardando": 1}.get(i["acao"], 2),
+                              i["layout"], i["competencia"][3:] + i["competencia"][:2],
+                              i["matricula"]))
+    n_rec = sum(1 for i in itens if i["acao"] == "recibo")
+    n_ag = sum(1 for i in itens if i["acao"] == "aguardando")
+    if gravar:
+        msg = (f"{gravados} recibo(s) gravado(s) e {aguard} remessa(s) de volta para "
+               "Aguardando.") if (gravados or aguard) else "Nada foi gravado."
+        if aguard:
+            msg += " Nas que voltaram para Aguardando, clique em Re-consultar na Fila."
+    elif n_rec or n_ag:
+        msg = (f"Encontrei {n_rec} recibo(s) para gravar e {n_ag} remessa(s) que "
+               "voltam para Aguardando. Confira e clique em Gravar.")
+    elif n_cands:
+        msg = (f"{n_cands} remessa(s) sem recibo, mas nenhuma tem retorno aceito no "
+               "Storage. O motivo de cada uma está na lista.")
+    else:
+        msg = "Nenhuma remessa transmitida está sem recibo nesta empresa."
+    return jsonify({"ok": True, "msg": msg, "itens": itens, "erros": erros[:20],
+                    "gravados": gravados, "aguardando": aguard})
 
 
 # =========================================================
