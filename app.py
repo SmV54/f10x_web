@@ -52739,8 +52739,57 @@ def esocial_s1298():
     # apuracao anual (2). O adiantamento do 13o (tipo "A") e' mensal.
     ind_apuracao = "2" if str(session.get("anomes_tipo") or "N") == "1" else "1"
 
+    # S-1299 enviado e ainda "Aguardando" (sem recibo gravado) depois do ultimo
+    # S-1298/S-1299 com recibo: para o sistema a folha segue aberta, mas o gov
+    # pode ja ter fechado. O aviso manda reconsultar em vez de dizer so' "ja
+    # esta aberta" (empresa 72, 07/2026, 13/11/2026).
+    s1299_aguardando = None
+    estado = _folha_estado_esocial(id_empresa, anomes_atual)
+    if estado["aberta"] and len(anomes_atual) == 6:
+        try:
+            pend = (supabase.table("tab_esocial")
+                    .select("data_grava, hora_grava, observacao_erro")
+                    .eq("id_empresa", id_empresa)
+                    .eq("layout", "1299")
+                    .eq("ano_mes", int(anomes_atual))
+                    .like("observacao_erro", "AGUARDANDO:%")
+                    .order("data_grava", desc=True)
+                    .order("hora_grava", desc=True)
+                    .limit(1).execute().data or [])
+            if pend:
+                p  = pend[0]
+                d  = str(p.get("data_grava") or "").strip()
+                h  = str(p.get("hora_grava") or "").strip()
+                # So' conta se for posterior ao evento com recibo que deixou a
+                # folha aberta (sem evento com recibo, qualquer pendente conta).
+                ult = None
+                if estado["layout"]:
+                    ult = (supabase.table("tab_esocial")
+                           .select("data_grava, hora_grava")
+                           .eq("id_empresa", id_empresa)
+                           .in_("layout", ["1298", "1299"])
+                           .eq("ano_mes", int(anomes_atual))
+                           .not_.is_("recibo", "null")
+                           .neq("recibo", "")
+                           .order("data_grava", desc=True)
+                           .order("hora_grava", desc=True)
+                           .limit(1).execute().data or [None])[0]
+                chave_ult = (str((ult or {}).get("data_grava") or "")
+                             + str((ult or {}).get("hora_grava") or ""))
+                if (d + h) > chave_ult:
+                    quando = f"{d[6:8]}/{d[4:6]}/{d[0:4]}" if len(d) == 8 else ""
+                    if quando and len(h) >= 4:
+                        quando += f" às {h[0:2]}:{h[2:4]}"
+                    s1299_aguardando = {
+                        "quando":    quando,
+                        "protocolo": str(p.get("observacao_erro") or "")[len("AGUARDANDO:"):],
+                    }
+        except Exception:
+            s1299_aguardando = None
+
     return render_template(
         "F10_eSocial_S1298.html",
+        s1299_aguardando=s1299_aguardando,
         versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),

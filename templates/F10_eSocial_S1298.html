@@ -486,7 +486,20 @@ async function _reconsultar(id, btn) {
 </script>
 <script src="/static/f10_dialog.js"></script>
 
-{% if folha_aberta_esocial %}
+{% if folha_aberta_esocial and s1299_aguardando %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  f10Alert(
+    'Há um S-1299 (Fechamento) deste período enviado em {{ s1299_aguardando.quando }} ' +
+    'que ainda está AGUARDANDO o retorno do eSocial (protocolo {{ s1299_aguardando.protocolo }}). ' +
+    'Enquanto o recibo não for gravado, o sistema considera a folha aberta, mas o eSocial pode já tê-la fechado. ' +
+    'Vá em eSocial > S-1299 (Fechamento), com esta folha ativa, e clique em "Re-consultar". ' +
+    'Quando o recibo voltar, o S-1298 fica liberado.',
+    { titulo: '⚠ S-1299 aguardando retorno', tipo: 'aviso', okText: 'Ir para o S-1299' }
+  ).then(() => { window.location.href = '/esocial_s1299'; });
+});
+</script>
+{% elif folha_aberta_esocial %}
 <script>
 window.addEventListener('DOMContentLoaded', () => {
   f10Alert(
