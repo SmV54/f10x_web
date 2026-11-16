@@ -13201,6 +13201,27 @@ SUPORTE_TELAS = {
     "/esocial_s1010":              "Tabelas do eSocial (S-1000 a S-1020)",
     "/esocial_s1020":              "Tabelas do eSocial (S-1000 a S-1020)",
     "/esocial_consulta":           "Tabelas do eSocial (S-1000 a S-1020)",
+    "/importar_xml_esocial":       "Como Baixar os XMLs de uma Empresa no eSocial",
+    # ── telas que tinham o botão sem guia (16/11/2026) ──
+    "/empresa":                    ["Cadastro da Empresa",
+                                    "Como Arredondar o Liquido da Folha e-ou Ferias"],
+    "/passo_cc":                   "Tabelas Auxiliares",
+    "/meu_contrato":               "Contrato de Experiencia",
+    "/cad_aviso_previo2":          "Aviso Previo",
+    "/cad_aviso_previo2_ok":       "Aviso Previo",
+    "/rel_cadastros":              "Relatorios de Cadastro",
+    "/rel_funcoes":                "Relatorios de Cadastro",
+    "/rel_verbas":                 "Relatorios de Cadastro",
+    "/rel_dependentes":            ["Relatorios de Cadastro", "Dependentes"],
+    "/rel_folha":                  "Relatorios da Folha",
+    "/rel_nverbas":                "Relatorios da Folha",
+    "/rel_eventos":                ["Ferias", "Rescisao", "Afastamentos e Acidente de Trabalho"],
+    "/rel_eventuais":              "Rescisao",
+    "/rel_ferias_func":            "Ferias",
+    "/rel_sal_aumento":            "Como alterar salários",
+    "/rel_exame_med":              "Exame Medico (ASO)",
+    "/rel_faltas":                 "Faltas",
+    "/rel_mov":                    "Listagem de Movimento",
 }
 # Telas sem o botão: o menu já tem o card Ajuda, e a própria Ajuda.
 _AJUDA_SEM_BOTAO = {"/menu", "/ajuda"}
