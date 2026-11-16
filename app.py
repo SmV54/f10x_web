@@ -13222,9 +13222,11 @@ SUPORTE_TELAS = {
     "/rel_exame_med":              "Exame Medico (ASO)",
     "/rel_faltas":                 "Faltas",
     "/rel_mov":                    "Listagem de Movimento",
+    "/preferencias":               "Preferencias",
 }
 # Telas sem o botão: o menu já tem o card Ajuda, e a própria Ajuda.
-_AJUDA_SEM_BOTAO = {"/menu", "/ajuda"}
+# Trocar Cliente é só do Admin da F10: não tem guia para o cliente.
+_AJUDA_SEM_BOTAO = {"/menu", "/ajuda", "/trocar_cliente"}
 _SUPORTE_NOME = re.compile(r"^(\d+)-(.+)\.pdf$", re.IGNORECASE)
 
 
