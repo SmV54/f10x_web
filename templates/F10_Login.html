@@ -13,10 +13,26 @@ body {
     font-family: Arial, sans-serif;
     background: linear-gradient(135deg, #0f172a, #1e3a8a);
     display: flex;
+    flex-direction: column;
+    gap: 14px;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
+    padding: 16px 0;
 }
+
+/* Card "Conheça o Folha10-Simples" acima do login: abre o resumo comercial em PDF */
+.card-resumo {
+    width: 380px; display: flex; align-items: center; gap: 12px;
+    background: rgba(255,255,255,.12); color: #fff; text-decoration: none;
+    border: 1px solid rgba(255,255,255,.25); border-radius: 14px; padding: 12px 16px;
+    transition: background .15s, transform .15s;
+}
+.card-resumo:hover { background: rgba(255,255,255,.2); transform: translateY(-2px); }
+.card-resumo .ico { font-size: 26px; }
+.card-resumo b { display: block; font-size: 15px; }
+.card-resumo .txt { display: block; font-size: 12px; color: #dbe6ff; margin-top: 2px; }
+@media (max-width: 420px) { .card, .card-resumo { width: calc(100vw - 32px); } }
 
 .card {
     width: 380px;
@@ -257,6 +273,11 @@ input:focus {
         </div>
     </div>
 </div>
+
+<a class="card-resumo" href="/static/Folha10_Simples_Resumo_Comercial.pdf?v={{ versao }}" target="_blank" rel="noopener">
+    <span class="ico">📄</span>
+    <span><b>Conheça o Folha10-Simples</b><span class="txt">O que faz, preços e como começar (PDF)</span></span>
+</a>
 
 <div class="card">
 
