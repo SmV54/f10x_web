@@ -193,7 +193,7 @@ textarea{resize:vertical;min-height:82px;line-height:1.5}
                 "tipo": a.tipo, "dh_inicio": a.dh_inicio, "dh_fim": a.dh_fim,
                 "destino": a.destino, "id_clientes": a.id_clientes or "",
                 "fixado": a.fixado, "link_url": a.link_url or "",
-                "link_texto": a.link_texto or ""
+                "link_texto": a.link_texto or "", "forma": a.forma or "Q"
              }|tojson }}'>
             <div class="av-corpo">
                 <div class="av-linha1">
@@ -202,7 +202,8 @@ textarea{resize:vertical;min-height:82px;line-height:1.5}
                         {% if a.tipo == 'U' %}🔴{% elif a.tipo == 'A' %}⚠️{% else %}ℹ️{% endif %}
                         {{ a.titulo }}
                     </span>
-                    {% if a.fixado == 'S' %}<span class="tag-fix">fixado</span>{% endif %}
+                    {% if a.forma == 'F' %}<span class="tag-fix">faixa no rodapé</span>{% endif %}
+                    {% if a.fixado == 'S' and a.forma != 'F' %}<span class="tag-fix">fixado</span>{% endif %}
                 </div>
                 <div class="av-msg">{{ a.mensagem }}</div>
                 <div class="av-meta">
@@ -256,12 +257,23 @@ textarea{resize:vertical;min-height:82px;line-height:1.5}
             <div class="erro" id="erro_mensagem"></div>
         </div>
 
-        <div class="campo">
-            <label>Tipo</label>
-            <div class="radios">
-                <label><input type="radio" name="tipo" value="I" checked> ℹ️ Informativo</label>
-                <label><input type="radio" name="tipo" value="A"> ⚠️ Atenção</label>
-                <label><input type="radio" name="tipo" value="U"> 🔴 Urgente</label>
+        <div class="linha">
+            <div class="campo" style="flex:1.6">
+                <label>Tipo</label>
+                <div class="radios">
+                    <label><input type="radio" name="tipo" value="I" checked> ℹ️ Informativo</label>
+                    <label><input type="radio" name="tipo" value="A"> ⚠️ Atenção</label>
+                    <label><input type="radio" name="tipo" value="U"> 🔴 Urgente</label>
+                </div>
+            </div>
+            <div class="campo">
+                <label>Onde aparece</label>
+                <div class="radios">
+                    <label title="Lista abaixo dos cards do Menu Principal, com o botão Entendi">
+                        <input type="radio" name="forma" value="Q" checked onchange="mudouForma()"> Quadro</label>
+                    <label title="Notícia correndo no rodapé do Menu Principal, de ponta a ponta, do início ao fim da publicação">
+                        <input type="radio" name="forma" value="F" onchange="mudouForma()"> Faixa no rodapé</label>
+                </div>
             </div>
         </div>
 
@@ -286,7 +298,7 @@ textarea{resize:vertical;min-height:82px;line-height:1.5}
             </div>
         </div>
 
-        <label class="check">
+        <label class="check" id="linhaFixado">
             <input type="checkbox" id="fixado">
             Fixar no topo (o cliente não consegue dispensar com o botão "Entendi")
         </label>
@@ -379,6 +391,8 @@ function abrirForm(){
     el("fixado").checked = false;
     document.querySelector('input[name=tipo][value=I]').checked = true;
     document.querySelector('input[name=destino][value=T]').checked = true;
+    document.querySelector('input[name=forma][value=Q]').checked = true;
+    mudouForma();
     el("data_inicio").value = hoje();
     el("hora_inicio").value = "08:00";
     el("data_fim").value = "";
@@ -404,6 +418,8 @@ function editar(btn){
     el("fixado").checked  = (a.fixado === "S");
     document.querySelector('input[name=tipo][value=' + (a.tipo || "I") + ']').checked = true;
     document.querySelector('input[name=destino][value=' + (a.destino || "T") + ']').checked = true;
+    document.querySelector('input[name=forma][value=' + (a.forma === "F" ? "F" : "Q") + ']').checked = true;
+    mudouForma();
 
     const ini = (a.dh_inicio || "").toString();
     const fim = (a.dh_fim    || "").toString();
@@ -419,6 +435,16 @@ function editar(btn){
     el("btnPub").innerText = "Salvar";
     el("ov").classList.add("ativo");
     el("titulo").focus();
+}
+
+// A faixa corre do inicio ao fim da publicacao, sem "Entendi": o "Fixar" nao
+// se aplica a ela.
+function mudouForma(){
+    const faixa = document.querySelector('input[name=forma]:checked').value === "F";
+    el("linhaFixado").style.display = faixa ? "none" : "";
+    el("mensagem").placeholder = faixa
+        ? "Texto que corre no rodapé do menu, depois do título. Curto e direto."
+        : "Texto que o cliente vê no quadro do menu.";
 }
 
 function mudouDestino(){
@@ -458,7 +484,8 @@ async function salvar(){
         mensagem:    el("mensagem").value,
         tipo:        document.querySelector('input[name=tipo]:checked').value,
         destino:     document.querySelector('input[name=destino]:checked').value,
-        fixado:      el("fixado").checked,
+        forma:       document.querySelector('input[name=forma]:checked').value,
+        fixado:      el("fixado").checked && document.querySelector('input[name=forma]:checked').value !== "F",
         data_inicio: el("data_inicio").value,
         hora_inicio: el("hora_inicio").value,
         data_fim:    el("data_fim").value,

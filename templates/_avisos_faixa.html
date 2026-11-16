@@ -1,0 +1,105 @@
+{# =====================================================================
+   FAIXA DE AVISOS do menu principal (noticia correndo no rodape)
+   ---------------------------------------------------------------------
+   Alimentada por "avisos_faixa": os avisos da tab_aviso com forma = 'F',
+   ativos e dentro da janela (dh_inicio..dh_fim), separados no menu() a
+   partir de _avisos_do_cliente(). Cadastro em /admin_avisos, opcao
+   "Onde aparece: Faixa no rodape". Sem "Entendi": corre ate o fim da janela.
+
+   A faixa ocupa os ultimos 34px da tela, de ponta a ponta. O rodape da
+   licenca, o botao "?" e o banner do certificado sobem o mesmo tanto.
+   PARA DESFAZER: apague a linha {% include "_avisos_faixa.html" %} do
+   F10_Menu.html. Tudo daqui e prefixado .faixa-.
+   ===================================================================== #}
+
+{% set itens_faixa = avisos_faixa if avisos_faixa is defined else [] %}
+
+{% if itens_faixa %}
+<style>
+.faixa-avisos {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 520;
+    height: 34px; display: flex; align-items: center; overflow: hidden;
+    background: #1e293b; color: #f1f5f9; font-family: var(--sans);
+    font-size: 13px; border-top: 2px solid #2a7de1;
+    box-shadow: 0 -2px 10px rgba(15,23,42,0.18);
+}
+.faixa-avisos.tem-U { border-top-color: #dc2626; }
+.faixa-avisos.tem-A:not(.tem-U) { border-top-color: #f59e0b; }
+.faixa-rotulo {
+    flex-shrink: 0; height: 100%; display: flex; align-items: center; gap: 6px;
+    padding: 0 14px; background: #2a7de1; color: #fff;
+    font-weight: 700; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;
+    position: relative; z-index: 2;
+}
+.faixa-avisos.tem-U .faixa-rotulo { background: #dc2626; }
+.faixa-avisos.tem-A:not(.tem-U) .faixa-rotulo { background: #d97706; }
+.faixa-trilho { flex: 1 1 auto; overflow: hidden; height: 100%; position: relative; }
+.faixa-corre {
+    position: absolute; top: 0; left: 0; height: 100%;
+    display: flex; align-items: center; white-space: nowrap; will-change: transform;
+    animation: faixa-anda var(--faixa-dur, 30s) linear infinite;
+}
+.faixa-avisos:hover .faixa-corre { animation-play-state: paused; }
+@keyframes faixa-anda { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.faixa-item { display: inline-flex; align-items: center; gap: 6px; padding-right: 56px; }
+.faixa-item b { color: #fff; }
+.faixa-item.tipo-U b { color: #fca5a5; }
+.faixa-item.tipo-A b { color: #fcd34d; }
+.faixa-item a { color: #93c5fd; font-weight: 600; text-decoration: underline; }
+.faixa-item a:hover { color: #fff; }
+.faixa-sep { color: #64748b; }
+
+/* O que ja ficava no rodape sobe acima da faixa */
+body { padding-bottom: 34px; }
+.rodape-licenca, #btnTour { bottom: 48px !important; }
+.banner-cert { bottom: 102px !important; }
+@media (max-width: 900px) { .banner-cert { bottom: 152px !important; } }
+@media (prefers-reduced-motion: reduce) {
+    .faixa-corre { animation-duration: calc(var(--faixa-dur, 30s) * 2); }
+}
+</style>
+
+{% set tem_u = itens_faixa|selectattr("tipo", "equalto", "U")|list %}
+{% set tem_a = itens_faixa|selectattr("tipo", "equalto", "A")|list %}
+<div class="faixa-avisos{% if tem_u %} tem-U{% endif %}{% if tem_a %} tem-A{% endif %}"
+     id="faixaAvisos" title="Passe o mouse para parar">
+    <div class="faixa-rotulo">📢 Avisos</div>
+    <div class="faixa-trilho">
+        <div class="faixa-corre" id="faixaCorre">
+            {# Duas copias iguais: a animacao anda metade (-50%) e recomeca sem salto #}
+            {% for _copia in range(2) %}
+            {% for a in itens_faixa %}
+            <span class="faixa-item tipo-{{ a.tipo }}"{% if _copia == 1 %} aria-hidden="true"{% endif %}>
+                {% if a.tipo == 'U' %}🔴{% elif a.tipo == 'A' %}⚠️{% else %}ℹ️{% endif %}
+                <b>{{ a.titulo }}</b>
+                {% if a.mensagem %}<span class="faixa-sep">—</span> {{ a.mensagem|replace("\n", " ") }}{% endif %}
+                {% if a.link_url %}<a href="{{ a.link_url }}">{{ a.link_texto or "Ver" }} →</a>{% endif %}
+            </span>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    // Mesma velocidade para texto curto ou longo: ~70 px por segundo.
+    var c = document.getElementById('faixaCorre');
+    if (!c) return;
+    function ajusta() {
+        var metade = c.scrollWidth / 2;
+        var trilho = c.parentNode.clientWidth;
+        // Texto menor que a faixa: repete ate cobrir, senao sobra buraco no loop
+        if (metade > 0 && metade < trilho && !c.dataset.rep) {
+            c.dataset.rep = '1';
+            var orig = c.innerHTML, n = Math.ceil(trilho / metade);
+            var html = '';
+            for (var i = 0; i < n; i++) html += orig;
+            c.innerHTML = html;   // markup nosso, ja escapado pelo Jinja
+            metade = c.scrollWidth / 2;
+        }
+        c.style.setProperty('--faixa-dur', Math.max(12, Math.round(metade / 70)) + 's');
+    }
+    ajusta();
+})();
+</script>
+{% endif %}

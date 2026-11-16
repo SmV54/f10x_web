@@ -1839,6 +1839,7 @@ def menu():
     except Exception:
         pass
 
+    _avs = _avisos_do_cliente(id_cliente)     # quadro (Q) e faixa do rodape (F)
     return render_template(
         "F10_Menu.html",
         versao=ler_versao(),
@@ -1857,7 +1858,8 @@ def menu():
         licenca_classe=licenca_classe,
         licenca_qtd_empresas=licenca_qtd_empresas,
         licenca_qtd_funcionarios=licenca_qtd_funcionarios,
-        avisos=_avisos_do_cliente(id_cliente),
+        avisos=[a for a in _avs if a["forma"] == "Q"],
+        avisos_faixa=[a for a in _avs if a["forma"] == "F"],
         passos=_primeiros_passos(id_cliente, session.get("id_empresa")),
         menu_numerado=_get_pref("menu_num", "S"),
         s1299_enviado=s1299_enviado,
@@ -69083,14 +69085,17 @@ def _aviso_situacao(av, agora_iso):
 
 def _avisos_do_cliente(id_cliente):
     """Avisos que devem aparecer no menu deste cliente agora: ativos,
-    dentro da janela, do destino certo e ainda nao lidos (fixado sempre)."""
+    dentro da janela, do destino certo e ainda nao lidos (fixado sempre).
+    forma: Q = quadro abaixo dos cards, F = faixa correndo no rodape. A faixa
+    nao tem "Entendi": corre do inicio ao fim da janela."""
     if not id_cliente:
         return []
     agora = _agora_brasilia().strftime("%Y-%m-%dT%H:%M:%S")
     try:
+        # select("*") e nao a lista de colunas: antes do ALTER TABLE da coluna
+        # forma (_criar_tab_aviso.sql), pedir "forma" derrubaria o quadro todo.
         rows = (supabase.table("tab_aviso")
-                .select("id_aviso, titulo, mensagem, tipo, dh_inicio, dh_fim, "
-                        "destino, id_clientes, fixado, link_url, link_texto")
+                .select("*")
                 .eq("ativo", "S")
                 .lte("dh_inicio", agora)
                 .gte("dh_fim",    agora)
@@ -69126,9 +69131,11 @@ def _avisos_do_cliente(id_cliente):
     out = []
     for av in alvo:
         fixado = str(av.get("fixado") or "N")
-        if fixado != "S" and int(av.get("id_aviso") or 0) in ja_lidos:
+        forma = "F" if str(av.get("forma") or "Q") == "F" else "Q"
+        if forma == "Q" and fixado != "S" and int(av.get("id_aviso") or 0) in ja_lidos:
             continue
         out.append({
+            "forma":     forma,
             "id":        av.get("id_aviso"),
             "tipo":      str(av.get("tipo") or "I"),
             "titulo":    av.get("titulo") or "",
@@ -69269,6 +69276,7 @@ def api_admin_avisos_salvar():
     tipo     = (d.get("tipo")     or "I").strip().upper()[:1]
     destino  = (d.get("destino")  or "T").strip().upper()[:1]
     fixado   = "S" if d.get("fixado") else "N"
+    forma    = "F" if (d.get("forma") or "Q").strip().upper()[:1] == "F" else "Q"
 
     dh_inicio = _aviso_dh(d.get("data_inicio"), d.get("hora_inicio"), fim=False)
     dh_fim    = _aviso_dh(d.get("data_fim"),    d.get("hora_fim"),    fim=True)
@@ -69301,23 +69309,37 @@ def api_admin_avisos_salvar():
         "link_url":   (d.get("link_url")   or "").strip()[:200] or None,
         "link_texto": (d.get("link_texto") or "").strip()[:40]  or None,
         "ativo":      "S",
+        "forma":      forma,
     }
 
     try:
         id_aviso = int(d.get("id_aviso") or 0)
     except (TypeError, ValueError):
         id_aviso = 0
+    if id_aviso <= 0:
+        reg["criado_por"] = str(session.get("cpf") or "")[:11]
+        reg["criado_em"]  = _agora_brasilia().isoformat(timespec="seconds")
+
+    def _gravar(r):
+        if id_aviso > 0:
+            supabase.table("tab_aviso").update(r).eq("id_aviso", id_aviso).execute()
+        else:
+            supabase.table("tab_aviso").insert(r).execute()
 
     try:
-        if id_aviso > 0:
-            supabase.table("tab_aviso").update(reg).eq("id_aviso", id_aviso).execute()
-            msg = "Aviso alterado."
-        else:
-            reg["criado_por"] = str(session.get("cpf") or "")[:11]
-            reg["criado_em"]  = _agora_brasilia().isoformat(timespec="seconds")
-            supabase.table("tab_aviso").insert(reg).execute()
-            msg = "Aviso publicado."
-        return jsonify({"ok": True, "msg": msg})
+        try:
+            _gravar(reg)
+        except Exception as e:
+            # Coluna forma ainda nao criada no banco: o aviso de quadro grava
+            # sem ela (e o de sempre); o de faixa precisa dela e avisa.
+            if "forma" not in str(e):
+                raise
+            if forma == "F":
+                return jsonify({"ok": False, "msg": "Falta a coluna forma na tab_aviso: rode no Supabase "
+                                                    "o ALTER TABLE do _criar_tab_aviso.sql."})
+            reg.pop("forma", None)
+            _gravar(reg)
+        return jsonify({"ok": True, "msg": "Aviso alterado." if id_aviso > 0 else "Aviso publicado."})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]}), 500
 
