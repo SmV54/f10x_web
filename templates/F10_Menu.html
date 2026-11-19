@@ -895,6 +895,9 @@ const modulos = {
                 { icone: '📋', nome: 'Listagem de Adiantamentos', href: '/listagem_adiantamentos', ok: true },
                 { icone: '✏️', nome: 'Alterar ou Excluir',        href: '/listagem_adiantamentos?acao=editar', ok: true, bloqueioFolha: true },
                 { icone: '🧾', nome: 'Recibo do Adiantamento',    href: '/recibo_adiantamento', ok: true },
+                // Mesma fila do Contracheque por WhatsApp (um por vez, 50 a 80 s);
+                // nao exige folha calculada: o adiantamento sai antes do calculo.
+                { icone: '📲', nome: 'Recibo do Adiantamento por WhatsApp', href: '/whatsapp_adiantamento', ok: true },
             ]}
         ]
     },

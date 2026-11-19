@@ -13167,6 +13167,7 @@ SUPORTE_TELAS = {
     # card 7 — Relatórios
     "/contracheque":               "Contracheque",
     "/whatsapp_contracheque":      "Enviar Contracheque por WhatsApp",
+    "/whatsapp_adiantamento":      "Enviar Recibo do Adiantamento por WhatsApp",
     "/gerador_relatorio":          "Log e Gerador de Relatorio",
     "/relatorios_config?rel=log":  "Log e Gerador de Relatorio",
     "/relatorios":                 ["Relatorios da Folha", "Relatorios de Cadastro",
@@ -62901,6 +62902,13 @@ _WA_CC_TIPOS     = ("N", "A", "1")      # folha normal, adiantamento e 13º fina
 _WA_CC_INTERVALO = (50, 80)             # segundos entre um envio e outro
 _WA_CC_SIT       = {"P": "Pendente", "X": "Enviando", "O": "Enviado",
                     "E": "Erro", "S": "Sem celular válido"}
+# Documento da remessa: código da tela -> tab_whatsapp_envio.tipo_doc.
+# ADTO = Recibo do Adiantamento Quinzenal (verbas 161-164 da folha N), desde 19/11/2026.
+_WA_DOCS = {"CC": "CONTRACHEQUE", "ADTO": "ADIANTAMENTO"}
+
+
+def _wa_doc(doc):
+    return doc if doc in _WA_DOCS else "CC"
 
 
 def _wa_celular_func(cel):
@@ -62923,10 +62931,12 @@ def _wa_fmt_cel(cel):
     return f"({d[:2]}) {d[2:7]}-{d[7:]}" if len(d) == 11 else d
 
 
-def _wa_cc_legenda(razao, nome, mat, anomes, anomes_tipo, texto_extra=""):
+def _wa_cc_legenda(razao, nome, mat, anomes, anomes_tipo, texto_extra="", doc="CC"):
     """Texto que vai junto do PDF — o mesmo do Desktop."""
     ano, mes = str(anomes)[:4], str(anomes)[4:6]
-    if anomes_tipo == "A":
+    if doc == "ADTO":
+        ref = f"de {mes}/{ano}"
+    elif anomes_tipo == "A":
         ref = f"do Adiantamento do 13º Salário do Ano de {ano}"
     elif anomes_tipo == "1":
         ref = f"do 13º Salário Final do Ano de {ano}"
@@ -62934,17 +62944,25 @@ def _wa_cc_legenda(razao, nome, mat, anomes, anomes_tipo, texto_extra=""):
         ref = f"de {mes}/{ano}"
     linhas = ["Esta é uma mensagem do RH", str(razao or "").strip(),
               f"para {str(nome or '').strip()}", f"Matricula: {int(mat):06d}",
-              "", f"Acima seu contracheque {ref}"]
+              "", (f"Acima seu Recibo do Adiantamento {ref}" if doc == "ADTO"
+                   else f"Acima seu contracheque {ref}")]
     if (texto_extra or "").strip():
         linhas.append(texto_extra.strip())
     linhas.append("Qualquer dúvida entre em contato com o RH")
     return "\n".join(linhas)
 
 
-def _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo):
+def _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo, doc="CC"):
     """Mensagem de bloqueio, ou '' se a folha pode ser enviada."""
     if not anomes:
         return "Nenhuma folha ativa."
+    if doc == "ADTO":
+        # O adiantamento quinzenal fica na folha N (161-164) e o recibo sai
+        # antes do cálculo da folha — não exige folha calculada.
+        if anomes_tipo != "N":
+            return ("O Recibo do Adiantamento é da folha normal. A folha ativa é de "
+                    f"{_folha_tipo_label(anomes_tipo)}.")
+        return ""
     if anomes_tipo not in _WA_CC_TIPOS:
         return ("O envio por WhatsApp é só do contracheque da folha normal e do 13º "
                 f"salário. A folha ativa é de {_folha_tipo_label(anomes_tipo)}.")
@@ -62961,18 +62979,29 @@ def _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo):
     return ""
 
 
-def _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo):
+def _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo, doc="CC"):
     """Funcionários com movimento na folha (como no Contracheque), com o celular
-    do cadastro e o último envio com sucesso desta folha."""
+    do cadastro e o último envio com sucesso desta folha. Para o Recibo do
+    Adiantamento: quem tem 161-164 na folha (como na tela do Recibo)."""
     folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
-    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
-    q = (supabase.table("tab_mov").select("matricula")
-         .eq("id_empresa", id_empresa).eq("situacao", "A")
-         .eq("folha", int(anomes)).eq("folha_tipo", folha_tipo_mov))
-    if id_cliente:
-        q = q.eq("id_cliente", id_cliente)
-    mats = sorted({int(r["matricula"]) for r in (q.execute().data or [])
-                   if r.get("matricula") and int(r["matricula"]) not in _mats_fora})
+    if doc == "ADTO":
+        q = (supabase.table("tab_mov").select("matricula")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("folha", int(anomes)).in_("folha_tipo", ["N", "R"])
+             .in_("cod_verba", list(VERBAS_ADIANTAMENTO)).gt("valor", 0))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        mats = sorted({int(r["matricula"]) for r in (q.execute().data or [])
+                       if r.get("matricula")})
+    else:
+        _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
+        q = (supabase.table("tab_mov").select("matricula")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("folha", int(anomes)).eq("folha_tipo", folha_tipo_mov))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        mats = sorted({int(r["matricula"]) for r in (q.execute().data or [])
+                       if r.get("matricula") and int(r["matricula"]) not in _mats_fora})
     if not mats:
         return []
     r2 = (supabase.table("tab_cad").select("matricula,nome,nomer,celular")
@@ -62984,6 +63013,7 @@ def _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo):
         re_ = (supabase.table("tab_whatsapp_envio").select("matricula,enviado_em")
                .eq("id_empresa", id_empresa).eq("anomes", int(anomes))
                .eq("anomes_tipo", anomes_tipo).eq("situacao", "O")
+               .eq("tipo_doc", _WA_DOCS[_wa_doc(doc)])
                .order("enviado_em").execute())
         for x in (re_.data or []):
             enviados[int(x["matricula"])] = x.get("enviado_em")
@@ -63019,12 +63049,13 @@ def _wa_fmt_dh(iso):
 _WA_CC_GUARDAR = 3      # remessas guardadas por empresa (pedido do SMV, 23/10/2026)
 
 
-def _wa_cc_limpar_antigas(id_cliente, id_empresa):
-    """Fica só com as últimas _WA_CC_GUARDAR remessas da empresa; chamada ao
-    iniciar uma remessa nova. Falha aqui não impede o envio."""
+def _wa_cc_limpar_antigas(id_cliente, id_empresa, doc="CC"):
+    """Fica só com as últimas _WA_CC_GUARDAR remessas da empresa (por tipo de
+    documento); chamada ao iniciar uma remessa nova. Falha aqui não impede o envio."""
     try:
         r = (supabase.table("tab_whatsapp_envio").select("remessa")
              .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .eq("tipo_doc", _WA_DOCS[_wa_doc(doc)])
              .order("remessa", desc=True).execute())
         remessas = list(dict.fromkeys(x["remessa"] for x in (r.data or [])))
         antigas = remessas[_WA_CC_GUARDAR:]
@@ -63039,7 +63070,7 @@ def _wa_cc_limpar_antigas(id_cliente, id_empresa):
 def _wa_cc_itens(id_cliente, id_empresa, remessa):
     r = (supabase.table("tab_whatsapp_envio")
          .select("id,matricula,nome,celular,situacao,msg_erro,enviado_em,criado_em,"
-                 "texto_extra,usuario,anomes,anomes_tipo")
+                 "texto_extra,usuario,anomes,anomes_tipo,tipo_doc")
          .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
          .eq("remessa", remessa).order("id").execute())
     return r.data or []
@@ -63047,6 +63078,15 @@ def _wa_cc_itens(id_cliente, id_empresa, remessa):
 
 @app.route("/whatsapp_contracheque")
 def whatsapp_contracheque():
+    return _wa_tela("CC")
+
+
+@app.route("/whatsapp_adiantamento")
+def whatsapp_adiantamento():
+    return _wa_tela("ADTO")
+
+
+def _wa_tela(doc):
     if not session.get("logado"):
         return redirect("/")
     id_empresa  = _get_id_empresa()
@@ -63060,11 +63100,11 @@ def whatsapp_contracheque():
     ano, mes = anomes[:4], anomes[4:6]
     mes_nm   = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
 
-    bloqueio = _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo)
+    bloqueio = _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo, doc)
     funcionarios, erro_tabela = [], ""
     if not bloqueio:
         try:
-            funcionarios = _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo)
+            funcionarios = _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo, doc)
         except Exception as e:
             erro_tabela = str(e)
 
@@ -63074,6 +63114,7 @@ def whatsapp_contracheque():
         rp = (supabase.table("tab_whatsapp_envio").select("remessa,criado_em")
               .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
               .eq("anomes", int(anomes)).eq("anomes_tipo", anomes_tipo)
+              .eq("tipo_doc", _WA_DOCS[doc])
               .in_("situacao", ["P", "X"]).order("id", desc=True).limit(1).execute())
         if rp.data:
             rem = rp.data[0]["remessa"]
@@ -63097,7 +63138,13 @@ def whatsapp_contracheque():
         retomar      = retomar,
         intervalo    = _WA_CC_INTERVALO,
         exemplo      = _wa_cc_legenda("RAZÃO SOCIAL DA EMPRESA", "NOME DO FUNCIONÁRIO",
-                                      1, anomes, anomes_tipo, "{texto}"),
+                                      1, anomes, anomes_tipo, "{texto}", doc),
+        doc          = doc,
+        url_tela     = "/whatsapp_adiantamento" if doc == "ADTO" else "/whatsapp_contracheque",
+        titulo       = ("Recibo do Adiantamento por WhatsApp" if doc == "ADTO"
+                        else "Contracheque por WhatsApp"),
+        doc_sing     = "recibo do adiantamento" if doc == "ADTO" else "contracheque",
+        doc_plur     = "recibo(s) do adiantamento" if doc == "ADTO" else "contracheque(s)",
     )
 
 
@@ -63109,11 +63156,12 @@ def api_whatsapp_cc_iniciar():
     id_cliente  = session.get("id_cliente")
     anomes      = str(session.get("anomes_atual") or "")
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
-    bloqueio = _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo)
+    d     = request.get_json(silent=True) or {}
+    doc   = _wa_doc(str(d.get("doc") or "CC"))
+    bloqueio = _wa_cc_folha_ok(id_cliente, id_empresa, anomes, anomes_tipo, doc)
     if bloqueio:
         return jsonify({"ok": False, "msg": bloqueio})
 
-    d     = request.get_json(silent=True) or {}
     texto = str(d.get("texto") or "").strip()
     if len(texto) > 300:
         return jsonify({"ok": False, "msg": "Texto muito longo (máximo 300 caracteres)."})
@@ -63130,17 +63178,19 @@ def api_whatsapp_cc_iniciar():
         return jsonify({"ok": False, "msg": "O WhatsApp do Folha10 está desconectado no momento. "
                                             "Avise o suporte do Folha10-Simples e tente mais tarde."})
 
-    funcs = [f for f in _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo)
+    funcs = [f for f in _wa_cc_funcionarios(id_empresa, id_cliente, anomes, anomes_tipo, doc)
              if f["mat"] in sel]
     if not funcs:
-        return jsonify({"ok": False, "msg": "Nenhum dos funcionários selecionados tem movimento nesta folha."})
+        return jsonify({"ok": False, "msg": ("Nenhum dos funcionários selecionados tem adiantamento nesta folha."
+                                             if doc == "ADTO" else
+                                             "Nenhum dos funcionários selecionados tem movimento nesta folha.")})
 
     agora   = _agora_brasilia()
     remessa = agora.strftime("%Y%m%d%H%M%S") + f"{random.randint(0, 9999):04d}"
     usuario = str(session.get("nome") or "")[:80]
     linhas = [{
         "id_cliente": id_cliente, "id_empresa": id_empresa, "remessa": remessa,
-        "anomes": int(anomes), "anomes_tipo": anomes_tipo, "tipo_doc": "CONTRACHEQUE",
+        "anomes": int(anomes), "anomes_tipo": anomes_tipo, "tipo_doc": _WA_DOCS[doc],
         "matricula": f["mat"], "nome": f["nome"][:80],
         "celular": f["celular"] or so_numeros(f["celular_fmt"])[:15] or None,
         "situacao": "P" if f["celular"] else "S",
@@ -63151,8 +63201,9 @@ def api_whatsapp_cc_iniciar():
         supabase.table("tab_whatsapp_envio").insert(linhas).execute()
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Não foi possível registrar a remessa: {e}"})
-    _wa_cc_limpar_antigas(id_cliente, id_empresa)
-    gravar_log("WHATSAPP-CC", f"Remessa {remessa}: {len(linhas)} contracheque(s) "
+    _wa_cc_limpar_antigas(id_cliente, id_empresa, doc)
+    gravar_log("WHATSAPP-CC", f"Remessa {remessa}: {len(linhas)} "
+                              f"{'recibo(s) do adiantamento' if doc == 'ADTO' else 'contracheque(s)'} "
                               f"por WhatsApp, folha {anomes}/{anomes_tipo}")
     return jsonify({"ok": True, "remessa": remessa,
                     "itens": _wa_cc_itens(id_cliente, id_empresa, remessa)})
@@ -63237,8 +63288,25 @@ def api_whatsapp_cc_enviar():
         anomes, anomes_tipo, mat = str(it["anomes"]), it["anomes_tipo"], int(it["matricula"])
         empresa_nm = str(session.get("empresa_info") or "")
         cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
-        pdf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
-                                      empresa_nm, cnpj_fmt, "1", [mat], False, False).read()
+        adto = it.get("tipo_doc") == _WA_DOCS["ADTO"]
+        if adto:
+            # Sem 161-164 o gerador do recibo devolve uma página de aviso, não
+            # um PDF vazio: confere no tab_mov antes de gerar.
+            qa = (supabase.table("tab_mov").select("matricula")
+                  .eq("id_empresa", id_empresa).eq("situacao", "A")
+                  .eq("folha", int(anomes)).in_("folha_tipo", ["N", "R"])
+                  .eq("matricula", mat).in_("cod_verba", list(VERBAS_ADIANTAMENTO))
+                  .gt("valor", 0))
+            if id_cliente:
+                qa = qa.eq("id_cliente", id_cliente)
+            if not (qa.limit(1).execute().data or []):
+                return _fim("E", "Sem adiantamento quinzenal nesta folha")
+            pdf = _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                                 empresa_nm, cnpj_fmt, "1", [mat],
+                                                 False, False).read()
+        else:
+            pdf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                          empresa_nm, cnpj_fmt, "1", [mat], False, False).read()
         # Sem proventos nem descontos o PDF sai sem página. Pelo tamanho não dá:
         # contracheque curto, sem a linha de assinatura, fica abaixo de 3000 bytes.
         if not re.search(rb"/Type\s*/Page[^s]", pdf):
@@ -63251,8 +63319,9 @@ def api_whatsapp_cc_enviar():
         except Exception:
             pass
         legenda = _wa_cc_legenda(razao, it.get("nome"), mat, anomes, anomes_tipo,
-                                 it.get("texto_extra") or "")
-        arq = f"Contracheque_{anomes[4:6]}-{anomes[:4]}_Matricula_{mat:06d}.pdf"
+                                 it.get("texto_extra") or "", "ADTO" if adto else "CC")
+        arq = (f"{'Recibo_Adiantamento' if adto else 'Contracheque'}_"
+               f"{anomes[4:6]}-{anomes[:4]}_Matricula_{mat:06d}.pdf")
         ok, erro = _enviar_whatsapp_documento(it.get("celular"), pdf, arq, legenda)
     except Exception as e:
         return _fim("E", f"Falha ao gerar ou enviar: {e}")
@@ -63288,8 +63357,11 @@ def whatsapp_cc_relatorio_pdf():
     ref = f"{anomes[4:6]}/{anomes[:4]}" + _tipo_no_titulo(tipo)
     empresa_nm = str(session.get("empresa_info") or "")
     tot = {k: sum(1 for x in itens if x["situacao"] == k) for k in _WA_CC_SIT}
+    adto = itens[0].get("tipo_doc") == _WA_DOCS["ADTO"]
+    tit_rel = ("Remessa de Recibos do Adiantamento por WhatsApp" if adto
+               else "Remessa de Contracheques por WhatsApp")
 
-    el = [Paragraph("Remessa de Contracheques por WhatsApp", st_tit),
+    el = [Paragraph(tit_rel, st_tit),
           Paragraph(escape(f"{empresa_nm}  ·  CNPJ {_fmt_cnpj(str(session.get('cnpj_empresa') or ''))}"), st_sub),
           Paragraph(escape(f"Folha {ref}  ·  Remessa iniciada em {_wa_fmt_dh(itens[0]['criado_em'])}"
                            f" por {itens[0].get('usuario') or '-'}"), st_sub)]
@@ -63327,11 +63399,12 @@ def whatsapp_cc_relatorio_pdf():
 
     SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm,
                       topMargin=1.5*cm, bottomMargin=1.5*cm,
-                      title="Remessa de Contracheques por WhatsApp").build(el)
+                      title=tit_rel).build(el)
     from flask import make_response
     resp = make_response(buf.getvalue())
     resp.headers["Content-Type"]        = "application/pdf"
-    resp.headers["Content-Disposition"] = f'inline; filename="WhatsApp_Contracheques_{remessa}.pdf"'
+    resp.headers["Content-Disposition"] = (f'inline; filename="WhatsApp_'
+                                           f'{"Recibos_Adiantamento" if adto else "Contracheques"}_{remessa}.pdf"')
     return resp
 
 

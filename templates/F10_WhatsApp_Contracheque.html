@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Folha10 Simples — Contracheque por WhatsApp</title>
+<title>Folha10 Simples — {{ titulo }}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -105,7 +105,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div class="topo-titulo">
-        <span>Contracheque por WhatsApp</span>
+        <span>{{ titulo }}</span>
         {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
@@ -119,7 +119,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
 
 <div class="conteudo">
     <div class="page-header">
-        <span class="page-title">Contracheque por WhatsApp</span>
+        <span class="page-title">{{ titulo }}</span>
         <span style="color:#cbd5e1;font-size:18px;">—</span>
         <span class="page-periodo">{{ anomes_fmt }}</span>
         {% if tipo_lbl and tipo_lbl != 'Folha Normal' %}<span class="page-tipo">· {{ tipo_lbl }}</span>{% endif %}
@@ -135,9 +135,11 @@ textarea:focus { outline: none; border-color: var(--accent); }
     <div class="card" id="cardComo">
         <div class="card-title">Antes de começar</div>
         <div class="aviso">
-            Cada funcionário recebe no WhatsApp o <b>PDF do contracheque</b> com uma mensagem do RH.
+            Cada funcionário recebe no WhatsApp o <b>PDF do {{ doc_sing }}</b> com uma mensagem do RH.
             <ul>
-                <li><b>Um envio por vez:</b> entre um contracheque e outro o sistema espera de
+                {% if doc == 'ADTO' %}<li>Vão os funcionários com <b>adiantamento quinzenal</b> (verbas 0161 a 0164) nesta folha;
+                    não precisa a folha estar calculada. O recibo vai <b>sem a linha de assinatura</b>.</li>{% endif %}
+                <li><b>Um envio por vez:</b> entre um {{ doc_sing }} e outro o sistema espera de
                     <b>{{ intervalo[0] }} a {{ intervalo[1] }} segundos</b>. Mandar tudo de uma vez faz o
                     WhatsApp bloquear o número. Com <b><span id="qtdPrev">0</span> funcionário(s)</b>, a remessa leva
                     cerca de <b><span id="tempoPrev">0 minuto</span></b>.</li>
@@ -195,14 +197,14 @@ textarea:focus { outline: none; border-color: var(--accent); }
                 </table>
             </div>
             {% else %}
-            <div style="font-size:13px;color:#64748b;">Nenhum funcionário com movimento nesta folha.</div>
+            <div style="font-size:13px;color:#64748b;">{% if doc == 'ADTO' %}Nenhum funcionário com adiantamento quinzenal nesta folha.{% else %}Nenhum funcionário com movimento nesta folha.{% endif %}</div>
             {% endif %}
         </div>
 
         {% if funcionarios %}
         <div class="card">
             <div class="card-title">Texto adicional (opcional)</div>
-            <textarea id="txtExtra" maxlength="300" placeholder="Ex.: O pagamento será feito no dia 5." oninput="atualizarPrevia()"></textarea>
+            <textarea id="txtExtra" maxlength="300" placeholder="{{ 'Ex.: O adiantamento será pago no dia 20.' if doc == 'ADTO' else 'Ex.: O pagamento será feito no dia 5.' }}" oninput="atualizarPrevia()"></textarea>
             <div class="previa-tit">Como a mensagem chega (o nome e a matrícula são os de cada funcionário):</div>
             <div class="previa" id="previa"></div>
         </div>
@@ -221,7 +223,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
         <div class="botoes">
             <button class="btn btn-cinza" id="btnPausar" onclick="pausar()">⏸ Pausar</button>
             <button class="btn btn-azul" id="btnRelatorio" style="display:none;" onclick="abrirRelatorio()">🖨️ Relatório em PDF</button>
-            <a class="btn btn-cinza" id="btnNova" style="display:none;" href="/whatsapp_contracheque">↻ Nova remessa</a>
+            <a class="btn btn-cinza" id="btnNova" style="display:none;" href="{{ url_tela }}">↻ Nova remessa</a>
         </div>
         <div class="tabela-wrap" style="margin-top:12px;">
             <table>
@@ -236,6 +238,8 @@ textarea:focus { outline: none; border-color: var(--accent); }
 <script>
 const INTERVALO = {{ intervalo | list | tojson }};
 const EXEMPLO   = {{ exemplo | tojson }};
+const DOC       = {{ doc | tojson }};
+const DOC_PLUR  = {{ doc_plur | tojson }};
 const SIT = {P:'Pendente', X:'Enviando…', O:'Enviado', E:'Erro', S:'Sem celular válido'};
 const CLS = {P:'st-pend', X:'st-env', O:'st-ok', E:'st-err', S:'st-err'};
 
@@ -285,7 +289,7 @@ async function iniciar() {
     const mats = selecionados();
     if (!mats.length) return;
     const ok = await f10Confirm(
-        `Serão enviados ${mats.length} contracheque(s) por WhatsApp.\n\n` +
+        `Serão enviados ${mats.length} ${DOC_PLUR} por WhatsApp.\n\n` +
         `Entre um envio e outro o sistema espera de ${INTERVALO[0]} a ${INTERVALO[1]} segundos, ` +
         `para o WhatsApp não bloquear o número.\n\nTempo estimado: cerca de ${minutos(mats.length)}.\n\n` +
         `Deixe esta tela aberta até aparecer o relatório final.`,
@@ -294,7 +298,7 @@ async function iniciar() {
     const b = document.getElementById('btnIniciar'); b.disabled = true; b.textContent = 'Preparando…';
     try {
         const r = await fetch('/api/whatsapp_cc/iniciar', {method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({mats, texto: document.getElementById('txtExtra').value})});
+            body: JSON.stringify({mats, doc: DOC, texto: document.getElementById('txtExtra').value})});
         const d = await r.json();
         if (!d.ok) { await f10Alert(d.msg || 'Não foi possível iniciar.', {tipo:'erro'}); b.disabled = false; b.textContent = '📲 Iniciar remessa'; return; }
         comecar(d.remessa, d.itens);
@@ -309,7 +313,7 @@ async function retomarRemessa(rem) {
         if (!d.ok) { f10Alert(d.msg || 'Remessa não encontrada.', {tipo:'erro'}); return; }
         const falta = d.itens.filter(x => x.situacao === 'P').length;
         const ok = await f10Confirm(
-            `Faltam ${falta} contracheque(s) desta remessa.\n\nEntre um envio e outro o sistema espera de ` +
+            `Faltam ${falta} ${DOC_PLUR} desta remessa.\n\nEntre um envio e outro o sistema espera de ` +
             `${INTERVALO[0]} a ${INTERVALO[1]} segundos. Tempo estimado: cerca de ${minutos(falta)}.\n\n` +
             `Deixe esta tela aberta até aparecer o relatório final.`,
             {titulo: 'Continuar a remessa?', okText: 'Continuar', tipo: 'info'});
