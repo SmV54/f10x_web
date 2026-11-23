@@ -196,7 +196,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             <div class="busca-wrap">
                 <span class="busca-icone">🔍</span>
                 <input class="input-busca" id="inputBusca" type="text"
-                       placeholder="Buscar cliente…"
+                       placeholder="Buscar por nome ou código…"
                        oninput="filtrarClientes()" autocomplete="off">
             </div>
         </div>
@@ -205,6 +205,8 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             <div class="cliente-card"
                  id="card-{{ c.id_cliente }}"
                  data-nome="{{ (c.nome or '') | lower }}"
+                 data-cod="{{ c.id_cliente }}"
+                 data-codpad="{{ '%06d' % c.id_cliente }}"
                  onclick="selecionarCliente({{ c.id_cliente }})">
                 <div class="cliente-info">
                     <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
@@ -235,7 +237,10 @@ function filtrarClientes() {
     const q = (document.getElementById('inputBusca').value || '').toLowerCase().trim();
     document.querySelectorAll('.cliente-card').forEach(c => {
         const nome = c.dataset.nome || '';
-        c.style.display = (!q || nome.includes(q)) ? '' : 'none';
+        const ok = !q || nome.includes(q) ||
+            (c.dataset.cod || '').includes(q) ||
+            (c.dataset.codpad || '').includes(q);
+        c.style.display = ok ? '' : 'none';
     });
 }
 
