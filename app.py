@@ -13139,7 +13139,7 @@ SUPORTE_TELAS = {
                                                    "Ajustar Verba Calculada da Rescisao",
                                                    "Rescisão Completa"],
     "/lista_demitidos":                           "Rescisao",
-    "/seguro_desemprego":                         "Rescisao",
+    "/seguro_desemprego":                         ["Seguro-Desemprego (arquivo)", "Rescisao"],
     "/select_funcionario?contexto=cancelar_rescisao": "Rescisao",
     "/cancelar_rescisao":                         "Rescisao",
     "/simular_rescisao":                          "Simulacoes de Rescisao e Ferias",
