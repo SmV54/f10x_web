@@ -697,8 +697,12 @@ body {
                 </div>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <input type="file" id="cert_arq" accept=".pfx,.p12" style="max-width:290px;">
-                    <input type="password" id="cert_senha" placeholder="Senha do certificado"
-                           autocomplete="new-password" style="max-width:210px;">
+                    <span style="position:relative;display:inline-block;max-width:210px;">
+                        <input type="password" id="cert_senha" placeholder="Senha do certificado"
+                               autocomplete="new-password" style="max-width:210px;padding-right:36px;">
+                        <button type="button" onclick="verSenhaCert()" title="Mostrar/ocultar a senha"
+                                style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:4px;line-height:1;">👁</button>
+                    </span>
                     <button type="button" class="btn" id="btnCert" onclick="buscarDoCertificado()">Buscar no eSocial</button>
                 </div>
                 <div id="cert_msg" style="margin-top:10px;font-size:.9em;line-height:1.5;"></div>
@@ -1209,6 +1213,12 @@ function _certPoe(id, valor) {
     el.dispatchEvent(new Event('change'));  // dispara ajustarRisco/atualizarSimplesUI
     el.style.background = '#eefaf0';        // marca o que veio pronto
     return true;
+}
+
+// Olho da senha do certificado: o cliente vê o que digitou (Caps Lock, teclado numérico).
+function verSenhaCert() {
+    const inp = document.getElementById('cert_senha');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
 }
 
 async function buscarDoCertificado() {
