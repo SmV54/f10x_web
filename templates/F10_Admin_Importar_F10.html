@@ -463,7 +463,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             <div class="busca-wrap">
                 <span class="busca-icone">🔍</span>
                 <input class="input-busca" id="inputBusca" type="text"
-                       placeholder="Buscar…" oninput="filtrarClientes()" autocomplete="off">
+                       placeholder="Buscar por nome ou código…" oninput="filtrarClientes()" autocomplete="off">
             </div>
         </div>
         <div class="painel-scroll" id="listaClientes">
@@ -471,6 +471,8 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             <label class="cliente-card"
                    id="cli-{{ c.id_cliente }}"
                    data-nome="{{ (c.nome or '') | lower }}"
+                   data-cod="{{ c.id_cliente }}"
+                   data-codpad="{{ '%06d' % c.id_cliente }}"
                    data-nomeorig="{{ c.nome or '' }}">
                 <input type="checkbox" class="cliente-chk"
                        id="chk-cli-{{ c.id_cliente }}"
@@ -1749,7 +1751,11 @@ function _finalizarMigracaoCompleta(d) {
 function filtrarClientes() {
     const t = document.getElementById('inputBusca').value.toLowerCase().trim();
     document.querySelectorAll('.cliente-card[data-nome]').forEach(c => {
-        c.style.display = (!t || c.dataset.nome.includes(t)) ? '' : 'none';
+        const ok = !t ||
+            c.dataset.nome.includes(t) ||
+            (c.dataset.cod || '').includes(t) ||
+            (c.dataset.codpad || '').includes(t);
+        c.style.display = ok ? '' : 'none';
     });
 }
 
