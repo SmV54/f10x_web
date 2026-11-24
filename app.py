@@ -80314,19 +80314,22 @@ def _verbas_media_adiant13(id_cliente):
 def _avos_adm_adiant13(ano, mes_folha, f):
     """Avos do adiantamento do 13o pela DATA DE ADMISSAO (SMV 24/11/2026).
 
-    Admitido no proprio ano da folha: avos de janeiro ate o MES DA FOLHA,
-    contados a partir da admissao com a regra dos 15 dias do 13o (_avos_13) —
+    Admitido no proprio ano da folha: avos da admissao ate DEZEMBRO (os avos
+    que o 13o do ano vai ter), com a regra dos 15 dias do 13o (_avos_13) —
     so a admissao, sem afastamentos nem faltas. O adiantamento passa a ser
     salario x perc% x avos/12 (adicionais e medias na mesma proporcao).
 
     Admitido em ano anterior (ou sem data): 12 — valor integral, como antes.
     Ate 24/11/2026 o adiantamento era sempre integral: admitido em 01/10 que
     recebia em 11/2026 levava 50% do salario, mais que o 13o inteiro (3/12).
+    Na primeira versao (24/11, 10h39) os avos iam so ate o mes da folha; o
+    usuario preferiu ate dezembro (mesma conta do F10-Desk em novembro).
+    `mes_folha` fica na assinatura so por compatibilidade.
     """
     d_adm = _d8_date(f.get("dtadm"))
     if not d_adm or d_adm.year != int(ano):
         return 12
-    return _avos_13(int(ano), f.get("dtadm"), mes_limite=mes_folha)["avos"]
+    return _avos_13(int(ano), f.get("dtadm"), mes_limite=12)["avos"]
 
 
 def _meses_media_adiant13(ano, mes_folha, f, afast_cache, faltas_cache):
@@ -80716,8 +80719,8 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     e.append(_mem_passo("sal_base", f"salário do mês = {_fmt_brl(sal_mes)}"))
     if avos_adm < 12:
         e.append(Paragraph(
-            f"Admitido no ano: {avos_adm} {'avo' if avos_adm == 1 else 'avos'} da admissão até o "
-            f"mês da folha (mês com 15 dias ou mais de contrato conta 1 avo)", st_formula))
+            f"Admitido no ano: {avos_adm} {'avo' if avos_adm == 1 else 'avos'} da admissão até "
+            f"dezembro (mês com 15 dias ou mais de contrato conta 1 avo)", st_formula))
     e.append(Paragraph(
         f"Salário do mês {_fmt_brl(sal_mes)} × {perc}%{_av_txt} = <b>{_fmt_brl(valor)}</b>  "
         f"(verba {VERBA_ADIANT_13})", st_formula))
