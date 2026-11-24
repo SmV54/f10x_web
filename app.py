@@ -80254,10 +80254,11 @@ def _pericu_adiant13(sal_mes, ev, perc=50):
 
 
 def _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc=50,
-                         eventos_cache=None, mov_cache=None):
+                         eventos_cache=None, mov_cache=None, avos=12):
     """perc% de cada adicional vigente — insalubridade, periculosidade e risco
     de vida. O adiantamento do 13o e uma antecipacao da remuneracao, entao leva
-    os adicionais na mesma proporcao do salario.
+    os adicionais na mesma proporcao do salario — inclusive os avos/12 de quem
+    foi admitido no ano (ver _avos_adm_adiant13).
 
     Passe os caches de _adicionais_cache quando estiver num laco por funcionario.
     Devolve {cod_verba: centavos}, so o que ficou > 0."""
@@ -80265,7 +80266,7 @@ def _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc=50,
                                eventos_cache=eventos_cache, mov_cache=mov_cache)
     out = {}
     for cod, val in adics.items():
-        v = int(val) * int(perc) // 100
+        v = int(val) * int(perc) * int(avos) // 1200
         if v > 0:
             out[cod] = v
     return out
@@ -80308,6 +80309,24 @@ def _verbas_media_adiant13(id_cliente):
                 horas.add(cod)
             desc[cod] = (row.get("dsc_rubr") or "").strip()
     return cods, horas, desc
+
+
+def _avos_adm_adiant13(ano, mes_folha, f):
+    """Avos do adiantamento do 13o pela DATA DE ADMISSAO (SMV 24/11/2026).
+
+    Admitido no proprio ano da folha: avos de janeiro ate o MES DA FOLHA,
+    contados a partir da admissao com a regra dos 15 dias do 13o (_avos_13) —
+    so a admissao, sem afastamentos nem faltas. O adiantamento passa a ser
+    salario x perc% x avos/12 (adicionais e medias na mesma proporcao).
+
+    Admitido em ano anterior (ou sem data): 12 — valor integral, como antes.
+    Ate 24/11/2026 o adiantamento era sempre integral: admitido em 01/10 que
+    recebia em 11/2026 levava 50% do salario, mais que o 13o inteiro (3/12).
+    """
+    d_adm = _d8_date(f.get("dtadm"))
+    if not d_adm or d_adm.year != int(ano):
+        return 12
+    return _avos_13(int(ano), f.get("dtadm"), mes_limite=mes_folha)["avos"]
 
 
 def _meses_media_adiant13(ano, mes_folha, f, afast_cache, faltas_cache):
@@ -80401,7 +80420,8 @@ def _mult_txt(pct):
 
 
 def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
-                     fi, ff, meses, perc, cods_media, verbas_hora, desc_map=None):
+                     fi, ff, meses, perc, cods_media, verbas_hora, desc_map=None,
+                     avos=12):
     """Médias das verbas variáveis para o adiantamento do 13º de UM funcionário.
     Somente folhas normais (tipo 'N') do ano corrente (fi..ff).
     - Verba em hora: média das horas = soma_qtd/meses (qtd em minutos);
@@ -80461,7 +80481,8 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
             avg_min = 0
             base    = round(soma_val.get(c, 0) / meses)
             unid    = "V"
-        val = int(base) * perc // 100
+        # avos/12: admitido no ano (adiantamento) — 12 nos demais casos
+        val = int(base) * perc * int(avos) // 1200
         if val > 0:
             detalhe.append({
                 "cod":      c,
@@ -80618,8 +80639,10 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                           medias_detalhe, total, usuario, versao,
                           base_fgts=0, fgts_val=0, aliq_fgts=8,
                           adicionais=None, adicionais_mes=None, sem_encargos=False,
-                          id_cliente=0):
-    """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário)."""
+                          id_cliente=0, avos_adm=12):
+    """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário).
+    avos_adm < 12: admitido no ano — cada parcela sai × avos/12."""
+    _av_txt = f" × {avos_adm}/12" if avos_adm < 12 else ""
     def _hhmm(mins):
         mins = int(round(mins))
         return f"{mins // 60}h{mins % 60:02d}"
@@ -80691,8 +80714,12 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     # ETAPA 1 — salário
     e.append(Paragraph("ETAPA 4010 — ADIANTAMENTO SOBRE O SALÁRIO", st_etapa))
     e.append(_mem_passo("sal_base", f"salário do mês = {_fmt_brl(sal_mes)}"))
+    if avos_adm < 12:
+        e.append(Paragraph(
+            f"Admitido no ano: {avos_adm} {'avo' if avos_adm == 1 else 'avos'} da admissão até o "
+            f"mês da folha (mês com 15 dias ou mais de contrato conta 1 avo)", st_formula))
     e.append(Paragraph(
-        f"Salário do mês {_fmt_brl(sal_mes)} × {perc}% = <b>{_fmt_brl(valor)}</b>  "
+        f"Salário do mês {_fmt_brl(sal_mes)} × {perc}%{_av_txt} = <b>{_fmt_brl(valor)}</b>  "
         f"(verba {VERBA_ADIANT_13})", st_formula))
 
     # ETAPA 2 — adicionais (insalubridade / periculosidade / risco de vida)
@@ -80705,7 +80732,7 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
             _mes = int((adicionais_mes or {}).get(_c, 0))
             _base = ("Salário Mínimo" if _c == VERBA_INSALUBRIDADE else "Salário")
             e.append(Paragraph(
-                f"{_DSC_AD.get(_c, 'Adicional')} do mês ({_base} × %) = {_fmt_brl(_mes)} × {perc}% "
+                f"{_DSC_AD.get(_c, 'Adicional')} do mês ({_base} × %) = {_fmt_brl(_mes)} × {perc}%{_av_txt} "
                 f"= <b>{_fmt_brl(_v)}</b>  (verba {_c})", st_formula))
     else:
         e.append(Paragraph("ETAPA 4020 — ADICIONAIS"
@@ -80722,7 +80749,7 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                  Paragraph("<b>Descrição</b>", st_cellb),
                  Paragraph("<b>Acumulado no ano</b>", st_cellbr),
                  Paragraph("<b>Média mensal</b>", st_cellbr),
-                 Paragraph(f"<b>Valor ({perc}%)</b>", st_cellbr)]]
+                 Paragraph(f"<b>Valor ({perc}%{_av_txt})</b>", st_cellbr)]]
         for d in medias_detalhe:
             if d["unid"] == "H":
                 acum  = f"{_hhmm(d['soma_qtd'])} · {_sal_hora_txt(sal_hora_c)}/h"
@@ -81007,9 +81034,11 @@ def calcular_adiantamento_13():
             nome    = (f.get("nome") or f.get("nomer") or "").strip()
             mat_f   = int(f.get("matricula") or 0)
             sal_mes = _sal_mes_adiant13(f)
-            valor   = sal_mes * perc // 100          # perc% do salário
+            avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
+            valor   = sal_mes * perc * avos_ad // 1200   # perc% do salário × avos/12
             adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, mat_f, sal_mes, perc,
-                                           eventos_cache=_adic_ev, mov_cache=_adic_mov)
+                                           eventos_cache=_adic_ev, mov_cache=_adic_mov,
+                                           avos=avos_ad)
             adic_tot = _adicionais_total(adics13)
             pericu  = adics13.get(VERBA_PERICULOSIDADE, 0)   # retrocompat. da tela
             vrsalfx = int(f.get("vrsalfx") or 0)
@@ -81018,7 +81047,8 @@ def calcular_adiantamento_13():
             sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
             meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
             medias_det = _medias_adiant13(id_cliente, id_empresa, mat_f, sal_hora_c,
-                                          fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
+                                          fi, ff, meses, perc, cods_media, verbas_hora, _desc_media,
+                                          avos=avos_ad)
             medias_tot = sum(d["val"] for d in medias_det)
             total_f = valor + adic_tot + medias_tot
             verba_valores = {VERBA_ADIANT_13: valor, **adics13}
@@ -81141,12 +81171,14 @@ def api_calcular_adiantamento_13():
             if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
                 continue
             sal_mes = _sal_mes_adiant13(f)
-            valor   = sal_mes * perc // 100          # perc% do salário
+            avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
+            valor   = sal_mes * perc * avos_ad // 1200   # perc% do salário × avos/12
             if valor <= 0:
                 continue
             mat    = f.get("matricula")
             adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, int(mat or 0), sal_mes, perc,
-                                           eventos_cache=_adic_ev, mov_cache=_adic_mov)
+                                           eventos_cache=_adic_ev, mov_cache=_adic_mov,
+                                           avos=avos_ad)
             adic_tot = _adicionais_total(adics13)
             pericu  = adics13.get(VERBA_PERICULOSIDADE, 0)
             vrsalfx = int(f.get("vrsalfx") or 0)
@@ -81155,10 +81187,11 @@ def api_calcular_adiantamento_13():
             sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
             meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
             medias_det = _medias_adiant13(id_cliente, id_empresa, int(mat or 0), sal_hora_c,
-                                          fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
+                                          fi, ff, meses, perc, cods_media, verbas_hora, _desc_media,
+                                          avos=avos_ad)
             medias = {d["cod"]: d["val"] for d in medias_det}
             # minutos da media das verbas em hora — o recibo imprime como 10h30
-            medias_q = {d["cod"]: _qtd_media_min(d, perc, 100) for d in medias_det}
+            medias_q = {d["cod"]: _qtd_media_min(d, perc * avos_ad, 1200) for d in medias_det}
             try:
                 supabase.table("tab_mov").insert({
                     "id_cliente": id_cliente,
@@ -81269,7 +81302,7 @@ def api_calcular_adiantamento_13():
             # Memória de cálculo — 1 PDF por funcionário (local C:\ ou Storage)
             if dest.get("base"):
                 try:
-                    _adics_mes_pdf = {c: (v * 100 // perc if perc else 0)
+                    _adics_mes_pdf = {c: (v * 1200 // (perc * avos_ad) if perc and avos_ad else 0)
                                       for c, v in adics13.items()}
                     ev_p      = pericu_map.get(int(mat or 0))
                     ref1_p    = int(ev_p.get("ref1") or 0) if ev_p else 0
@@ -81280,7 +81313,8 @@ def api_calcular_adiantamento_13():
                         perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                         medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
                         adicionais=adics13, adicionais_mes=_adics_mes_pdf,
-                        sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente)
+                        sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente,
+                        avos_adm=avos_ad)
                     nome_arq = _nome_memoria_adiant13(id_empresa, anomes, int(mat or 0))
                     if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                         memorias += 1
@@ -81420,11 +81454,13 @@ def calcular_adiantamento_13_stream():
                       "matr": f"{mat:06d}", "nome": nome})
 
                 sal_mes = _sal_mes_adiant13(f)
-                valor   = sal_mes * perc // 100
+                avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
+                valor   = sal_mes * perc * avos_ad // 1200   # perc% × avos/12
                 if valor <= 0:
                     continue
                 adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc,
-                                               eventos_cache=_adic_ev, mov_cache=_adic_mov)
+                                               eventos_cache=_adic_ev, mov_cache=_adic_mov,
+                                               avos=avos_ad)
                 adic_tot = _adicionais_total(adics13)
                 pericu  = adics13.get(VERBA_PERICULOSIDADE, 0)
                 vrsalfx = int(f.get("vrsalfx") or 0)
@@ -81433,10 +81469,11 @@ def calcular_adiantamento_13_stream():
                 sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
                 meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
                 medias_det = _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
-                                              fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
+                                              fi, ff, meses, perc, cods_media, verbas_hora, _desc_media,
+                                              avos=avos_ad)
                 medias = {d["cod"]: d["val"] for d in medias_det}
                 # minutos da media das verbas em hora (ver _qtd_media_min)
-                medias_q = {d["cod"]: _qtd_media_min(d, perc, 100) for d in medias_det}
+                medias_q = {d["cod"]: _qtd_media_min(d, perc * avos_ad, 1200) for d in medias_det}
 
                 try:
                     supabase.table("tab_mov").insert(_mov(mat, VERBA_ADIANT_13, valor)).execute()
@@ -81488,7 +81525,7 @@ def calcular_adiantamento_13_stream():
 
                 if dest.get("base"):
                     try:
-                        _adics_mes_pdf = {c: (v * 100 // perc if perc else 0)
+                        _adics_mes_pdf = {c: (v * 1200 // (perc * avos_ad) if perc and avos_ad else 0)
                                           for c, v in adics13.items()}
                         ev_p       = pericu_map.get(mat)
                         ref1_p     = int(ev_p.get("ref1") or 0) if ev_p else 0
@@ -81498,7 +81535,8 @@ def calcular_adiantamento_13_stream():
                             perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                             medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
                             adicionais=adics13, adicionais_mes=_adics_mes_pdf,
-                            sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente)
+                            sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente,
+                            avos_adm=avos_ad)
                         nome_arq = _nome_memoria_adiant13(id_empresa, anomes, mat)
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                             memorias += 1
