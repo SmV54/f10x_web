@@ -27287,7 +27287,9 @@ def cad_mov():
     id_cliente = session.get("id_cliente")
 
     folha_tipo_ativa = str(session.get("anomes_tipo") or "N").upper()[:1]
-    if folha_tipo_ativa not in ("N", "F", "R"):
+    # 'A' = folha do adiantamento do 13o (SMV 25/11/2026): o digitado entra no
+    # calculo dela (ver _manuais_adiant13). O 13o final ('1') ainda nao le.
+    if folha_tipo_ativa not in ("N", "F", "R", "A"):
         folha_tipo_ativa = "N"
 
     funcionarios = []
@@ -29776,7 +29778,7 @@ def api_tab_mov_listar():
              .eq("folha",      folha_int)
              .eq("situacao",   "A")
              .eq("origem",     "M"))
-        if filtro_tipo in ("N", "F", "R"):
+        if filtro_tipo in ("N", "F", "R", "A"):
             q = q.eq("folha_tipo", filtro_tipo)
         r = q.order("id", desc=True).execute()
         registros_raw = r.data or []
@@ -29946,14 +29948,19 @@ def api_tab_mov_gravar():
     qtd        = int(data.get("qtd")   or 0)
     valor      = int(data.get("valor") or 0)
     folha_tipo = str(data.get("folha_tipo") or "N").upper()[:1]
-    if folha_tipo not in ("N", "F", "R"):
+    # 'A' so com a folha do adiantamento do 13o ativa (tela aberta antes de
+    # trocar de folha nao grava no lugar errado)
+    if folha_tipo == "A" and str(session.get("anomes_tipo") or "").upper()[:1] != "A":
+        return jsonify({"ok": False, "msg": "A folha ativa não é mais a do Adiantamento do 13º. Recarregue a tela."})
+    if folha_tipo not in ("N", "F", "R", "A"):
         folha_tipo = "N"
 
     if not matriculas:
         return jsonify({"ok": False, "msg": "Nenhum funcionário selecionado."})
     if not cod_verba:
         return jsonify({"ok": False, "msg": "Verba não informada."})
-    if qtd == 0 and valor == 0:
+    # No adiantamento do 13o o 0,00 vale: zera a verba calculada (ex.: a 17)
+    if qtd == 0 and valor == 0 and folha_tipo != "A":
         return jsonify({"ok": False, "msg": "Informe quantidade ou valor."})
 
     mats_int = [int(m) for m in matriculas]
@@ -30076,14 +30083,16 @@ def api_tab_mov_alterar():
     qtd        = int(data.get("qtd")   or 0)
     valor      = int(data.get("valor") or 0)
     folha_tipo = str(data.get("folha_tipo") or "N").upper()[:1]
-    if folha_tipo not in ("N", "F", "R"):
+    if folha_tipo == "A" and str(session.get("anomes_tipo") or "").upper()[:1] != "A":
+        return jsonify({"ok": False, "msg": "A folha ativa não é mais a do Adiantamento do 13º. Recarregue a tela."})
+    if folha_tipo not in ("N", "F", "R", "A"):
         folha_tipo = "N"
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
 
     if not id_ev:
         return jsonify({"ok": False, "msg": "ID não informado."})
-    if qtd == 0 and valor == 0:
+    if qtd == 0 and valor == 0 and folha_tipo != "A":
         return jsonify({"ok": False, "msg": "Informe quantidade ou valor."})
     try:
         r = (supabase.table("tab_mov")
@@ -80569,6 +80578,77 @@ def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8, id_cliente=None):
     return int(base), int(base) * int(aliq_fgts) // 100
 
 
+# Movimento DIGITADO na folha do adiantamento do 13o (folha_tipo 'A', origem 'M')
+# — SMV 25/11/2026, regra do F10-Desk:
+#   * verba que o calculo tambem gera (17, adicionais, medias): o digitado
+#     SUBSTITUI o calculado; 0,00 zera a verba (ex.: zerar a 17 de 1 funcionario);
+#   * demais verbas: provento (tp_rubr 1) soma, desconto (2) abate do liquido,
+#     informativa (3/4) nao entra nos totais.
+# A linha digitada fica no tab_mov (o recalculo so apaga origem 'C'); a
+# calculada da mesma verba simplesmente nao e gravada.
+def _manuais_adiant13(id_cliente, id_empresa, folha_int):
+    """({mat: {cod: valor}}, {cod: {"tp", "dsc"}}) dos lancamentos digitados na
+    folha do adiantamento do 13o."""
+    man = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, cod_verba, valor")
+             .eq("id_empresa", id_empresa).eq("folha", int(folha_int))
+             .eq("folha_tipo", "A").eq("situacao", "A").eq("origem", "M"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            m, c = int(r.get("matricula") or 0), int(r.get("cod_verba") or 0)
+            if m and c:
+                man.setdefault(m, {})
+                man[m][c] = man[m].get(c, 0) + int(r.get("valor") or 0)
+    except Exception as e:
+        print(f"[adiant13] lancamentos digitados: {e}")
+    rub = {}
+    cods = sorted({c for d in man.values() for c in d})
+    if cods:
+        try:
+            r = (supabase.table("tab_rubrica")
+                 .select("cod_rubr, tp_rubr, dsc_rubr, id_cliente")
+                 .in_("id_cliente", [0, id_cliente]).in_("cod_rubr", cods).execute())
+            for row in sorted(r.data or [], key=lambda x: 0 if int(x.get("id_cliente") or 0) == 0 else 1):
+                rub[int(row.get("cod_rubr") or 0)] = {
+                    "tp": str(row.get("tp_rubr") or "1").strip() or "1",
+                    "dsc": str(row.get("dsc_rubr") or "").strip()}
+        except Exception:
+            pass
+    return man, rub
+
+
+def _aplicar_manuais_adiant13(calc, man_mat, rub):
+    """calc = {cod: valor calculado} (17 + adicionais + medias).
+    Devolve (gravar, proventos, descontos, det):
+      gravar     = calculadas a gravar (sem as que o digitado substitui, sem zeros)
+      proventos  = {cod: valor} final dos proventos (calculado + digitado)
+      descontos  = {cod: valor} digitados de desconto
+      det        = linhas para a memoria de calculo."""
+    gravar = {c: v for c, v in calc.items() if v and c not in (man_mat or {})}
+    prov, desc, det = dict(gravar), {}, []
+    for cod, v in sorted((man_mat or {}).items()):
+        info = rub.get(cod, {})
+        tp = info.get("tp") or "1"
+        if cod in calc:
+            efeito = "substitui o calculado" if v else "zera a verba calculada"
+        elif tp == "2":
+            efeito = "desconto"
+        elif tp == "1":
+            efeito = "provento"
+        else:
+            efeito = "informativa (fora dos totais)"
+        if tp == "2":
+            desc[cod] = desc.get(cod, 0) + int(v)
+        elif tp == "1" and v:
+            prov[cod] = prov.get(cod, 0) + int(v)
+        det.append({"cod": cod, "dsc": info.get("dsc") or f"Verba {cod:04d}",
+                    "calc": calc.get(cod), "dig": int(v), "efeito": efeito})
+    return gravar, prov, desc, det
+
+
 def _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes):
     """Marca a folha de adiantamento do 13º (tipo 'A') como Calculada.
     Atalho para _marcar_folha_calculada, que serve a qualquer tipo de folha."""
@@ -80654,9 +80734,11 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                           medias_detalhe, total, usuario, versao,
                           base_fgts=0, fgts_val=0, aliq_fgts=8,
                           adicionais=None, adicionais_mes=None, sem_encargos=False,
-                          id_cliente=0, avos_adm=12):
+                          id_cliente=0, avos_adm=12, manuais=None, descontos=0):
     """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário).
-    avos_adm < 12: admitido no ano — cada parcela sai × avos/12."""
+    avos_adm < 12: admitido no ano — cada parcela sai × avos/12.
+    manuais: linhas de _aplicar_manuais_adiant13 (movimento digitado na folha);
+    descontos: soma dos descontos digitados (total = proventos - descontos)."""
     _av_txt = f" × {avos_adm}/12" if avos_adm < 12 else ""
     def _hhmm(mins):
         mins = int(round(mins))
@@ -80803,6 +80885,29 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         e.append(Paragraph("Não se aplica — sem verbas variáveis lançadas no ano corrente.",
                            st_formula))
 
+    # ETAPA 4050 — movimento digitado na folha do adiantamento
+    if manuais:
+        e.append(Paragraph("ETAPA 4050 — LANÇAMENTOS DIGITADOS NO MOVIMENTO DESTA FOLHA", st_etapa))
+        e.append(Paragraph("Verba calculada com lançamento digitado: vale o digitado (0,00 zera a verba). "
+                           "Demais verbas: provento soma, desconto abate do líquido.", st_formula))
+        rows = [[Paragraph("<b>Verba</b>", st_cellb), Paragraph("<b>Descrição</b>", st_cellb),
+                 Paragraph("<b>Calculado</b>", st_cellbr), Paragraph("<b>Digitado</b>", st_cellbr),
+                 Paragraph("<b>Efeito</b>", st_cellb)]]
+        for d in manuais:
+            rows.append([Paragraph(f"{d['cod']:04d}", st_cell), Paragraph(d["dsc"], st_cell),
+                         Paragraph(_fmt_brl(d["calc"]) if d["calc"] is not None else "—", st_cellr),
+                         Paragraph(_fmt_brl(d["dig"]), st_cellr), Paragraph(d["efeito"], st_cell)])
+        tbl = Table(rows, colWidths=[1.4*cm, 5.0*cm, 2.6*cm, 2.6*cm, 4.4*cm])
+        tbl.setStyle(TableStyle([
+            ("LINEBELOW",     (0, 0), (-1, 0), 0.6, colors.HexColor("#cbd5e1")),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+        ]))
+        e.append(tbl)
+
     # ETAPA 4 — FGTS (aliq_fgts% sobre a base incidente; 2% para menor aprendiz)
     if sem_encargos:
         # Cliente sem encargos (CLIENTES_SEM_ENCARGOS): o adiantamento do 13º
@@ -80832,7 +80937,11 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                            st_etapa_na))
 
     # TOTAL
-    e.append(Paragraph(f"TOTAL DO ADIANTAMENTO = {_fmt_brl(total)}", st_total))
+    if descontos:
+        e.append(Paragraph(f"PROVENTOS {_fmt_brl(total)}  ·  DESCONTOS {_fmt_brl(descontos)}", st_total))
+        e.append(Paragraph(f"LÍQUIDO DO ADIANTAMENTO = {_fmt_brl(int(total) - int(descontos))}", st_total))
+    else:
+        e.append(Paragraph(f"TOTAL DO ADIANTAMENTO = {_fmt_brl(total)}", st_total))
 
     # rodapé
     e.append(Spacer(1, 1*cm))
@@ -81024,7 +81133,9 @@ def calcular_adiantamento_13():
 
     # médias das verbas variáveis (inc_adto13='S') — ano corrente, ÷ mês da folha
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
-    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
+    _man13, _rub_man13 = _manuais_adiant13(id_cliente, id_empresa, int(anomes))
+    _cods_man13 = sorted({c for d in _man13.values() for c in d})
+    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media + _cods_man13)
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes)
     # Divisor das medias: por funcionario (ver _meses_media_adiant13).
@@ -81065,9 +81176,17 @@ def calcular_adiantamento_13():
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media,
                                           avos=avos_ad)
             medias_tot = sum(d["val"] for d in medias_det)
+            # movimento digitado na folha (substitui / soma / desconta)
+            _g13, _p13, _d13, _ = _aplicar_manuais_adiant13(
+                {VERBA_ADIANT_13: valor, **adics13, **{d["cod"]: d["val"] for d in medias_det}},
+                _man13.get(mat_f, {}), _rub_man13)
+            if _man13.get(mat_f):
+                valor      = _p13.get(VERBA_ADIANT_13, 0)
+                adic_tot   = sum(v for c, v in _p13.items() if c in adics13)
+                pericu     = _p13.get(VERBA_PERICULOSIDADE, 0)
+                medias_tot = sum(_p13.values()) - valor - adic_tot - sum(_d13.values())
             total_f = valor + adic_tot + medias_tot
-            verba_valores = {VERBA_ADIANT_13: valor, **adics13}
-            verba_valores.update({d["cod"]: d["val"] for d in medias_det})
+            verba_valores = dict(_p13)
             aliq_fgts = _aliq_fgts_adiant13(f)
             base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts, id_cliente)
             funcionarios.append({
@@ -81127,8 +81246,12 @@ def api_calcular_adiantamento_13():
     # Afastamentos e faltas do ano inteiro vem em duas consultas so.
     _af13, _fal13 = _avos13_cache(id_empresa, id_cliente, ano_folha)
 
+    # movimento digitado nesta folha (ver _manuais_adiant13)
+    _man13, _rub_man13 = _manuais_adiant13(id_cliente, id_empresa, folha_int)
+    _cods_man13 = sorted({c for d in _man13.values() for c in d})
+
     # incidência de FGTS por verba (verba 17='S'; periculosidade/médias='11')
-    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
+    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media + _cods_man13)
 
     # limpa cálculo anterior desta folha (verba 17/31 + médias, origem calculada)
     try:
@@ -81188,7 +81311,8 @@ def api_calcular_adiantamento_13():
             sal_mes = _sal_mes_adiant13(f)
             avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
             valor   = sal_mes * perc * avos_ad // 1200   # perc% do salário × avos/12
-            if valor <= 0:
+            man_f   = _man13.get(int(f.get("matricula") or 0), {})
+            if valor <= 0 and not man_f:
                 continue
             mat    = f.get("matricula")
             adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, int(mat or 0), sal_mes, perc,
@@ -81207,25 +81331,32 @@ def api_calcular_adiantamento_13():
             medias = {d["cod"]: d["val"] for d in medias_det}
             # minutos da media das verbas em hora — o recibo imprime como 10h30
             medias_q = {d["cod"]: _qtd_media_min(d, perc * avos_ad, 1200) for d in medias_det}
-            try:
-                supabase.table("tab_mov").insert({
-                    "id_cliente": id_cliente,
-                    "id_empresa": id_empresa,
-                    "situacao":   "A",
-                    "matricula":  int(mat),
-                    "folha":      folha_int,
-                    "folha_tipo": "A",
-                    "cod_verba":  VERBA_ADIANT_13,
-                    "qtd":        0,
-                    "valor":      valor,
-                    "lote":       0,
-                    "origem":     "C",
-                    "controle":   0,
-                    "os":         0,
-                }).execute()
-                gravados += 1
-            except Exception as e_ins:
-                return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
+            # movimento digitado: substitui a calculada da mesma verba / soma / desconta
+            _gravar13, _prov13, _desc13, _det13 = _aplicar_manuais_adiant13(
+                {VERBA_ADIANT_13: valor, **adics13, **medias}, man_f, _rub_man13)
+            _adics13_calc = adics13          # a memória mostra o calculado
+            adics13 = {c: v for c, v in adics13.items() if c in _gravar13}
+            medias  = {c: v for c, v in medias.items() if c in _gravar13}
+            if VERBA_ADIANT_13 in _gravar13:
+                try:
+                    supabase.table("tab_mov").insert({
+                        "id_cliente": id_cliente,
+                        "id_empresa": id_empresa,
+                        "situacao":   "A",
+                        "matricula":  int(mat),
+                        "folha":      folha_int,
+                        "folha_tipo": "A",
+                        "cod_verba":  VERBA_ADIANT_13,
+                        "qtd":        0,
+                        "valor":      valor,
+                        "lote":       0,
+                        "origem":     "C",
+                        "controle":   0,
+                        "os":         0,
+                    }).execute()
+                except Exception as e_ins:
+                    return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
+            gravados += 1
 
             # Adicionais (30 insalubridade / 31 periculosidade / 32 risco de vida),
             # quando ativos — perc% do adicional do mês, um lançamento por verba
@@ -81271,10 +81402,11 @@ def api_calcular_adiantamento_13():
                     return jsonify({"ok": False, "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
 
             # Totais (tab_total): adiantamento sem INSS/IRRF, COM FGTS (verba 17
-            # incide FGTS — tpn_inc_fgts='S'). Proventos = adiant. + pericul. + médias.
-            prov_total = valor + adic_tot + sum(medias.values())
-            verba_valores = {VERBA_ADIANT_13: valor, **adics13}
-            verba_valores.update(medias)
+            # incide FGTS — tpn_inc_fgts='S'). Proventos = adiant. + pericul. + médias
+            # (+ proventos digitados); descontos = os digitados.
+            prov_total = sum(_prov13.values())
+            desc_total = sum(_desc13.values())
+            verba_valores = dict(_prov13)
             aliq_fgts = _aliq_fgts_adiant13(f)
             base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts, id_cliente)
             rec_total = {
@@ -81296,8 +81428,8 @@ def api_calcular_adiantamento_13():
                 "qtd_irrf_dependentes":      0,
                 "valor_salario":             int(sal_mes),
                 "valor_total_proventos":     int(prov_total),
-                "valor_total_descontos":     0,
-                "valor_liquido":             int(prov_total),
+                "valor_total_descontos":     int(desc_total),
+                "valor_liquido":             int(prov_total - desc_total),
                 "os":                        0,
                 "controle":                  0,
             }
@@ -81318,7 +81450,7 @@ def api_calcular_adiantamento_13():
             if dest.get("base"):
                 try:
                     _adics_mes_pdf = {c: (v * 1200 // (perc * avos_ad) if perc and avos_ad else 0)
-                                      for c, v in adics13.items()}
+                                      for c, v in _adics13_calc.items()}
                     ev_p      = pericu_map.get(int(mat or 0))
                     ref1_p    = int(ev_p.get("ref1") or 0) if ev_p else 0
                     pericu_mes = int(sal_mes * ref1_p / 10000) if ref1_p > 0 else 0
@@ -81327,9 +81459,9 @@ def api_calcular_adiantamento_13():
                         empresa_nm, anomes, int(mat or 0), nome_pdf, sal_mes, sal_hora_c,
                         perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                         medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
-                        adicionais=adics13, adicionais_mes=_adics_mes_pdf,
+                        adicionais=_adics13_calc, adicionais_mes=_adics_mes_pdf,
                         sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente,
-                        avos_adm=avos_ad)
+                        avos_adm=avos_ad, manuais=_det13, descontos=desc_total)
                     nome_arq = _nome_memoria_adiant13(id_empresa, anomes, int(mat or 0))
                     if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                         memorias += 1
@@ -81395,7 +81527,10 @@ def calcular_adiantamento_13_stream():
     folha_int  = int(anomes)
     perc       = _get_per_adianta13(id_empresa)
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
-    inc_fgts   = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
+    # movimento digitado nesta folha (ver _manuais_adiant13)
+    _man13, _rub_man13 = _manuais_adiant13(id_cliente, id_empresa, folha_int)
+    _cods_man13 = sorted({c for d in _man13.values() for c in d})
+    inc_fgts   = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media + _cods_man13)
     ano_folha  = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes)
     # Divisor das medias: por funcionario (ver _meses_media_adiant13).
@@ -81471,7 +81606,8 @@ def calcular_adiantamento_13_stream():
                 sal_mes = _sal_mes_adiant13(f)
                 avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
                 valor   = sal_mes * perc * avos_ad // 1200   # perc% × avos/12
-                if valor <= 0:
+                man_f   = _man13.get(mat, {})
+                if valor <= 0 and not man_f:
                     continue
                 adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc,
                                                eventos_cache=_adic_ev, mov_cache=_adic_mov,
@@ -81489,13 +81625,20 @@ def calcular_adiantamento_13_stream():
                 medias = {d["cod"]: d["val"] for d in medias_det}
                 # minutos da media das verbas em hora (ver _qtd_media_min)
                 medias_q = {d["cod"]: _qtd_media_min(d, perc * avos_ad, 1200) for d in medias_det}
+                # movimento digitado: substitui a calculada da mesma verba / soma / desconta
+                _gravar13, _prov13, _desc13, _det13 = _aplicar_manuais_adiant13(
+                    {VERBA_ADIANT_13: valor, **adics13, **medias}, man_f, _rub_man13)
+                _adics13_calc = adics13          # a memória mostra o calculado
+                adics13 = {c: v for c, v in adics13.items() if c in _gravar13}
+                medias  = {c: v for c, v in medias.items() if c in _gravar13}
 
-                try:
-                    supabase.table("tab_mov").insert(_mov(mat, VERBA_ADIANT_13, valor)).execute()
-                    gravados += 1
-                except Exception as e_ins:
-                    _put({"tipo": "erro", "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
-                    return
+                if VERBA_ADIANT_13 in _gravar13:
+                    try:
+                        supabase.table("tab_mov").insert(_mov(mat, VERBA_ADIANT_13, valor)).execute()
+                    except Exception as e_ins:
+                        _put({"tipo": "erro", "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
+                        return
+                gravados += 1
                 for cod_a, val_a in sorted(adics13.items()):
                     try:
                         supabase.table("tab_mov").insert(_mov(mat, cod_a, val_a)).execute()
@@ -81510,10 +81653,10 @@ def calcular_adiantamento_13_stream():
                         _put({"tipo": "erro", "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
                         return
 
-                prov_total = valor + adic_tot + sum(medias.values())
-                total_val += prov_total
-                verba_valores = {VERBA_ADIANT_13: valor, **adics13}
-                verba_valores.update(medias)
+                prov_total = sum(_prov13.values())
+                desc_total = sum(_desc13.values())
+                total_val += prov_total - desc_total
+                verba_valores = dict(_prov13)
                 aliq_fgts = _aliq_fgts_adiant13(f)
                 base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts, id_cliente)
                 rec_total = {
@@ -81526,7 +81669,8 @@ def calcular_adiantamento_13_stream():
                     "valor_irrf_basetotal": 0, "valor_irrf_basetabela": 0,
                     "valor_irrf_dependentes": 0, "qtd_irrf_dependentes": 0,
                     "valor_salario": int(sal_mes), "valor_total_proventos": int(prov_total),
-                    "valor_total_descontos": 0, "valor_liquido": int(prov_total),
+                    "valor_total_descontos": int(desc_total),
+                    "valor_liquido": int(prov_total - desc_total),
                     "os": 0, "controle": 0,
                 }
                 try:
@@ -81541,7 +81685,7 @@ def calcular_adiantamento_13_stream():
                 if dest.get("base"):
                     try:
                         _adics_mes_pdf = {c: (v * 1200 // (perc * avos_ad) if perc and avos_ad else 0)
-                                          for c, v in adics13.items()}
+                                          for c, v in _adics13_calc.items()}
                         ev_p       = pericu_map.get(mat)
                         ref1_p     = int(ev_p.get("ref1") or 0) if ev_p else 0
                         pericu_mes = int(sal_mes * ref1_p / 10000) if ref1_p > 0 else 0
@@ -81549,9 +81693,9 @@ def calcular_adiantamento_13_stream():
                             empresa_nm, anomes, mat, nome, sal_mes, sal_hora_c,
                             perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                             medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
-                            adicionais=adics13, adicionais_mes=_adics_mes_pdf,
+                            adicionais=_adics13_calc, adicionais_mes=_adics_mes_pdf,
                             sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente,
-                            avos_adm=avos_ad)
+                            avos_adm=avos_ad, manuais=_det13, descontos=desc_total)
                         nome_arq = _nome_memoria_adiant13(id_empresa, anomes, mat)
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                             memorias += 1

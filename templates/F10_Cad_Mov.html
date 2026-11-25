@@ -315,6 +315,8 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
     {% if folha_tipo_ativa == 'R' %}
     <div class="aviso-resc">⚠️ <strong>Movimento da Rescisão.</strong> Ao incluir, alterar ou excluir uma verba de um funcionário cuja rescisão já foi <strong>calculada</strong>, ela será marcada como <strong>PENDENTE</strong> e precisará ser <strong>recalculada</strong> antes de emitir a TRCT ou a memória.</div>
+    {% elif folha_tipo_ativa == 'A' %}
+    <div class="aviso-resc">⚠️ <strong>Movimento do Adiantamento do 13º.</strong> Verba que o cálculo também gera (17, adicionais, médias): <strong>vale o valor digitado</strong> — lançar <strong>0,00</strong> zera a verba do funcionário. Demais verbas: provento soma, desconto abate do líquido. Depois de lançar, <strong>recalcule</strong> o Adiantamento do 13º.</div>
     {% endif %}
 
     <!-- CARD: Lançamento -->
@@ -593,6 +595,8 @@ function getEntradaValues() {
         return {ok:true,qtd:d,valor:0};
     } else {
         const c = parseValor(s);
+        // No Adiantamento do 13º o 0,00 vale: zera a verba calculada (ex.: a 17)
+        if (c === 0 && s !== '' && FOLHA_TIPO_ATIVA === 'A') return {ok:true,qtd:0,valor:0};
         if (!c) return {ok:false,msg:'Informe um valor válido maior que zero.'};
         return {ok:true,qtd:0,valor:c};
     }
