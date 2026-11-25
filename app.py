@@ -80575,8 +80575,20 @@ def _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes):
     return _marcar_folha_calculada(id_cliente, id_empresa, anomes, "A")
 
 
-def _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, matriculas):
-    """Cria as pendências S-1200 e S-1210 (tab_esocial) da folha de Adiantamento
+# eSocial do ADIANTAMENTO do 13o (folha_tipo "A"): NAO cria remessa propria
+# (SMV 25/11/2026). Ele viaja com a folha do MES (normalmente 11): o S-1200
+# mensal monta o dmDev com as folhas N + A + F juntas (_TIPOS_FOLHA_JUNTAS) e o
+# S-1210 do mes paga as duas no mesmo infoPgto. A pendencia S-1200/S-1210 com
+# folha_tipo "A" que o calculo criava gerava uma segunda remessa do mesmo CPF e
+# periodo. O 13o FINAL cria so o S-1200 (_esocial_pendencias_13final); o S-1210
+# dele vai junto com a folha do mes 12.
+_ESOCIAL_ADIANT13_SEM_REMESSA = True
+
+
+def _esocial_pendencias_adiant13_DESATIVADA(id_cliente, id_empresa, anomes, matriculas):
+    """DESATIVADA em 25/11/2026 — ver _ESOCIAL_ADIANT13_SEM_REMESSA. Ninguem chama.
+
+    Criava as pendências S-1200 e S-1210 (tab_esocial) da folha de Adiantamento
     do 13º — folha_tipo 'A'.
 
     A folha MENSAL já fazia isso dentro de _salvar_memorias_etapa1 (~app.py:33436);
@@ -81326,9 +81338,9 @@ def api_calcular_adiantamento_13():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
-    # Remessas do eSocial (S-1200 + S-1210) — a folha mensal já criava, o
-    # adiantamento não criava nenhuma.
-    n_esocial = _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, mats_es)
+    # eSocial: o adiantamento vai com a folha do mes, sem remessa propria
+    # (ver o comentario de _ESOCIAL_ADIANT13_SEM_REMESSA).
+    n_esocial = 0
 
     # marca a folha (tipo 'A') como Calculada em tab_anomes
     n_calc = _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes)
@@ -81549,9 +81561,9 @@ def calcular_adiantamento_13_stream():
                 if int(prov_total) > 0:
                     mats_es.append(mat)
 
-            # Remessas do eSocial (S-1200 + S-1210) — a folha mensal já criava,
-            # o adiantamento não criava nenhuma.
-            n_esocial = _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, mats_es)
+            # eSocial: o adiantamento vai com a folha do mes, sem remessa propria
+            # (ver o comentario de _ESOCIAL_ADIANT13_SEM_REMESSA).
+            n_esocial = 0
 
             # marca a folha (tipo 'A') como Calculada em tab_anomes
             n_calc = _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes)
