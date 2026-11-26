@@ -68307,6 +68307,12 @@ def api_recibo_ferias_pdf():
         anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}"
 
         # ── CABEÇALHO DO RECIBO ────────────────────────────────────
+        # Cada recibo começa em página nova: sem a quebra, com mais de um
+        # funcionário selecionado o segundo recibo saía logo abaixo do
+        # primeiro, na mesma folha (cliente 30, 26/11/2026).
+        if story:
+            from reportlab.platypus import PageBreak
+            story.append(PageBreak())
         story.append(Paragraph("RECIBO DE FÉRIAS", st_titulo))
         story.append(Paragraph(empresa_nome, st_empresa))
         if empresa_cnpj:
