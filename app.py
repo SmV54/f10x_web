@@ -59902,6 +59902,23 @@ def _mats_de_outra_empresa(id_empresa, anomes, id_cliente=None):
     return fora
 
 
+def _mov_digitado_substitui_adiant13(regs, folha_tipo):
+    """Na folha do adiantamento do 13o (tipo 'A') a verba digitada (origem M)
+    SUBSTITUI a calculada (origem C) da mesma verba/matricula - a mesma regra
+    de _aplicar_manuais_adiant13. Depois do recalculo a linha C nem existe;
+    mas se digitaram com a folha ja' calculada, as duas convivem ate'
+    recalcular, e os relatorios somavam as duas (SMV 26/11/2026: cliente 74,
+    empresa 72, verba 17 das mat 1-4 em dobro na Relacao dos Liquidos).
+    Demais tipos de folha: devolve regs sem mexer."""
+    if folha_tipo != "A":
+        return regs
+    def _chave(r):
+        return (int(r.get("matricula") or 0), int(r.get("cod_verba") or 0))
+    dig = {_chave(r) for r in regs if str(r.get("origem") or "") == "M"}
+    return [r for r in regs
+            if str(r.get("origem") or "") == "M" or _chave(r) not in dig]
+
+
 def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat", cnpj_empresa="",
                            com_demitidos=False):
     _cnpj_dig = ''.join(c for c in cnpj_empresa if c.isdigit())
@@ -59951,14 +59968,14 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
-             .select("matricula,cod_verba,qtd,valor")
+             .select("matricula,cod_verba,qtd,valor,origem")
              .eq("id_empresa",  id_empresa)
              .eq("situacao",    "A")
              .eq("folha",       int(anomes))
              .eq("folha_tipo",  folha_tipo_mov))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        for reg in (q.execute().data or []):
+        for reg in _mov_digitado_substitui_adiant13(q.execute().data or [], folha_tipo_mov):
             mat = int(reg.get("matricula") or 0)
             if not mat or mat in _mats_fora:
                 continue
@@ -60415,14 +60432,14 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
-             .select("matricula,cod_verba,qtd,valor")
+             .select("matricula,cod_verba,qtd,valor,origem")
              .eq("id_empresa",  id_empresa)
              .eq("situacao",    "A")
              .eq("folha",       int(anomes))
              .eq("folha_tipo",  folha_tipo_mov))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        for reg in (q.execute().data or []):
+        for reg in _mov_digitado_substitui_adiant13(q.execute().data or [], folha_tipo_mov):
             mat = int(reg.get("matricula") or 0)
             if not mat or mat in _mats_fora:
                 continue
@@ -62149,14 +62166,14 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
-             .select("matricula,cod_verba,qtd,valor")
+             .select("matricula,cod_verba,qtd,valor,origem")
              .eq("id_empresa",  id_empresa)
              .eq("situacao",    "A")
              .eq("folha",       int(anomes))
              .eq("folha_tipo",  folha_tipo_mov))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        for reg in (q.execute().data or []):
+        for reg in _mov_digitado_substitui_adiant13(q.execute().data or [], folha_tipo_mov):
             mat = int(reg.get("matricula") or 0)
             if not mat or mat in _mats_fora:
                 continue
