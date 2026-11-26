@@ -171,9 +171,16 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
 
 <div class="container">
 
-    {% if anomes_atual and not folha_aberta %}
+    {% if anomes_atual %}
     <form method="get" action="/rel_liquidos">
         <div class="filtros">
+            <span class="filtro-label">Líquidos da:</span>
+            <div class="opcoes">
+                <label><input type="radio" name="tipo" value="folha"    {% if tipo == 'folha' %}checked{% endif %}> Folha</label>
+                <label><input type="radio" name="tipo" value="ferias"   {% if tipo == 'ferias' %}checked{% endif %}> Férias</label>
+                <label><input type="radio" name="tipo" value="rescisao" {% if tipo == 'rescisao' %}checked{% endif %}> Rescisão</label>
+            </div>
+            <span class="filtro-sep"></span>
             <span class="filtro-label">Classificação:</span>
             <div class="opcoes">
                 <label><input type="radio" name="ordem" value="mat"  {% if ordem != 'alfa' %}checked{% endif %}> Por matrícula</label>
@@ -190,7 +197,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
 
     <div class="card">
         <div class="card-header">
-            <h2>Líquidos da folha{% if resumo.anomes_fmt %} — {{ resumo.anomes_fmt }}{% if resumo.tipo_lbl %} · {{ resumo.tipo_lbl }}{% endif %}{% endif %}</h2>
+            <h2>{% if tipo == 'ferias' %}Líquidos das férias{% elif tipo == 'rescisao' %}Líquidos das rescisões{% else %}Líquidos da folha{% endif %}{% if resumo.anomes_fmt %} — {{ resumo.anomes_fmt }}{% if resumo.tipo_lbl %} · {{ resumo.tipo_lbl }}{% endif %}{% endif %}</h2>
             <span class="total-badge">{{ resumo.n_func }} funcionário(s)</span>
         </div>
 
@@ -239,13 +246,19 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
         </table>
         </div>
         {% else %}
+        {% if tipo == 'ferias' %}
+        <div class="vazio">Nenhuma férias calculada nesta folha ({{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}). Calcule as férias antes de emitir a relação.</div>
+        {% elif tipo == 'rescisao' %}
+        <div class="vazio">Nenhuma rescisão calculada nesta folha ({{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}).</div>
+        {% else %}
         <div class="vazio">Nenhum funcionário com movimento nesta folha. Calcule a folha antes de emitir a relação.</div>
+        {% endif %}
         {% endif %}
     </div>
 
     <div class="rodape">
         {% if anomes_atual and not folha_aberta %}
-        <a class="btn-pdf" href="/rel_liquidos_pdf?ordem={{ ordem }}{% if com_conta %}&conta=1{% endif %}" target="_blank">&#128438; Imprimir em PDF</a>
+        <a class="btn-pdf" href="/rel_liquidos_pdf?tipo={{ tipo }}&ordem={{ ordem }}{% if com_conta %}&conta=1{% endif %}" target="_blank">&#128438; Imprimir em PDF</a>
         {% else %}
         <span></span>
         {% endif %}

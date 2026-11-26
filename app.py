@@ -61101,9 +61101,80 @@ def _contas_por_matricula(id_empresa):
     return out
 
 
+_REL_LIQ_TIPOS = {"folha": "", "ferias": "F", "rescisao": "R"}
+
+
+def _rel_liquidos_ferias_resc(id_empresa, id_cliente, anomes, folha_tipo, ordem="mat",
+                              com_conta=False):
+    """(linhas, resumo) da Relação dos Líquidos das Férias (F) ou da Rescisão (R).
+
+    O líquido vem do tab_total que o cálculo de férias / de rescisão grava com
+    folha = mês da folha ativa no cálculo (folha_tipo F/R) — o mesmo valor do
+    recibo / TRCT. Não depende da folha normal estar calculada. Duas férias da
+    mesma pessoa no mês somam numa linha."""
+    liq = {}
+    try:
+        q = (supabase.table("tab_total")
+             .select("matricula,valor_liquido")
+             .eq("id_empresa", id_empresa)
+             .eq("folha", int(anomes)).eq("folha_tipo", folha_tipo))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            m = int(r.get("matricula") or 0)
+            if m:
+                liq[m] = liq.get(m, 0) + int(r.get("valor_liquido") or 0)
+    except Exception as e:
+        print(f"[rel_liquidos {folha_tipo}] empresa {id_empresa} {anomes}: {e}")
+
+    cads = {}
+    mats = sorted(m for m, v in liq.items() if v != 0)
+    for i in range(0, len(mats), 200):
+        try:
+            r2 = (supabase.table("tab_cad")
+                  .select("matricula,nome,nomer,cbofuncao,nmcargo")
+                  .eq("id_empresa", id_empresa)
+                  .in_("matricula", mats[i:i + 200])
+                  .execute())
+            for f in (r2.data or []):
+                cads[int(f["matricula"])] = f
+        except Exception as e:
+            print(f"[rel_liquidos {folha_tipo}] cadastro: {e}")
+    contas = _contas_por_matricula(id_empresa) if com_conta else {}
+
+    linhas = []
+    for m in mats:
+        cad = cads.get(m, {})
+        cbo = str(cad.get("cbofuncao") or "").strip()
+        v   = liq[m]
+        linhas.append({
+            "mat":    f"{m:06d}",
+            "nome":   (cad.get("nome") or cad.get("nomer") or "").strip() or "(sem cadastro)",
+            "funcao": str(cad.get("nmcargo") or "").strip() or (f"CBO {cbo}" if cbo else "—"),
+            "liq_fmt": _fmt_brl(v), "liq_ok": v >= 0, "liq_c": v,
+            "conta": (contas.get(m, "") or "Recebe no Caixa") if com_conta else "",
+            "sem_conta": com_conta and not contas.get(m, ""),
+        })
+    if ordem == "alfa":
+        linhas.sort(key=lambda x: (x["nome"] or "").upper())
+    resumo = {
+        "anomes_fmt": f"{anomes[4:6]}/{anomes[:4]}",
+        "tipo_lbl":   _folha_tipo_label(folha_tipo),
+        "n_func":     len(linhas),
+        "total_fmt":  _fmt_brl(sum(l["liq_c"] for l in linhas)),
+    }
+    return linhas, resumo
+
+
 def _rel_liquidos_dados(id_empresa, id_cliente, anomes, anomes_tipo, ordem="mat",
-                        com_conta=False):
-    """(linhas, resumo) — uma linha por funcionário, já ordenada."""
+                        com_conta=False, tipo="folha"):
+    """(linhas, resumo) — uma linha por funcionário, já ordenada.
+
+    tipo: folha (a folha ativa, como sempre foi), ferias ou rescisao — estas
+    duas leem o líquido gravado pelo cálculo de férias / de rescisão do mês."""
+    if _REL_LIQ_TIPOS.get(tipo):
+        return _rel_liquidos_ferias_resc(id_empresa, id_cliente, anomes,
+                                         _REL_LIQ_TIPOS[tipo], ordem, com_conta)
     dados = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente,
                                    ordem="mat",
                                    cnpj_empresa=str(session.get("cnpj_empresa") or ""))
@@ -61144,9 +61215,16 @@ def _rel_liquidos_com_conta():
     return (request.args.get("conta") or "").strip() in ("1", "S", "s", "on", "true")
 
 
-def _rel_liquidos_folha_aberta():
-    """Folha ainda Aberta (A/X) — sem cálculo, não há líquido para relacionar."""
-    return str(session.get("anomes_situacao") or "") in ("A", "X")
+def _rel_liquidos_tipo():
+    """Folha (padrão), Férias ou Rescisão — uma só por vez."""
+    t = (request.args.get("tipo") or "folha").strip().lower()
+    return t if t in _REL_LIQ_TIPOS else "folha"
+
+
+def _rel_liquidos_folha_aberta(tipo="folha"):
+    """Folha ainda Aberta (A/X) — sem cálculo, não há líquido para relacionar.
+    Só vale para a Folha: férias e rescisão têm cálculo próprio."""
+    return tipo == "folha" and str(session.get("anomes_situacao") or "") in ("A", "X")
 
 
 @app.route("/rel_liquidos")
@@ -61157,7 +61235,8 @@ def rel_liquidos():
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     ordem       = _rel_liquidos_ordem()
     com_conta   = _rel_liquidos_com_conta()
-    folha_aberta = _rel_liquidos_folha_aberta()
+    tipo        = _rel_liquidos_tipo()
+    folha_aberta = _rel_liquidos_folha_aberta(tipo)
 
     linhas, resumo = ([], {"anomes_fmt": "", "tipo_lbl": "", "n_func": 0,
                            "total_fmt": _fmt_brl(0)})
@@ -61165,11 +61244,11 @@ def rel_liquidos():
     # muda no próximo cálculo. A tela avisa em vez de listar número que engana.
     if anomes and not folha_aberta:
         linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
-                                             anomes, anomes_tipo, ordem, com_conta)
+                                             anomes, anomes_tipo, ordem, com_conta, tipo)
     return render_template("F10_Rel_Liquidos.html", **_ctx_relatorio(),
                            linhas=linhas, resumo=resumo, ordem=ordem,
                            com_conta=com_conta, anomes_atual=anomes,
-                           folha_aberta=folha_aberta)
+                           folha_aberta=folha_aberta, tipo=tipo)
 
 
 @app.route("/rel_liquidos_pdf")
@@ -61188,18 +61267,19 @@ def rel_liquidos_pdf():
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     if not anomes:
         return "Nenhuma folha ativa.", 400
-    if _rel_liquidos_folha_aberta():
+    tipo = _rel_liquidos_tipo()
+    if _rel_liquidos_folha_aberta(tipo):
         return ("A folha está Aberta — calcule a folha antes de emitir a "
                 "Relação dos Líquidos."), 403
     ordem     = _rel_liquidos_ordem()
     com_conta = _rel_liquidos_com_conta()
     linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
-                                         anomes, anomes_tipo, ordem, com_conta)
+                                         anomes, anomes_tipo, ordem, com_conta, tipo)
 
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
     titulo     = (f"Relação dos Líquidos — {resumo['anomes_fmt']}"
-                  f"{_tipo_no_titulo(anomes_tipo)}"
+                  f"{_tipo_no_titulo(_REL_LIQ_TIPOS[tipo] or anomes_tipo)}"
                   f"  ({'por Nome' if ordem == 'alfa' else 'por Matrícula'})")
 
     def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
@@ -61272,7 +61352,8 @@ def rel_liquidos_pdf():
     from flask import make_response
     resp = make_response(buf.read())
     resp.headers["Content-Type"]        = "application/pdf"
-    resp.headers["Content-Disposition"] = f'inline; filename="Liquidos_{anomes}.pdf"'
+    _suf = {"ferias": "_Ferias", "rescisao": "_Rescisao"}.get(tipo, "")
+    resp.headers["Content-Disposition"] = f'inline; filename="Liquidos{_suf}_{anomes}.pdf"'
     return resp
 
 
