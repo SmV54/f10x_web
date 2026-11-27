@@ -80611,7 +80611,23 @@ def _verbas_media_adiant13(id_cliente):
     return cods, horas, desc
 
 
-def _avos_adm_adiant13(ano, mes_folha, f):
+def _avos_adm_adiant13(ano, mes_folha, f, afastamentos=None):
+    """Avos do adiantamento do 13o: admissao (abaixo) e, desde 27/11/2026,
+    AFASTAMENTOS (motivos 01-09, os mesmos do 13o final - _avos13_cache).
+
+    Ate 27/11/2026 o afastado recebia o adiantamento inteiro (cliente 30:
+    afastados pelo INSS desde 2025 entravam com 50% do salario). Decisao do
+    usuario: PROPORCIONAL - mesma conta de avos do 13o final, ate dezembro;
+    afastamento em aberto tira os meses ate o fim do ano (afastado o ano
+    todo = 0 avos, fica fora). Faltas continuam fora desta conta.
+    """
+    if afastamentos:
+        return _avos_13(int(ano), f.get("dtadm"), None, afastamentos, None,
+                        mes_limite=12)["avos"]
+    return _avos_adm_adiant13_admissao(ano, mes_folha, f)
+
+
+def _avos_adm_adiant13_admissao(ano, mes_folha, f):
     """Avos do adiantamento do 13o pela DATA DE ADMISSAO (SMV 24/11/2026).
 
     Admitido no proprio ano da folha: avos da admissao ate DEZEMBRO (os avos
@@ -81104,8 +81120,9 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     e.append(_mem_passo("sal_base", f"salário do mês = {_fmt_brl(sal_mes)}"))
     if avos_adm < 12:
         e.append(Paragraph(
-            f"Admitido no ano: {avos_adm} {'avo' if avos_adm == 1 else 'avos'} da admissão até "
-            f"dezembro (mês com 15 dias ou mais de contrato conta 1 avo)", st_formula))
+            f"Avos do 13º: {avos_adm} {'avo' if avos_adm == 1 else 'avos'} até dezembro, "
+            f"descontados a admissão no ano e os afastamentos (mês com 15 dias ou mais "
+            f"trabalhados conta 1 avo)", st_formula))
     e.append(Paragraph(
         f"Salário do mês {_fmt_brl(sal_mes)} × {perc}%{_av_txt} = <b>{_fmt_brl(valor)}</b>  "
         f"(verba {VERBA_ADIANT_13})", st_formula))
@@ -81451,7 +81468,8 @@ def calcular_adiantamento_13():
             nome    = (f.get("nome") or f.get("nomer") or "").strip()
             mat_f   = int(f.get("matricula") or 0)
             sal_mes = _sal_mes_adiant13(f)
-            avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
+            avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f,
+                                         _af13.get(int(f.get("matricula") or 0)))
             valor   = sal_mes * perc * avos_ad // 1200   # perc% do salário × avos/12
             adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, mat_f, sal_mes, perc,
                                            eventos_cache=_adic_ev, mov_cache=_adic_mov,
@@ -81600,7 +81618,8 @@ def api_calcular_adiantamento_13():
             if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
                 continue
             sal_mes = _sal_mes_adiant13(f)
-            avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
+            avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f,
+                                         _af13.get(int(f.get("matricula") or 0)))
             valor   = sal_mes * perc * avos_ad // 1200   # perc% do salário × avos/12
             man_f   = _man13.get(int(f.get("matricula") or 0), {})
             if valor <= 0 and not man_f:
@@ -81895,7 +81914,7 @@ def calcular_adiantamento_13_stream():
                       "matr": f"{mat:06d}", "nome": nome})
 
                 sal_mes = _sal_mes_adiant13(f)
-                avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f)
+                avos_ad = _avos_adm_adiant13(ano_folha, mes_folha, f, _af13.get(mat))
                 valor   = sal_mes * perc * avos_ad // 1200   # perc% × avos/12
                 man_f   = _man13.get(mat, {})
                 if valor <= 0 and not man_f:
