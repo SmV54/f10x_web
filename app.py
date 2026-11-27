@@ -81501,6 +81501,7 @@ def calcular_adiantamento_13():
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
+                "avos":       avos_ad,          # avos do 13o ate dezembro (prévia)
                 "sal_fmt":    _fmt_reais(sal_mes),
                 "valor_calc": valor,
                 "valor_fmt":  _fmt_reais(valor),

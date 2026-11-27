@@ -173,6 +173,15 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
     background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;
     padding: 18px 20px; color: #9a3412; font-size: 13px; text-align: center;
 }
+/* Avos do 13o (mesmo destaque da tela do 13o Final) */
+.th-c, .td-c { text-align: center; }
+.avos {
+    display: inline-block; min-width: 40px; text-align: center;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    border-radius: 6px; padding: 2px 6px;
+    background: #f0fdf4; color: #166534; border: 1px solid #86efac;
+}
+.avos-parcial { background: #fffbeb; color: #92400e; border-color: #fcd34d; }
 </style>
 <link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
@@ -269,6 +278,7 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
                 <tr>
                     <th>Mat.</th>
                     <th>Nome</th>
+                    <th class="th-c" title="Avos do 13º até dezembro: descontam a admissão no ano e os afastamentos">Avos</th>
                     <th class="th-r">Salário</th>
                     <th class="th-r">Adiant. ({{ perc_adianta13 }}%)</th>
                     <th class="th-r">Pericul. ({{ perc_adianta13 }}%)</th>
@@ -282,6 +292,7 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
                 <tr>
                     <td class="td-mat">{{ '%04d' % f.matricula }}</td>
                     <td class="td-nome" title="{{ f.nome }}">{{ f.nome }}</td>
+                    <td class="td-c"><span class="avos{% if f.avos < 12 %} avos-parcial{% endif %}">{{ f.avos }}/12</span></td>
                     <td class="td-sal">{{ f.sal_fmt }}</td>
                     <td class="td-sal">{{ f.valor_fmt }}</td>
                     <td class="td-sal">{{ f.pericu_fmt }}</td>
