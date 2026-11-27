@@ -229,8 +229,27 @@ function onPick(rd) {
 
 let _src = null;
 
-function iniciar() {
+// 1o cálculo da folha 12/2026 com gente de 44h/220h: avisa da troca de jornada
+// antes de calcular (a troca é feita no servidor, ver _jornada42_aplicar).
+const JORNADA42 = {{ jornada42|tojson }};
+let _jornada42Ok = false;
+
+async function iniciar() {
     if (!_matSel) return;
+    if (JORNADA42 && !_jornada42Ok) {
+        const ok = await f10Confirm(
+            'Primeiro cálculo da folha 12/2026 desta empresa.\n\n' +
+            'A jornada será alterada no cadastro de ' + JORNADA42.qtd + ' funcionário(s), não só deste:\n' +
+            '   44 horas semanais → 42 horas\n' +
+            '   220 horas mensais → 210 horas\n\n' +
+            'Horistas e demitidos não são alterados.\n' +
+            'Serão gerados ' + JORNADA42.qtd_2206 + ' eventos S-2206 (data da alteração 01/12/2026).\n\n' +
+            'Em seguida o cálculo continua normalmente.',
+            { titulo: 'Jornada de 44h para 42h', tipo: 'aviso',
+              okText: 'OK, calcular', cancelText: 'Cancelar' });
+        if (!ok) return;
+        _jornada42Ok = true;
+    }
     document.getElementById('btnCalc').disabled = true;
     document.getElementById('msgResult').innerHTML = '';
     const prog = document.getElementById('prog');
@@ -295,5 +314,6 @@ function escHtml(s) {
         .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

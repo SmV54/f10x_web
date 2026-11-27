@@ -314,9 +314,18 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 <button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
 
 <script>
-const src = new EventSource('/api/calcular_folha_stream');
+// O cálculo começa ao abrir a tela; no 1o cálculo da folha 12/2026 com gente
+// de 44h/220h, antes aparece o aviso da troca de jornada (mostrarModalJornada42).
+let src = null;
+const JORNADA42 = {{ jornada42|tojson }};
 
-src.onmessage = function(e) {
+function iniciarCalculo() {
+    src = new EventSource('/api/calcular_folha_stream');
+    src.onmessage = onMsgCalculo;
+    src.onerror   = onErroCalculo;
+}
+
+function onMsgCalculo(e) {
     const d = JSON.parse(e.data);
     if (d.tipo === 'func') {
         document.getElementById('progFill').style.width = d.pct + '%';
@@ -378,7 +387,7 @@ src.onmessage = function(e) {
 
 // A conexao caiu sem chegar a mensagem final: os casos que terminam normalmente
 // (fim, bloqueio, erro) ja fecharam o src, e entao este evento nao dispara.
-src.onerror = function() {
+function onErroCalculo() {
     src.close();
     const parou = document.getElementById('progFunc').textContent.trim();
     document.getElementById('conexao-sub').textContent =
@@ -388,6 +397,39 @@ src.onerror = function() {
     document.getElementById('sec-prog').style.display = 'none';
     document.getElementById('sec-conexao').style.display = 'flex';
 };
+
+function mostrarModalJornada42(j, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-box">
+            <div class="modal-icone">🕒</div>
+            <div class="modal-titulo">Jornada de 44h para 42h</div>
+            <div class="modal-texto" style="text-align:left">
+                Primeiro cálculo da folha 12/2026 desta empresa.<br><br>
+                A jornada será alterada no cadastro de <strong>${j.qtd}</strong> funcionário(s):<br>
+                &nbsp;&nbsp;44 horas semanais → <strong>42 horas</strong><br>
+                &nbsp;&nbsp;220 horas mensais → <strong>210 horas</strong><br><br>
+                Horistas e demitidos não são alterados.<br>
+                Serão gerados <strong>${j.qtd_2206}</strong> eventos S-2206
+                (data da alteração 01/12/2026).<br><br>
+                Em seguida o cálculo continua normalmente.
+            </div>
+            <div class="modal-acoes">
+                <button class="btn-modal-prim" id="btnJornada42Ok">OK, calcular</button>
+                <button class="btn-modal-sec"  id="btnJornada42Sair">Voltar ao menu</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('btnJornada42Ok').onclick = () => { overlay.remove(); onConfirm(); };
+    document.getElementById('btnJornada42Sair').onclick = () => { location.href = '/menu'; };
+}
+
+if (JORNADA42) {
+    mostrarModalJornada42(JORNADA42, iniciarCalculo);
+} else {
+    iniciarCalculo();
+}
 
 function mostrarResumo(r) {
     document.getElementById('sec-prog').style.display = 'none';

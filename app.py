@@ -58372,6 +58372,154 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             print(f"[tab_esocial S-1200/1210 DELETE] erro: {e_es_del}")
 
 
+# =========================================================
+# Jornada 44h -> 42h no 1o cálculo da folha 12/2026 (SMV 27/11/2026)
+#
+# Mesmo processo do F10-Desk (Claude_Jornada_42h_Folha_202612, SR_Claude.vb):
+# no PRIMEIRO cálculo da folha NORMAL de 12/2026 de cada empresa, o tab_cad
+# troca qtdhrssem 44 -> 42 e qtdhrsmes 220 -> 210. "Primeiro cálculo" = ainda
+# não há tab_total tipo N da 202612 na empresa (férias e rescisão do mês não
+# contam); vale o cálculo geral ou o individual, o que vier primeiro.
+#
+# Ficam fora os demitidos e os horistas (undsalfixo 'H': salário = hora x
+# horas, e 210 baixaria o mensal). Vazio conta como o padrão que o sistema já
+# usa: qtdhrssem vazio = 44 (gerador do S-2200/S-2206), qtdhrsmes vazio ou 0 =
+# 220 (cálculo).
+#
+# S-2206 com dtAlteracao 01/12/2026 (data_cad) para cada empregado alterado
+# que já tem admissão aceita: quem ainda está com o S-2200 pendente leva a
+# jornada nova no próprio S-2200 (o gerador lê o tab_cad no envio), e um
+# S-2206 antes dele seria recusado. TSVE (categoria >= 700) seria S-2306,
+# ainda não implementado — mesmo critério do contrato e da transferência.
+# =========================================================
+JORNADA42_FOLHA = "202612"
+JORNADA42_DT_ALTERACAO = "20261201"
+
+
+def _jornada42_paginado(montar_query, passo=1000):
+    """Lê todas as linhas de uma consulta (o PostgREST corta em 1000)."""
+    linhas, ini = [], 0
+    while True:
+        lote = montar_query().range(ini, ini + passo - 1).execute().data or []
+        linhas.extend(lote)
+        if len(lote) < passo:
+            return linhas
+        ini += passo
+
+
+def _jornada42_num(v):
+    """'44', '44.00', ' 44' -> 44; vazio -> None."""
+    s = re.sub(r"\D", "", str(v if v is not None else "").split(",")[0].split(".")[0])
+    return int(s) if s else None
+
+
+def _jornada42_previa(id_cliente, id_empresa, anomes, anomes_tipo):
+    """Quem muda de jornada se a folha for calculada agora.
+
+    None = não se aplica (não é a folha N de 12/2026, ou ela já foi calculada).
+    Senão: {"sem": [mat...], "mes": [mat...], "mats": [mat...], "s2206": [mat...]}.
+    """
+    if (str(anomes or "") != JORNADA42_FOLHA
+            or str(anomes_tipo or "N").upper()[:1] != "N" or not id_empresa):
+        return None
+    q = (supabase.table("tab_total").select("matricula")
+         .eq("id_empresa", int(id_empresa)).eq("folha", int(anomes))
+         .eq("folha_tipo", "N"))
+    if id_cliente:
+        q = q.eq("id_cliente", id_cliente)
+    if q.limit(1).execute().data:
+        return None
+
+    cads = _jornada42_paginado(lambda: (
+        supabase.table("tab_cad")
+        .select("matricula, qtdhrssem, qtdhrsmes, undsalfixo, codcateg")
+        .eq("id_empresa", int(id_empresa)).neq("situacao", "D")
+        .order("matricula")))
+    sem, mes, categ = [], [], {}
+    for c in cads:
+        if str(c.get("undsalfixo") or "M").strip().upper() == "H":
+            continue
+        mat = int(c.get("matricula") or 0)
+        if not mat:
+            continue
+        hs = _jornada42_num(c.get("qtdhrssem"))
+        hm = _jornada42_num(c.get("qtdhrsmes"))
+        if (44 if hs is None else hs) == 44:
+            sem.append(mat)
+        if (220 if not hm else hm) == 220:
+            mes.append(mat)
+        try:
+            categ[mat] = int(str(c.get("codcateg") or "0").strip() or 0)
+        except (TypeError, ValueError):
+            categ[mat] = 0
+    mats = sorted(set(sem) | set(mes))
+
+    aceitos = set()
+    if mats:
+        evs = _jornada42_paginado(lambda: (
+            supabase.table("tab_esocial")
+            .select("id_esocial, matricula, recibo, observacao_erro")
+            .eq("id_empresa", int(id_empresa)).in_("layout", ["2200", "2206"])
+            .order("id_esocial")))
+        for ev in evs:
+            if ((ev.get("recibo") or "").strip()
+                    and (ev.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"):
+                try:
+                    aceitos.add(int(ev.get("matricula") or 0))
+                except (TypeError, ValueError):
+                    pass
+    s2206 = [m for m in mats if categ.get(m, 0) < 700 and m in aceitos]
+    return {"sem": sem, "mes": mes, "mats": mats, "s2206": s2206}
+
+
+def _jornada42_aplicar(id_cliente, id_empresa, anomes, anomes_tipo):
+    """Faz a troca e gera os S-2206. Devolve a prévia aplicada, ou None."""
+    pv = _jornada42_previa(id_cliente, id_empresa, anomes, anomes_tipo)
+    if not pv or not pv["mats"]:
+        return None
+    for col, valor, lista in (("qtdhrssem", "42", pv["sem"]),
+                              ("qtdhrsmes", "210", pv["mes"])):
+        for i in range(0, len(lista), 200):
+            (supabase.table("tab_cad").update({col: valor})
+             .eq("id_empresa", int(id_empresa))
+             .in_("matricula", lista[i:i + 200]).execute())
+    ag = _agora_brasilia()
+    ts = ag.strftime("%Y%m%d%H%M%S")
+    recs = [{
+        "id_cliente": id_cliente,
+        "id_empresa": int(id_empresa),
+        # data_cad vira o <dtAlteracao> do S-2206 no envio
+        "data_cad":   JORNADA42_DT_ALTERACAO,
+        "hora_cad":   ag.strftime("%H%M"),
+        "id_remessa": f"{ts}2206{m}",
+        "ano_mes":    int(anomes),
+        "folha_tipo": "N",
+        "layout":     "2206",
+        "matricula":  m,
+        "codigo2":    0,
+    } for m in pv["s2206"]]
+    for i in range(0, len(recs), 200):
+        supabase.table("tab_esocial").insert(recs[i:i + 200]).execute()
+    gravar_log("JORNADA42H",
+               f"1o calculo 12/2026: jornada 44h->42h ({len(pv['sem'])} func.) e "
+               f"220h->210h ({len(pv['mes'])} func.); S-2206 gerados: {len(pv['s2206'])}",
+               ano_mes=int(anomes), id_empresa=int(id_empresa), id_cliente=id_cliente)
+    return pv
+
+
+def _jornada42_aviso_tela():
+    """Dados do aviso que a tela mostra ANTES de iniciar o cálculo (ou None)."""
+    try:
+        pv = _jornada42_previa(session.get("id_cliente"), _get_id_empresa(),
+                               session.get("anomes_atual"), session.get("anomes_tipo"))
+    except Exception as e:
+        print(f"[jornada42 previa] erro: {e}")
+        return None
+    if not pv or not pv["mats"]:
+        return None
+    return {"qtd": len(pv["mats"]), "qtd_2206": len(pv["s2206"])}
+
+
 @app.route("/calcular_folha")
 def calcular_folha():
     if not session.get("logado"):
@@ -58421,6 +58569,7 @@ def calcular_folha():
         folha_tipo_ativa=str(session.get("anomes_tipo") or "N"),
         n_calculo=n_calculo,
         data_calculo=data_calculo,
+        jornada42=_jornada42_aviso_tela(),
     )
 
 
@@ -58457,6 +58606,7 @@ def calcular_folha_individual():
         folha_tipo_ativa=str(session.get("anomes_tipo") or "N"),
         folha_situacao=str(session.get("anomes_situacao") or ""),
         funcionarios=funcionarios,
+        jornada42=_jornada42_aviso_tela(),
     )
 
 
@@ -58698,6 +58848,22 @@ def calcular_folha_stream():
             q.put(json.dumps({"tipo": "erro", "msg": str(e)}, ensure_ascii=False))
         finally:
             q.put(None)
+
+    # 1o cálculo da folha N de 12/2026: jornada 44h -> 42h e 220h -> 210h no
+    # tab_cad + S-2206 (ver _jornada42_aplicar). Aqui, ainda na requisição,
+    # porque o gravar_log usa a sessão e o run() lê o tab_cad já trocado.
+    try:
+        _pv42 = _jornada42_aplicar(id_cliente, id_empresa, anomes, anomes_tipo)
+        if _pv42:
+            q.put(json.dumps({"tipo": "aviso", "msg":
+                f"Jornada alterada para 42h semanais / 210h mensais em "
+                f"{len(_pv42['mats'])} funcionário(s); {len(_pv42['s2206'])} "
+                f"S-2206 gerado(s) com data de alteração 01/12/2026."},
+                ensure_ascii=False))
+    except Exception as e42:
+        q.put(json.dumps({"tipo": "aviso", "msg":
+            f"Não consegui alterar a jornada para 42h: {str(e42)[:150]}. "
+            f"O cálculo seguiu com a jornada atual."}, ensure_ascii=False))
 
     threading.Thread(target=run, daemon=True).start()
 
