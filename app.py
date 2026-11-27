@@ -51120,18 +51120,21 @@ def esocial_s1299():
         try:
             for _lay, _attr in (("1200", "s1200"), ("1210", "s1210")):
                 _r = (supabase.table("tab_esocial")
-                      .select("id_esocial")
+                      .select("observacao_erro")
                       .eq("id_empresa", id_empresa)
                       .eq("layout", _lay)
                       .eq("ano_mes", int(anomes_atual))
                       .eq("folha_tipo", anomes_tipo)
                       .not_.is_("recibo", "null")
                       .neq("recibo", "")
-                      .limit(1).execute())
+                      .execute())
+                # excluido por S-3000 nao conta (gov recusa com [589])
+                _vale = any((x.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+                            for x in (_r.data or []))
                 if _attr == "s1200":
-                    tem_s1200_enviado = bool(_r.data)
+                    tem_s1200_enviado = _vale
                 else:
-                    tem_s1210_enviado = bool(_r.data)
+                    tem_s1210_enviado = _vale
         except Exception:
             pass
 
@@ -51230,18 +51233,22 @@ def api_esocial_s1299_enviar():
     # Coerencia com o que ja foi enviado ao gov: se houver S-1200/S-1210 com
     # recibo valido no periodo, evt_remun/evt_pgtos TEM que ser "S" — caso
     # contrario o gov rejeita com erro 589.
+    # Evento EXCLUIDO por S-3000 guarda o recibo mas nao existe mais no gov:
+    # conta-lo obrigava evtPgtos "S" e o gov recusava com [589] (empresa 76,
+    # 10/2026, S-1210 da rescisao excluido - 27/11/2026).
     def _tem_enviado(layout):
         try:
             _r = (supabase.table("tab_esocial")
-                  .select("id_esocial")
+                  .select("observacao_erro")
                   .eq("id_empresa", id_empresa)
                   .eq("layout", layout)
                   .eq("ano_mes", int(ano_mes))
                   .eq("folha_tipo", folha_tp)
                   .not_.is_("recibo", "null")
                   .neq("recibo", "")
-                  .limit(1).execute())
-            return bool(_r.data)
+                  .execute())
+            return any((r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+                       for r in (_r.data or []))
         except Exception:
             return False
 
