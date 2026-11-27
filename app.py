@@ -24378,6 +24378,65 @@ def _ferias_periodo_aquisitivo(todas_ferias, dtadm_str, periodo_ferias):
     return data2i_out, data2f_out
 
 
+def _ferias_art133(data2i, data1i, afastamentos):
+    """Afastamento pelo INSS no período aquisitivo (CLT art. 133, IV).
+
+    Quem recebeu do INSS (auxílio-doença ou acidente, motivos 01 e 03) por MAIS
+    DE 6 MESES dentro do aquisitivo perde as férias dele, e o aquisitivo
+    seguinte começa na VOLTA ao trabalho (par. 2o). A rescisão e o relatório de
+    férias vencidas já aplicavam (_ferias_aquisitivos_resc); o lançamento de
+    férias não, e a coletiva de 12/2026 entrou com férias inteiras para quem
+    ficou 8 meses afastado (cliente 30, empresa 53, mat 16).
+
+    Mesma conta da rescisão: o benefício começa no 16o dia e só se contam os
+    dias até a véspera do início das férias. Pode perder mais de um período.
+
+    Devolve (data2i, data2f, perdidos, erro):
+      data2i/data2f  aquisitivo a usar (AAAAMMDD) — o mesmo se nada se perdeu
+      perdidos       [(ini, fim, volta, dias_inss)] dos períodos perdidos
+      erro           texto quando ele ainda está afastado no início das férias
+    """
+    d2i = _ferias_str_to_date(data2i)
+    d_ini = _ferias_str_to_date(data1i)
+    if not d2i or not d_ini or not afastamentos:
+        return data2i, (_ferias_date_to_str(_ferias_add_year_minus1(d2i)) if d2i else None), [], None
+    vespera = d_ini - timedelta(days=1)
+    perdidos = []
+    while d2i <= vespera and len(perdidos) < 20:
+        d2f = _ferias_add_year_minus1(d2i)
+        j_fim = min(d2f, vespera)
+        tot, volta = 0, False
+        for a_ini, a_fim in afastamentos:
+            b_ini = a_ini + timedelta(days=15)
+            b_fim = a_fim or vespera
+            de, ate = max(b_ini, d2i), min(b_fim, j_fim)
+            if ate >= de:
+                tot += (ate - de).days + 1
+                if tot > 180 and volta is False:
+                    volta = (a_fim + timedelta(days=1)) if a_fim else None
+        if tot <= 180:
+            break
+        perdidos.append((d2i, d2f, volta, tot))
+        if volta is None or volta > d_ini:
+            return (data2i, None, perdidos,
+                    f"afastado pelo INSS ({tot} dias no período aquisitivo "
+                    f"{d2i.strftime('%d/%m/%Y')} a {d2f.strftime('%d/%m/%Y')}) e ainda "
+                    f"não voltou ao trabalho no início das férias: perdeu o direito "
+                    f"(CLT art. 133, IV).")
+        d2i = volta
+    return (_ferias_date_to_str(d2i), _ferias_date_to_str(_ferias_add_year_minus1(d2i)),
+            perdidos, None)
+
+
+def _ferias_art133_texto(perdidos):
+    """Uma linha por período perdido, para a prévia e o tab_log."""
+    return " ".join(
+        f"Perdeu o periodo {p[0].strftime('%d/%m/%Y')} a {p[1].strftime('%d/%m/%Y')}: "
+        f"{p[3]} dias recebendo do INSS (mais de 6 meses, CLT art. 133, IV)"
+        + (f"; novo aquisitivo a partir da volta, {p[2].strftime('%d/%m/%Y')}." if p[2] else ".")
+        for p in perdidos)
+
+
 # =========================================================
 # FÉRIAS PROPORCIONAIS — quem ainda não fechou o período aquisitivo
 # =========================================================
@@ -24570,9 +24629,20 @@ def _ferias_montar_previa(id_cliente, id_empresa, mat_int, data1i, qtd, periodo_
     out["todas_ferias"] = r_prev.data or []
     out["data2i"], out["data2f"] = _ferias_periodo_aquisitivo(
         out["todas_ferias"], dtadm_str, periodo_ferias)
+    out["art133"] = ""
     # "Não" é continuação de um período que já deu férias: não há o que
     # proporcionalizar.
     if periodo_ferias != "nao":
+        # Mais de 6 meses de INSS no aquisitivo: perdeu, recomeça na volta
+        _af = _afast_inss_por_mat(id_empresa, [mat_int]).get(mat_int, [])
+        if _af and out["data2i"]:
+            n2i, n2f, perd, err = _ferias_art133(out["data2i"], data1i, _af)
+            if perd:
+                out["art133"] = _ferias_art133_texto(perd)
+            if err:
+                out["erro"] = err
+                return out
+            out["data2i"], out["data2f"] = n2i, n2f
         out["prop"] = _ferias_proporcionais(data1i, qtd, out["data2i"], out["data2f"])
     return out
 
@@ -24621,13 +24691,17 @@ def api_ferias_previa():
             itens.append({"matricula": mat_int, "nome": "", "erro": str(e)[:150]})
             continue
         it = {"matricula": mat_int, "nome": p["nome"], "dtadm": p["dtadm"],
-              "data2i": p["data2i"], "data2f": p["data2f"], "erro": p["erro"]}
+              "data2i": p["data2i"], "data2f": p["data2f"], "erro": p["erro"],
+              "art133": p.get("art133") or ""}
         if p["prop"]:
             it.update(p["prop"])
             it["proporcional"] = True
         itens.append(it)
+    # A prévia abre também para quem perdeu período (art. 133) ou não pode
+    # tirar férias: o operador vê antes de gravar, não só no aviso final.
     return jsonify({"ok": True, "itens": itens,
-                    "tem_proporcional": any(i.get("proporcional") for i in itens)})
+                    "tem_proporcional": any(i.get("proporcional") or i.get("art133")
+                                            or i.get("erro") for i in itens)})
 
 
 @app.route("/api/ferias_gravar", methods=["POST"])
@@ -24712,6 +24786,8 @@ def api_ferias_gravar():
                 log_prop = _ferias_log_prop(prop, opcao, qtd, dias_mat)
                 if dias_mat <= 0:
                     gravar_log("FERIAS", log_prop, matricula=mat_int)
+                    if p.get("art133"):
+                        gravar_log("FERIAS", p["art133"][:300], matricula=mat_int)
                     excluidos += 1
                     continue
                 if sem_abono:
@@ -24747,6 +24823,8 @@ def api_ferias_gravar():
             gravar_log("FERIAS", f"INC ferias: {_fmt_dt(data1i)}-{_fmt_dt(data1f_mat)} ({dias_mat}d)", matricula=mat_int)
             if log_prop:
                 gravar_log("FERIAS", log_prop, matricula=mat_int)
+            if p.get("art133"):
+                gravar_log("FERIAS", p["art133"][:300], matricula=mat_int)
 
             # Remessa eSocial S-2230 — só grava se ainda não existe para esse mês
             try:
@@ -67723,6 +67801,15 @@ def _sim_ferias_montar(itens):
         except Exception:
             todas_ferias = []
         data2i, data2f = _ferias_periodo_aquisitivo(todas_ferias, dtadm_str, periodo)
+        # Mais de 6 meses de INSS no aquisitivo (CLT art. 133, IV): a mesma
+        # regra do lançamento real
+        if periodo != "nao" and data2i:
+            _af = _afast_inss_por_mat(id_empresa, [mat]).get(mat, [])
+            if _af:
+                _n2i, _n2f, _perd, _err = _ferias_art133(data2i, data1i, _af)
+                if _err:
+                    return [], {}, f"Funcionário {mat:06d}: {_err}"
+                data2i, data2f = _n2i, _n2f
 
         # Aquisitivo ainda aberto: simula o que o lançamento grava por padrão,
         # as férias proporcionais (ver _ferias_proporcionais).

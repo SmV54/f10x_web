@@ -775,10 +775,19 @@ function abrirPrevia(payload, itens) {
     const props  = itens.filter(i => i.proporcional);
     const abaixo = props.filter(i => i.abaixo10);
 
-    let av = `<div class="previa-aviso ambar">⚠ <b>${props.length} funcionário(s) ainda não completaram o período aquisitivo</b>
+    let av = '';
+    if (props.length) {
+        av += `<div class="previa-aviso ambar">⚠ <b>${props.length} funcionário(s) ainda não completaram o período aquisitivo</b>
         em ${fmtData8(payload.data1i)}. Pela CLT (art. 140) eles têm direito a férias <b>proporcionais</b> —
         2,5 dias por mês trabalhado — e um <b>período aquisitivo novo</b> começa no primeiro dia das férias.
         A opção sugerida é a proporcional; os dias da coletiva que passam do direito ficam fora das férias.</div>`;
+    }
+    const perd = itens.filter(i => i.art133);
+    if (perd.length) {
+        av += `<div class="previa-aviso verm">⛔ <b>${perd.length} funcionário(s) perderam período de férias por afastamento</b>:
+            mais de 6 meses recebendo do INSS dentro do período aquisitivo (CLT art. 133, IV). O período aquisitivo
+            novo começa na volta ao trabalho — veja o detalhe na linha de cada um.</div>`;
+    }
     if (abaixo.length) {
         av += `<div class="previa-aviso verm">⛔ <b>${abaixo.length} funcionário(s) não têm direito a 10 dias de férias</b>
             (o mínimo de um período). Para esses a escolha é obrigatória.</div>`;
@@ -794,8 +803,9 @@ function abrirPrevia(payload, itens) {
                 <td class="mono">${fmtData8(it.dtadm)}</td><td class="mono">${aq}</td><td></td><td></td>
                 <td>Não será registrado: ${esc(it.erro)}</td></tr>`;
         }
+        const n133 = it.art133 ? `<span class="previa-nota sobra">⛔ ${esc(it.art133)}</span>` : '';
         if (!it.proporcional) {
-            return `<tr><td class="mono">${mat}</td><td>${esc(it.nome)}</td>
+            return `<tr><td class="mono">${mat}</td><td>${esc(it.nome)}${n133 ? '<br>' + n133 : ''}</td>
                 <td class="mono">${fmtData8(it.dtadm)}</td><td class="mono">${aq}</td><td class="mono">12</td>
                 <td class="mono">30</td><td><span class="selo ok">Período completo</span> ${qtd} dias de férias</td></tr>`;
         }
@@ -804,7 +814,7 @@ function abrirPrevia(payload, itens) {
         const selo = it.abaixo10 ? '<span class="selo abaixo">Menos de 10 dias</span>'
                                  : '<span class="selo prop">Proporcional</span>';
         return `<tr class="${it.abaixo10 ? 'linha-abaixo' : 'linha-prop'}">
-            <td class="mono">${mat}</td><td>${esc(it.nome)}<br>${selo}</td>
+            <td class="mono">${mat}</td><td>${esc(it.nome)}<br>${selo}${n133}</td>
             <td class="mono">${fmtData8(it.dtadm)}</td>
             <td class="mono">${aq}</td>
             <td class="mono">${it.avos}</td>
