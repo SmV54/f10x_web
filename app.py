@@ -8631,19 +8631,25 @@ def _s1299_ativo(id_empresa, ano_mes, folha_tipo):
     if not ano_mes:
         return False
     try:
+        # Olha o ULTIMO S-1298/S-1299 com recibo (nao excluido): desde 27/11/2026
+        # o reenvio nao apaga mais o recibo antigo, entao um S-1299 aceito pode
+        # ter um S-1298 depois dele (folha reaberta) - ai o S-1299 nao vale mais.
         rows = (supabase.table("tab_esocial")
-                .select("recibo, observacao_erro")
+                .select("layout, recibo, observacao_erro, data_grava, hora_grava")
                 .eq("id_empresa", id_empresa)
-                .eq("layout", "1299")
+                .in_("layout", ["1298", "1299"])
                 .eq("ano_mes", int(ano_mes))
                 .eq("folha_tipo", str(folha_tipo or "N"))
                 .not_.is_("recibo", "null")
                 .neq("recibo", "")
                 .execute().data or [])
-        for r in rows:
-            if (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO":
-                return True   # há um S-1299 vigente para o período
-        return False
+        rows = [r for r in rows
+                if (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"]
+        if not rows:
+            return False
+        ult = max(rows, key=lambda r: (str(r.get("data_grava") or "").strip()
+                                       + str(r.get("hora_grava") or "").strip().zfill(4)))
+        return str(ult.get("layout") or "") == "1299"   # S-1299 vigente
     except Exception:
         return False
 
@@ -51338,17 +51344,22 @@ def api_esocial_s1299_enviar():
     # Reutiliza registro existente ou cria novo. So aqui, na hora de transmitir:
     # limpar antes apagava o erro do envio anterior sempre que uma validacao ou
     # o certificado parava a rota no meio (o historico ficava "Gerado", sem erro).
+    # Registro COM recibo nunca e reaproveitado: o reenvio apagava o recibo antes
+    # de transmitir e, recusado com [620] "folha ja fechada", deixava o periodo
+    # sem nenhum S-1299 com recibo - o sistema passava a ver a folha ABERTA e
+    # travava o S-1298 (empresa 76, 09/2026, 27/11/2026). Agora vai em linha nova.
     try:
         _exist = (supabase.table("tab_esocial")
-                  .select("id_esocial")
+                  .select("id_esocial, recibo")
                   .eq("id_empresa", id_empresa)
                   .eq("layout", "1299")
                   .eq("ano_mes", int(ano_mes))
                   .eq("folha_tipo", folha_tp)
                   .eq("codigo2", sem_mov_flag)
                   .order("data_cad", desc=True)
+                  .order("id_esocial", desc=True)
                   .limit(1).execute())
-        if _exist.data:
+        if _exist.data and not str(_exist.data[0].get("recibo") or "").strip():
             id_reg = _exist.data[0]["id_esocial"]
             supabase.table("tab_esocial").update({
                 "recibo":          "",
@@ -52896,16 +52907,19 @@ def api_esocial_s1298_enviar():
     agora      = _agora_brasilia()
     folha_tp   = "1" if ind_apuracao == "2" else "N"
     id_cliente = session.get("id_cliente")
+    # Registro COM recibo nunca e reaproveitado (o reenvio recusado apagava o
+    # recibo bom - ver o S-1299, empresa 76, 27/11/2026). Agora vai em linha nova.
     try:
         _exist = (supabase.table("tab_esocial")
-                  .select("id_esocial")
+                  .select("id_esocial, recibo")
                   .eq("id_empresa", id_empresa)
                   .eq("layout", "1298")
                   .eq("ano_mes", int(ano_mes))
                   .eq("folha_tipo", folha_tp)
                   .order("data_cad", desc=True)
+                  .order("id_esocial", desc=True)
                   .limit(1).execute())
-        if _exist.data:
+        if _exist.data and not str(_exist.data[0].get("recibo") or "").strip():
             id_reg = _exist.data[0]["id_esocial"]
             supabase.table("tab_esocial").update({
                 "recibo":          "",
